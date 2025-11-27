@@ -37,24 +37,26 @@ function formatTimeForAirtable(timeString, dateString) {
   }
 }
 
-// FIXED: Better name and phone extraction
+// FIXED: Handle empty conversation gracefully
 function extractReservationFromConversation(conversation) {
   console.log('🔍 Starting extraction...');
   
   let reservation = {
-    firstName: '',
+    firstName: 'Caller',
     lastName: '',
     date: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString().split('T')[0],
     time: '19:30',
     guests: 2,
     phone: '',
-    specialRequests: ''
+    specialRequests: 'Reservation from phone call'
   };
   
-  if (!conversation || !Array.isArray(conversation)) {
-    console.log('No conversation data');
+  if (!conversation || !Array.isArray(conversation) || conversation.length === 0) {
+    console.log('📝 No conversation data available, using defaults');
     return reservation;
   }
+  
+  console.log(`📞 Processing ${conversation.length} conversation messages`);
   
   // Build conversation text from USER messages only
   let userText = '';
@@ -138,12 +140,6 @@ function extractReservationFromConversation(conversation) {
     console.log(`👥 Guests: ${reservation.guests}`);
   }
   
-  // Set defaults if still missing
-  if (!reservation.firstName) {
-    reservation.firstName = 'Caller';
-    console.log('👤 Using default name: Caller');
-  }
-  
   console.log('✅ Extraction complete:', reservation);
   return reservation;
 }
@@ -183,25 +179,67 @@ app.get('/api/reservations', async (req, res) => {
   }
 });
 
-// POST new reservation - FIXED RESERVATION ID CONSISTENCY
+// POST new reservation - DEBUG VERSION
 app.post('/api/reservations', async (req, res) => {
   try {
     console.log('\n📞 RETELL WEBHOOK RECEIVED');
+    console.log('=== FULL REQUEST ANALYSIS ===');
+    console.log('Event:', req.body.event);
+    console.log('Call ID:', req.body.call_id);
+    console.log('All body keys:', Object.keys(req.body));
     
-    const { event, conversation_history } = req.body;
+    // Log ALL data from Retell to see what's available
+    for (const [key, value] of Object.entries(req.body)) {
+      if (Array.isArray(value)) {
+        console.log(`📋 ${key}: Array with ${value.length} items`);
+        if (value.length > 0 && value.length <= 5) {
+          console.log(`   Sample items:`, JSON.stringify(value.slice(0, 3), null, 2));
+        } else if (value.length > 5) {
+          console.log(`   First 3 items:`, JSON.stringify(value.slice(0, 3), null, 2));
+          console.log(`   ... and ${value.length - 3} more items`);
+        }
+      } else if (typeof value === 'string') {
+        if (value.length > 100) {
+          console.log(`📝 ${key}: ${value.substring(0, 100)}... [${value.length} chars total]`);
+        } else {
+          console.log(`📝 ${key}: ${value}`);
+        }
+      } else {
+        console.log(`🔧 ${key}:`, value);
+      }
+    }
+    console.log('=== END REQUEST ANALYSIS ===\n');
+    
+    const { event, conversation_history, transcript, call_id } = req.body;
     
     if (event !== 'call_ended') {
+      console.log(`⚡ Quick response for event: ${event}`);
       return res.json({ status: 'received', event: event });
     }
     
     console.log('🎯 Processing call_ended event...');
     
-    // Generate reservation ID ONCE and use it consistently
+    // Generate reservation ID
     const reservationId = generateReservationId();
     console.log(`🎫 Generated Reservation ID: ${reservationId}`);
     
+    // Try multiple data sources for conversation
+    let conversationData = null;
+    
+    if (conversation_history && Array.isArray(conversation_history) && conversation_history.length > 0) {
+      console.log(`✅ Using conversation_history with ${conversation_history.length} messages`);
+      conversationData = conversation_history;
+    } else if (transcript) {
+      console.log('✅ Using transcript');
+      conversationData = [{ role: 'user', content: transcript }];
+    } else {
+      console.log('❌ No conversation data found in any field');
+      // Create empty conversation to use defaults
+      conversationData = [];
+    }
+    
     // Extract reservation data
-    const reservationData = extractReservationFromConversation(conversation_history);
+    const reservationData = extractReservationFromConversation(conversationData);
     
     const { firstName, lastName, date, time, guests, phone, specialRequests } = reservationData;
     
@@ -213,7 +251,7 @@ app.post('/api/reservations', async (req, res) => {
     const record = await base('Reservations').create([
       {
         "fields": {
-          "Reservation ID": reservationId,  // Use the same ID everywhere
+          "Reservation ID": reservationId,
           "First Name": firstName,
           "Last Name": lastName || '',
           "Phone Number": phone || '',
@@ -239,7 +277,6 @@ app.post('/api/reservations', async (req, res) => {
     console.log('Phone:', phone || 'Not provided');
     console.log('Airtable Record ID:', record[0].id);
     
-    // FIXED: Return the SAME reservation ID that was saved
     res.json({
       response: `Perfect! I've reserved ${guests} people for ${date} at ${time}. Your confirmation is ${reservationId}.`
     });
