@@ -56,7 +56,7 @@ function wordsToDigits(text) {
   return digits;
 }
 
-// FIXED: Extract from transcript_with_tool_calls
+// Extract reservation from conversation
 function extractReservationFromConversation(conversation) {
   console.log('🔍 Starting extraction...');
   
@@ -165,16 +165,16 @@ app.get('/api/reservations', async (req, res) => {
   }
 });
 
-// POST new reservation - FIXED DATA PASSING
+// POST new reservation - FIXED FOR NEW DATA STRUCTURE
 app.post('/api/reservations', async (req, res) => {
   try {
     console.log('\n📞 RETELL WEBHOOK RECEIVED');
     console.log('Event:', req.body.event);
     console.log('Available data keys:', Object.keys(req.body));
     
-    const { event, transcript_with_tool_calls, conversation_history } = req.body;
+    const { event, call } = req.body;
     
-    // Process call_analyzed events (where the data actually is!)
+    // Process call_analyzed events
     if (event !== 'call_analyzed') {
       console.log(`⚡ Quick response for event: ${event}`);
       return res.json({ status: 'received', event: event });
@@ -182,35 +182,59 @@ app.post('/api/reservations', async (req, res) => {
     
     console.log('🎯 Processing call_analyzed event...');
     
-    // DEBUG: Check what data we actually have
-    if (transcript_with_tool_calls) {
-      console.log(`✅ Found transcript_with_tool_calls with ${transcript_with_tool_calls.length} items`);
+    // DEBUG: Explore the call object structure
+    if (call) {
+      console.log('📞 Call object keys:', Object.keys(call));
+      console.log('🔍 Exploring call object...');
+      
+      // Look for conversation data in various locations within call object
+      if (call.transcript_with_tool_calls) {
+        console.log(`✅ Found transcript_with_tool_calls with ${call.transcript_with_tool_calls.length} items`);
+      }
+      if (call.conversation_history) {
+        console.log(`✅ Found conversation_history with ${call.conversation_history.length} items`);
+      }
+      if (call.transcript) {
+        console.log(`✅ Found transcript: ${call.transcript.substring(0, 100)}...`);
+      }
+      
+      // Log all array properties in call object
+      for (const [key, value] of Object.entries(call)) {
+        if (Array.isArray(value)) {
+          console.log(`📋 call.${key}: Array with ${value.length} items`);
+          if (value.length > 0 && value[0].content) {
+            console.log(`   Sample: ${value[0].content.substring(0, 50)}...`);
+          }
+        }
+      }
     } else {
-      console.log('❌ transcript_with_tool_calls is undefined');
-    }
-    
-    if (conversation_history) {
-      console.log(`📋 Found conversation_history with ${conversation_history.length} items`);
-    } else {
-      console.log('❌ conversation_history is undefined');
+      console.log('❌ No call object found');
     }
     
     // Generate reservation ID
     const reservationId = generateReservationId();
     console.log(`🎫 Generated Reservation ID: ${reservationId}`);
     
-    // Use transcript_with_tool_calls (where the real data is!)
-    let conversationData = transcript_with_tool_calls || conversation_history;
+    // Try to find conversation data in the call object
+    let conversationData = null;
+    
+    if (call) {
+      // Try different possible locations for conversation data
+      conversationData = call.transcript_with_tool_calls || 
+                        call.conversation_history || 
+                        call.transcript_content ||
+                        null;
+    }
     
     if (!conversationData) {
-      console.log('❌ No conversation data found in webhook');
-      // Create empty array to avoid errors
+      console.log('❌ No conversation data found in call object');
+      // If no structured data, try to use the entire call object as fallback
       conversationData = [];
     } else {
       console.log(`✅ Using conversation data with ${conversationData.length} messages`);
     }
     
-    // Extract reservation data - PASS THE ACTUAL DATA
+    // Extract reservation data
     const reservationData = extractReservationFromConversation(conversationData);
     
     const { firstName, lastName, date, time, guests, phone, specialRequests } = reservationData;
