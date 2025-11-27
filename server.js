@@ -37,78 +37,151 @@ function formatTimeForAirtable(timeString, dateString) {
   }
 }
 
-// Extract reservation from Retell's conversation format
+// Enhanced extraction for real conversation data
 function extractReservationFromConversation(conversation) {
-  console.log('🔍 Extracting from Retell conversation data...');
+  console.log('🔍 Advanced extraction from Retell conversation...');
   
-  // Default reservation
   let reservation = {
-    name: 'Phone Caller',
-    date: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString().split('T')[0], // Tomorrow
+    firstName: '',
+    lastName: '',
+    date: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString().split('T')[0],
     time: '19:30',
     guests: 2,
     phone: '',
-    specialRequests: 'Reservation from phone call'
+    specialRequests: ''
   };
   
   if (!conversation || !Array.isArray(conversation)) {
-    console.log('No conversation data, using defaults');
+    console.log('No conversation data');
     return reservation;
   }
   
-  // Extract all text content from the conversation
+  // Build complete conversation text
   let fullText = '';
   for (const message of conversation) {
-    if (message.content) {
+    if (message.content && message.role === 'user') {
       fullText += message.content + ' ';
-      console.log(`💬 ${message.role}: ${message.content}`);
+      console.log(`🗣️ USER: ${message.content}`);
     }
   }
   
-  console.log('📝 Full conversation text:', fullText);
-  
   const textLower = fullText.toLowerCase();
+  console.log('📝 User conversation:', fullText);
   
-  // Extract date
+  // EXTRACT NAME - More sophisticated patterns
+  const namePatterns = [
+    /my name is (\w+) (\w+)/i,
+    /i'm (\w+) (\w+)/i,
+    /i am (\w+) (\w+)/i,
+    /this is (\w+) (\w+)/i,
+    /it's (\w+) (\w+)/i,
+    /for (\w+) (\w+)/i,
+    /under (\w+) (\w+)/i,
+    /name (\w+) (\w+)/i
+  ];
+  
+  for (const pattern of namePatterns) {
+    const match = fullText.match(pattern);
+    if (match && match[1] && match[2]) {
+      reservation.firstName = match[1];
+      reservation.lastName = match[2];
+      console.log(`👤 Found name: ${reservation.firstName} ${reservation.lastName}`);
+      break;
+    }
+  }
+  
+  // If no full name found, try single name
+  if (!reservation.firstName) {
+    const singleNameMatch = fullText.match(/(?:my name is|i'm|i am|this is|it's) (\w+)/i);
+    if (singleNameMatch) {
+      reservation.firstName = singleNameMatch[1];
+      console.log(`👤 Found first name only: ${reservation.firstName}`);
+    }
+  }
+  
+  // EXTRACT PHONE NUMBER - Multiple formats
+  const phonePatterns = [
+    /\b(\d{3}[-.]?\d{3}[-.]?\d{4})\b/,
+    /\b(\d{3}\s\d{3}\s\d{4})\b/,
+    /\b(\d{10})\b/,
+    /phone.*?(\d{3}[-.]?\d{3}[-.]?\d{4})/i,
+    /number.*?(\d{3}[-.]?\d{3}[-.]?\d{4})/i
+  ];
+  
+  for (const pattern of phonePatterns) {
+    const match = fullText.match(pattern);
+    if (match && match[1]) {
+      reservation.phone = match[1].replace(/[^\d]/g, '');
+      console.log(`📞 Found phone: ${reservation.phone}`);
+      break;
+    }
+  }
+  
+  // EXTRACT DATE
   if (textLower.includes('tomorrow')) {
     const tomorrow = new Date(Date.now() + 24 * 60 * 60 * 1000);
     reservation.date = tomorrow.toISOString().split('T')[0];
-    console.log('📅 Found date: tomorrow ->', reservation.date);
+    console.log('📅 Date: tomorrow');
   } else if (textLower.includes('today')) {
     reservation.date = new Date().toISOString().split('T')[0];
-    console.log('📅 Found date: today');
+    console.log('📅 Date: today');
   }
   
-  // Extract time
+  // EXTRACT TIME
   if (textLower.includes('twelve') || textLower.includes('12') || textLower.includes('noon')) {
     reservation.time = '12:00';
-    console.log('⏰ Found time: 12:00 PM');
+    console.log('⏰ Time: 12:00 PM');
   } else if (textLower.includes('seven') || textLower.includes('7')) {
-    reservation.time = '19:00';
-    console.log('⏰ Found time: 7:00 PM');
+    reservation.time = textLower.includes('am') ? '07:00' : '19:00';
+    console.log('⏰ Time: 7:00');
   } else if (textLower.includes('eight') || textLower.includes('8')) {
-    reservation.time = '20:00';
-    console.log('⏰ Found time: 8:00 PM');
+    reservation.time = textLower.includes('am') ? '08:00' : '20:00';
+    console.log('⏰ Time: 8:00');
   } else if (textLower.includes('nine') || textLower.includes('9')) {
-    reservation.time = '21:00';
-    console.log('⏰ Found time: 9:00 PM');
+    reservation.time = textLower.includes('am') ? '09:00' : '21:00';
+    console.log('⏰ Time: 9:00');
   }
   
-  // Extract guests
-  const guestMatch = textLower.match(/(\d+)\s*(?:people|guests|persons|person)/);
+  // EXTRACT GUESTS
+  const guestMatch = textLower.match(/(\d+)\s*(?:people|guests|persons|person|for)/);
   if (guestMatch) {
     reservation.guests = parseInt(guestMatch[1]);
-    console.log('👥 Found guests:', reservation.guests);
+    console.log(`👥 Guests: ${reservation.guests}`);
   }
   
-  // Extract name (simple pattern)
-  const nameMatch = textLower.match(/(?:my name is|i'm|i am|it's)\s+([a-z]+\s+[a-z]+)/i);
-  if (nameMatch) {
-    reservation.name = nameMatch[1];
-    console.log('👤 Found name:', reservation.name);
+  // EXTRACT SPECIAL REQUESTS
+  const requestKeywords = ['window', 'birthday', 'anniversary', 'allergy', 'vegetarian', 'vegan', 'gluten', 'special', 'celebrat'];
+  for (const keyword of requestKeywords) {
+    if (textLower.includes(keyword)) {
+      // Find the sentence containing the keyword
+      const sentences = fullText.split(/[.!?]+/);
+      for (const sentence of sentences) {
+        if (sentence.toLowerCase().includes(keyword)) {
+          reservation.specialRequests = sentence.trim();
+          console.log(`🎯 Special request: ${reservation.specialRequests}`);
+          break;
+        }
+      }
+      break;
+    }
   }
   
-  console.log('🎯 Final extracted data:', reservation);
+  // Set defaults if missing
+  if (!reservation.firstName) {
+    reservation.firstName = 'Caller';
+    reservation.lastName = '';
+    console.log('👤 Using default name: Caller');
+  }
+  
+  console.log('🎯 EXTRACTION COMPLETE:', {
+    name: `${reservation.firstName} ${reservation.lastName}`.trim(),
+    date: reservation.date,
+    time: reservation.time,
+    guests: reservation.guests,
+    phone: reservation.phone || 'Not provided',
+    specialRequests: reservation.specialRequests || 'None'
+  });
+  
   return reservation;
 }
 
@@ -131,33 +204,35 @@ app.get('/health', (req, res) => {
 // GET all reservations
 app.get('/api/reservations', async (req, res) => {
   try {
-    const records = await base('Reservations').select().firstPage();
-    const reservations = records.map(record => ({
-      id: record.id,
-      ...record.fields
-    }));
+    if (process.env.AIRTABLE_TOKEN && process.env.AIRTABLE_BASE_ID) {
+      const records = await base('Reservations').select().firstPage();
+      
+      const reservations = records.map(record => ({
+        id: record.id,
+        ...record.fields
+      }));
 
-    return res.json({
-      success: true,
-      count: reservations.length,
-      reservations: reservations
+      return res.json({
+        success: true,
+        count: reservations.length,
+        reservations: reservations
+      });
+    }
+
+    res.json({
+      message: 'Connect Airtable to see real reservations'
     });
+
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
 });
 
-// POST new reservation - OPTIMIZED FOR RETELL
+// POST new reservation - WITH ENHANCED EXTRACTION
 app.post('/api/reservations', async (req, res) => {
   try {
-    console.log('📞 RETELL WEBHOOK RECEIVED');
+    console.log('\n📞 RETELL WEBHOOK RECEIVED');
     console.log('Event:', req.body.event);
-    console.log('Call ID:', req.body.call_id);
-    
-    // Log conversation structure without overwhelming details
-    if (req.body.conversation_history && Array.isArray(req.body.conversation_history)) {
-      console.log(`💬 Conversation has ${req.body.conversation_history.length} messages`);
-    }
     
     const { event, conversation_history } = req.body;
     
@@ -173,10 +248,10 @@ app.post('/api/reservations', async (req, res) => {
     
     console.log('🎯 Processing call_ended event...');
     
-    // Extract reservation data from Retell's format
+    // Extract detailed reservation data
     const reservationData = extractReservationFromConversation(conversation_history);
     
-    const { name, date, time, guests, phone, specialRequests } = reservationData;
+    const { firstName, lastName, date, time, guests, phone, specialRequests } = reservationData;
     
     // Generate reservation ID
     const reservationId = generateReservationId();
@@ -184,18 +259,14 @@ app.post('/api/reservations', async (req, res) => {
     // Format time for Airtable
     const arrivalTimeISO = formatTimeForAirtable(time, date);
     
-    // Save to Airtable
-    const nameParts = name.split(' ');
-    const firstName = nameParts[0];
-    const lastName = nameParts.slice(1).join(' ') || '';
-    
+    // Save to Airtable with proper names
     console.log('💾 Saving to Airtable...');
     const record = await base('Reservations').create([
       {
         "fields": {
           "Reservation ID": reservationId,
           "First Name": firstName,
-          "Last Name": lastName,
+          "Last Name": lastName || '',
           "Phone Number": phone || '',
           "Reservation Date": date,
           "Arrival Time": arrivalTimeISO,
@@ -213,7 +284,11 @@ app.post('/api/reservations', async (req, res) => {
     
     console.log('🎉 RESERVATION SAVED!');
     console.log('Reservation ID:', reservationId);
-    console.log('Airtable ID:', record[0].id);
+    console.log('Name:', `${firstName} ${lastName}`.trim());
+    console.log('Date/Time:', date, time);
+    console.log('Guests:', guests);
+    console.log('Phone:', phone || 'Not provided');
+    console.log('Airtable Record ID:', record[0].id);
     
     // Return success response to Retell
     res.json({
