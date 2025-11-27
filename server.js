@@ -9,30 +9,25 @@ const PORT = process.env.PORT || 3000;
 app.use(cors());
 app.use(express.json());
 
-// Italian date/time formatting helper
-function formatDateForAirtable(italianDate) {
-  // Handle various Italian date formats
-  // "domani" -> tomorrow, "25 gennaio" -> 2024-01-25, etc.
-  // For now, assume YYYY-MM-DD format or pass through
-  return italianDate; // You might want to add proper date parsing later
+// Initialize Airtable
+const airtable = new Airtable({
+  apiKey: process.env.AIRTABLE_TOKEN
+});
+
+const base = airtable.base(process.env.AIRTABLE_BASE_ID);
+
+// Generate unique reservation ID
+function generateReservationId() {
+  const timestamp = Date.now().toString(36);
+  const random = Math.random().toString(36).substr(2, 5);
+  return `JAZ-${timestamp}-${random}`.toUpperCase();
 }
 
-function formatTimeForAirtable(italianTime) {
-  // Handle Italian time formats
-  // "19:30", "7 di sera", "7 PM" -> "19:30"
-  return italianTime; // You might want to add proper time parsing later
-}
-
-// Test route - shows server is working
+// Test route
 app.get('/', (req, res) => {
   res.json({ 
     message: '🎵 Jazzamore Server is running!',
-    status: 'Ready for reservations',
-    endpoints: {
-      health: '/health',
-      createReservation: 'POST /api/reservations',
-      getReservations: 'GET /api/reservations'
-    }
+    status: 'Ready for reservations'
   });
 });
 
@@ -40,125 +35,137 @@ app.get('/', (req, res) => {
 app.get('/health', (req, res) => {
   res.json({ 
     status: 'healthy', 
-    timestamp: new Date().toISOString(),
-    airtable: process.env.AIRTABLE_TOKEN ? 'Connected' : 'Not configured'
+    timestamp: new Date().toISOString()
   });
 });
 
-// Create reservation endpoint - UPDATED FOR ITALIAN INPUT
+// Retell AI Webhook Endpoint - UPDATED
 app.post('/api/reservations', async (req, res) => {
   try {
-    let { name, date, time, guests, email, phone, specialRequests } = req.body;
+    const { call_id, event, conversation_history } = req.body;
     
-    // Simple validation
-    if (!name || !date || !time || !guests) {
-      return res.status(400).json({
-        error: 'Missing required fields',
-        required: ['name', 'date', 'time', 'guests'],
-        received: req.body
+    console.log('Retell webhook received:', { call_id, event });
+    
+    // Only process when call ends
+    if (event !== 'call_ended') {
+      return res.json({ status: 'ignored', reason: 'not_call_ended' });
+    }
+    
+    // Extract reservation details from conversation
+    const reservationData = extractReservationFromConversation(conversation_history);
+    
+    if (!reservationData) {
+      return res.json({ 
+        status: 'no_reservation',
+        message: 'No reservation data found in conversation'
       });
     }
-
-    // If Airtable is configured, save to Airtable
-    if (process.env.AIRTABLE_TOKEN && process.env.AIRTABLE_BASE_ID) {
-      const airtable = new Airtable({
-        apiKey: process.env.AIRTABLE_TOKEN
-      });
-      
-      const base = airtable.base(process.env.AIRTABLE_BASE_ID);
-      
-      // Extract first and last name from full name (handles Italian names)
-      const nameParts = name.split(' ');
-      const firstName = nameParts[0];
-      const lastName = nameParts.slice(1).join(' ') || '';
-      
-      // Format date/time for Airtable (Italian input)
-      const formattedDate = formatDateForAirtable(date);
-      const formattedTime = formatTimeForAirtable(time);
-      
-      const record = await base('Reservations').create([
-        {
-          "fields": {
-            "First Name": firstName,
-            "Last Name": lastName,
-            "Email": email || '',
-            "Phone Number": phone || '',
-            "Reservation Date": formattedDate,
-            "Arrival Time": formattedTime,
-            "Total People": parseInt(guests),
-            "Special Requests": specialRequests || '', // Italian text OK here
-            "Reservation Status": "Pending",
-            "Reservation Type": "Dinner + Show",
-            "Dinner Count": parseInt(guests),
-            "Show-Only Count": 0,
-            "Kids Count": 0,
-            "Newsletter Opt-In": false,
-            "Language": "Italian" // New field to track language
-          }
+    
+    const { name, date, time, guests, phone, email, specialRequests } = reservationData;
+    
+    // Generate reservation ID
+    const reservationId = generateReservationId();
+    
+    // Save to Airtable
+    const nameParts = name.split(' ');
+    const firstName = nameParts[0];
+    const lastName = nameParts.slice(1).join(' ') || '';
+    
+    const record = await base('Reservations').create([
+      {
+        "fields": {
+          "Reservation ID": reservationId,  // NEW FIELD
+          "First Name": firstName,
+          "Last Name": lastName,
+          "Email": email || '',
+          "Phone Number": phone || '',
+          "Reservation Date": date,
+          "Arrival Time": time,
+          "Total People": parseInt(guests),
+          "Special Requests": specialRequests || '',
+          "Reservation Status": "Pending",
+          "Reservation Type": "Dinner + Show",
+          "Dinner Count": parseInt(guests),
+          "Show-Only Count": 0,
+          "Kids Count": 0,
+          "Newsletter Opt-In": false,
+          "Call ID": call_id,
+          "Created": new Date().toISOString()
         }
-      ]);
-
-      return res.json({
-        success: true,
-        message: 'Prenotazione salvata con successo!', // Italian response
-        reservation: {
-          id: record[0].id,
-          name, date: formattedDate, time: formattedTime, guests, email, phone,
-          confirmation: `JAZ-${record[0].id.slice(-6).toUpperCase()}`
-        }
-      });
-    }
-
-    // If no Airtable config
-    res.json({
-      success: true,
-      message: 'Prenotazione ricevuta!',
-      reservation: {
-        name, date, time, guests, email, phone,
-        status: 'Simulated'
       }
+    ]);
+    
+    console.log('Reservation saved:', reservationId, record[0].id);
+    
+    res.json({
+      response: `Perfect! I've reserved ${guests} people for ${date} at ${time}. Your confirmation is ${reservationId}.`
     });
-
+    
   } catch (error) {
-    console.error('Error:', error);
+    console.error('Webhook error:', error);
     res.status(500).json({ 
-      error: 'Errore nel salvare la prenotazione', // Italian error
+      error: 'Failed to process reservation',
       details: error.message 
     });
   }
 });
 
-// Get all reservations
-app.get('/api/reservations', async (req, res) => {
-  try {
-    if (process.env.AIRTABLE_TOKEN && process.env.AIRTABLE_BASE_ID) {
-      const airtable = new Airtable({
-        apiKey: process.env.AIRTABLE_TOKEN
-      });
-      
-      const base = airtable.base(process.env.AIRTABLE_BASE_ID);
-      const records = await base('Reservations').select().firstPage();
-      
-      const reservations = records.map(record => ({
-        id: record.id,
-        ...record.fields
-      }));
-
-      return res.json({
-        success: true,
-        count: reservations.length,
-        reservations: reservations
-      });
+// Extract reservation from conversation history
+function extractReservationFromConversation(conversation) {
+  if (!conversation || !Array.isArray(conversation)) return null;
+  
+  // Simple extraction - you'll want to make this more robust
+  const lastMessages = conversation.slice(-10); // Last 5 exchanges
+  
+  let reservation = {};
+  
+  lastMessages.forEach(msg => {
+    const content = msg.content.toLowerCase();
+    
+    // Extract name
+    if (content.includes('name is') || content.includes('my name is')) {
+      const nameMatch = content.match(/(?:my name is|i'm|I am) ([a-zA-Z ]+)/i);
+      if (nameMatch) reservation.name = nameMatch[1].trim();
+    }
+    
+    // Extract date
+    if (content.includes('date') || content.includes('today') || content.includes('tomorrow')) {
+      // You'll need to implement proper date parsing
+      reservation.date = '2024-01-25'; // Placeholder
+    }
+    
+    // Extract time
+    if (content.includes('time') || content.match(/\d+:\d+/)) {
+      const timeMatch = content.match(/(\d+:\d+)/);
+      if (timeMatch) reservation.time = timeMatch[1];
+    }
+    
+    // Extract guests
+    if (content.includes('people') || content.includes('guests')) {
+      const guestMatch = content.match(/(\d+) (?:people|guests)/i);
+      if (guestMatch) reservation.guests = guestMatch[1];
     }
 
-    res.json({
-      message: 'Connect Airtable to see real reservations'
-    });
+    // Extract phone
+    if (content.includes('phone') || content.match(/\d{10,}/)) {
+      const phoneMatch = content.match(/(\d{10,})/);
+      if (phoneMatch) reservation.phone = phoneMatch[1];
+    }
 
-  } catch (error) {
-    res.status(500).json({ error: error.message });
+    // Extract email
+    if (content.includes('@')) {
+      const emailMatch = content.match(/([a-zA-Z0-9._-]+@[a-zA-Z0-9._-]+\.[a-zA-Z0-9._-]+)/i);
+      if (emailMatch) reservation.email = emailMatch[1];
+    }
+  });
+  
+  // Only return if we have required fields
+  if (reservation.name && reservation.date && reservation.time && reservation.guests) {
+    return reservation;
   }
-});
+  
+  return null;
+}
 
 // Start server
 app.listen(PORT, () => {
