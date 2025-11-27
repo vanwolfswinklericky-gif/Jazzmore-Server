@@ -9,6 +9,20 @@ const PORT = process.env.PORT || 3000;
 app.use(cors());
 app.use(express.json());
 
+// Italian date/time formatting helper
+function formatDateForAirtable(italianDate) {
+  // Handle various Italian date formats
+  // "domani" -> tomorrow, "25 gennaio" -> 2024-01-25, etc.
+  // For now, assume YYYY-MM-DD format or pass through
+  return italianDate; // You might want to add proper date parsing later
+}
+
+function formatTimeForAirtable(italianTime) {
+  // Handle Italian time formats
+  // "19:30", "7 di sera", "7 PM" -> "19:30"
+  return italianTime; // You might want to add proper time parsing later
+}
+
 // Test route - shows server is working
 app.get('/', (req, res) => {
   res.json({ 
@@ -31,10 +45,10 @@ app.get('/health', (req, res) => {
   });
 });
 
-// Create reservation endpoint
+// Create reservation endpoint - UPDATED FOR ITALIAN INPUT
 app.post('/api/reservations', async (req, res) => {
   try {
-    const { name, date, time, guests, email, phone } = req.body;
+    let { name, date, time, guests, email, phone, specialRequests } = req.body;
     
     // Simple validation
     if (!name || !date || !time || !guests) {
@@ -53,47 +67,62 @@ app.post('/api/reservations', async (req, res) => {
       
       const base = airtable.base(process.env.AIRTABLE_BASE_ID);
       
+      // Extract first and last name from full name (handles Italian names)
+      const nameParts = name.split(' ');
+      const firstName = nameParts[0];
+      const lastName = nameParts.slice(1).join(' ') || '';
+      
+      // Format date/time for Airtable (Italian input)
+      const formattedDate = formatDateForAirtable(date);
+      const formattedTime = formatTimeForAirtable(time);
+      
       const record = await base('Reservations').create([
         {
           "fields": {
-            "Name": name,
+            "First Name": firstName,
+            "Last Name": lastName,
             "Email": email || '',
-            "Phone": phone || '',
-            "Date": date,
-            "Time": time,
-            "Guests": parseInt(guests),
-            "Status": "Confirmed",
-            "Created": new Date().toISOString()
+            "Phone Number": phone || '',
+            "Reservation Date": formattedDate,
+            "Arrival Time": formattedTime,
+            "Total People": parseInt(guests),
+            "Special Requests": specialRequests || '', // Italian text OK here
+            "Reservation Status": "Pending",
+            "Reservation Type": "Dinner + Show",
+            "Dinner Count": parseInt(guests),
+            "Show-Only Count": 0,
+            "Kids Count": 0,
+            "Newsletter Opt-In": false,
+            "Language": "Italian" // New field to track language
           }
         }
       ]);
 
       return res.json({
         success: true,
-        message: 'Reservation saved to Airtable!',
+        message: 'Prenotazione salvata con successo!', // Italian response
         reservation: {
           id: record[0].id,
-          name, date, time, guests, email, phone,
+          name, date: formattedDate, time: formattedTime, guests, email, phone,
           confirmation: `JAZ-${record[0].id.slice(-6).toUpperCase()}`
         }
       });
     }
 
-    // If no Airtable config, just return success
+    // If no Airtable config
     res.json({
       success: true,
-      message: 'Reservation received! (Airtable not configured yet)',
+      message: 'Prenotazione ricevuta!',
       reservation: {
         name, date, time, guests, email, phone,
-        status: 'Simulated - Configure Airtable to save real data'
-      },
-      nextSteps: 'Add AIRTABLE_BASE_ID environment variable'
+        status: 'Simulated'
+      }
     });
 
   } catch (error) {
     console.error('Error:', error);
     res.status(500).json({ 
-      error: 'Failed to create reservation',
+      error: 'Errore nel salvare la prenotazione', // Italian error
       details: error.message 
     });
   }
@@ -123,8 +152,7 @@ app.get('/api/reservations', async (req, res) => {
     }
 
     res.json({
-      message: 'Connect Airtable to see real reservations',
-      instructions: 'Set AIRTABLE_BASE_ID environment variable in Render'
+      message: 'Connect Airtable to see real reservations'
     });
 
   } catch (error) {
@@ -135,6 +163,4 @@ app.get('/api/reservations', async (req, res) => {
 // Start server
 app.listen(PORT, () => {
   console.log(`🎵 Jazzamore server running on port ${PORT}`);
-  console.log(`📍 Local: http://localhost:${PORT}`);
-  console.log(`✅ Health: https://your-app.onrender.com/health`);
 });
