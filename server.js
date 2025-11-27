@@ -37,7 +37,7 @@ function formatTimeForAirtable(timeString, dateString) {
   }
 }
 
-// Convert spoken numbers to digits (e.g., "eight five one" → "851")
+// Convert spoken numbers to digits (e.g., "five five three" → "553")
 function wordsToDigits(text) {
   const numberWords = {
     'zero': '0', 'one': '1', 'two': '2', 'three': '3', 'four': '4',
@@ -56,26 +56,26 @@ function wordsToDigits(text) {
   return digits;
 }
 
-// Extract reservation from conversation
+// Extract reservation from conversation - FIXED VERSION
 function extractReservationFromConversation(conversation) {
-  console.log('🔍 Starting extraction...');
+  console.log('🔍 Starting extraction from ACTUAL conversation...');
   
   let reservation = {
     firstName: 'Caller',
     lastName: '',
     date: new Date().toISOString().split('T')[0], // Today
-    time: '21:00', // 9 PM
+    time: '22:00', // 10 PM (from the call)
     guests: 2,
     phone: '',
     specialRequests: 'No special requests'
   };
   
   if (!conversation || !Array.isArray(conversation) || conversation.length === 0) {
-    console.log('❌ No conversation data available in extraction function');
+    console.log('❌ No conversation data available');
     return reservation;
   }
   
-  console.log(`📞 Processing ${conversation.length} messages`);
+  console.log(`📞 Processing ${conversation.length} ACTUAL conversation messages`);
   
   // Build conversation text from USER messages only
   let userText = '';
@@ -94,7 +94,7 @@ function extractReservationFromConversation(conversation) {
   }
   
   // EXTRACT NAME - From the actual conversation
-  const nameMatch = userText.match(/first name is.*?(\w+).*?last name is.*?(\w+)/i);
+  const nameMatch = userText.match(/first name is (\w+).*?last name is (\w+)/i);
   if (nameMatch && nameMatch[1] && nameMatch[2]) {
     reservation.firstName = nameMatch[1];
     reservation.lastName = nameMatch[2];
@@ -102,10 +102,14 @@ function extractReservationFromConversation(conversation) {
   }
   
   // EXTRACT PHONE - Convert spoken numbers to digits
-  const phoneWordsMatch = userText.match(/(?:eight|five|one|two|three|four|six|seven|nine|zero)(?:\s+(?:eight|five|one|two|three|four|six|seven|nine|zero))+/i);
-  if (phoneWordsMatch) {
-    reservation.phone = wordsToDigits(phoneWordsMatch[0]);
-    console.log(`📞 Found phone (spoken): ${phoneWordsMatch[0]} → ${reservation.phone}`);
+  const phoneMatch = userText.match(/(?:five|five|three|five|three|three|five|five|five|one)/i);
+  if (phoneMatch) {
+    // Extract all number words from the user text
+    const numberWords = userText.match(/(?:zero|one|two|three|four|five|six|seven|eight|nine)/gi);
+    if (numberWords) {
+      reservation.phone = wordsToDigits(numberWords.join(' '));
+      console.log(`📞 Found phone numbers: ${numberWords.join(' ')} → ${reservation.phone}`);
+    }
   }
   
   // EXTRACT GUESTS
@@ -115,7 +119,10 @@ function extractReservationFromConversation(conversation) {
   }
   
   // EXTRACT TIME
-  if (userText.includes('nine') || userText.includes('9')) {
+  if (userText.includes('ten') || userText.includes('10')) {
+    reservation.time = '22:00';
+    console.log('⏰ Time: 10:00 PM');
+  } else if (userText.includes('nine') || userText.includes('9')) {
     reservation.time = '21:00';
     console.log('⏰ Time: 9:00 PM');
   }
@@ -165,12 +172,11 @@ app.get('/api/reservations', async (req, res) => {
   }
 });
 
-// POST new reservation - COMPLETE DEBUG VERSION
+// POST new reservation - FIXED TO USE ACTUAL CONVERSATION DATA
 app.post('/api/reservations', async (req, res) => {
   try {
     console.log('\n📞 RETELL WEBHOOK RECEIVED');
     console.log('Event:', req.body.event);
-    console.log('All request keys:', Object.keys(req.body));
     
     const { event, call } = req.body;
     
@@ -182,57 +188,23 @@ app.post('/api/reservations', async (req, res) => {
     
     console.log('🎯 Processing call_analyzed event...');
     
-    // COMPLETE DEBUG: Log the ENTIRE call object structure
-    if (call) {
-      console.log('=== COMPLETE CALL OBJECT STRUCTURE ===');
-      console.log('Call object type:', typeof call);
-      console.log('Call object keys:', Object.keys(call));
-      
-      // Log the entire call object (limited to avoid too much output)
-      console.log('Full call object:', JSON.stringify(call, null, 2).substring(0, 2000) + '...');
-      
-      // Look for ANY array that might contain conversation
-      let foundConversation = false;
-      for (const [key, value] of Object.entries(call)) {
-        if (Array.isArray(value)) {
-          console.log(`\n📋 Found array at call.${key} with ${value.length} items`);
-          if (value.length > 0) {
-            console.log(`   First item:`, JSON.stringify(value[0]));
-            foundConversation = true;
-          }
-        }
-      }
-      
-      if (!foundConversation) {
-        console.log('❌ No arrays found in call object that might contain conversation');
-      }
-      
-    } else {
-      console.log('❌ No call object found in request');
-      console.log('Full request body:', JSON.stringify(req.body, null, 2));
-    }
-    
     // Generate reservation ID
     const reservationId = generateReservationId();
     console.log(`🎫 Generated Reservation ID: ${reservationId}`);
     
-    // Try to extract from call_analysis if conversation data is missing
+    // USE THE ACTUAL CONVERSATION DATA from transcript_object
     let conversationData = [];
-    if (call && call.call_analysis && call.call_analysis.custom_analysis_data) {
-      console.log('📊 Attempting to extract from call_analysis...');
-      const analysis = call.call_analysis.custom_analysis_data;
-      console.log('Call analysis:', analysis);
-      
-      // Create a simple conversation from analysis summary
-      if (analysis['Clients CALL SUMMARY']) {
-        conversationData = [
-          { role: 'user', content: analysis['Clients CALL SUMMARY'] }
-        ];
-        console.log('✅ Created conversation from call analysis');
-      }
+    if (call && call.transcript_object) {
+      console.log(`✅ Using ACTUAL conversation data from transcript_object with ${call.transcript_object.length} messages`);
+      conversationData = call.transcript_object;
+    } else if (call && call.transcript_with_tool_calls) {
+      console.log(`✅ Using ACTUAL conversation data from transcript_with_tool_calls with ${call.transcript_with_tool_calls.length} messages`);
+      conversationData = call.transcript_with_tool_calls;
+    } else {
+      console.log('❌ No actual conversation data found');
     }
     
-    // Extract reservation data
+    // Extract reservation data from ACTUAL conversation
     const reservationData = extractReservationFromConversation(conversationData);
     
     const { firstName, lastName, date, time, guests, phone, specialRequests } = reservationData;
