@@ -23,6 +23,24 @@ function generateReservationId() {
   return `JAZ-${timestamp}-${random}`.toUpperCase();
 }
 
+// Convert time string to Airtable date format
+function formatTimeForAirtable(timeString, dateString) {
+  try {
+    // Combine date and time into a full ISO string
+    const [hours, minutes] = timeString.split(':');
+    const date = new Date(dateString);
+    date.setHours(parseInt(hours), parseInt(minutes), 0, 0);
+    
+    return date.toISOString();
+  } catch (error) {
+    console.log('Error formatting time, using default:', error);
+    // Return a default time if parsing fails
+    const defaultDate = new Date(dateString);
+    defaultDate.setHours(19, 30, 0, 0); // 7:30 PM
+    return defaultDate.toISOString();
+  }
+}
+
 // Improved reservation extraction from conversation
 function extractReservationFromConversation(conversation) {
   if (!conversation || !Array.isArray(conversation)) return null;
@@ -95,13 +113,6 @@ function extractReservationFromConversation(conversation) {
     console.log('Found phone:', reservation.phone);
   }
   
-  // Extract email
-  const emailMatch = fullText.match(/([a-zA-Z0-9._-]+@[a-zA-Z0-9._-]+\.[a-zA-Z0-9._-]+)/i);
-  if (emailMatch) {
-    reservation.email = emailMatch[1];
-    console.log('Found email:', reservation.email);
-  }
-  
   // Extract special requests
   if (fullText.includes('window') || fullText.includes('birthday') || fullText.includes('allergy') || fullText.includes('special')) {
     reservation.specialRequests = "Special request mentioned in conversation";
@@ -167,7 +178,7 @@ app.get('/api/reservations', async (req, res) => {
   }
 });
 
-// POST new reservation (Retell AI webhook) - UPDATED FIELDS
+// POST new reservation (Retell AI webhook) - UPDATED TIME FORMAT
 app.post('/api/reservations', async (req, res) => {
   try {
     const { call_id, event, conversation_history } = req.body;
@@ -192,12 +203,16 @@ app.post('/api/reservations', async (req, res) => {
       });
     }
     
-    const { name, date, time, guests, phone, email, specialRequests } = reservationData;
+    const { name, date, time, guests, phone, specialRequests } = reservationData;
     
     // Generate reservation ID
     const reservationId = generateReservationId();
     
-    // Save to Airtable - USING ONLY FIELDS THAT EXIST IN YOUR BASE
+    // Format time for Airtable (combine date + time)
+    const arrivalTimeISO = formatTimeForAirtable(time, date);
+    console.log('Formatted arrival time for Airtable:', arrivalTimeISO);
+    
+    // Save to Airtable
     const nameParts = name.split(' ');
     const firstName = nameParts[0];
     const lastName = nameParts.slice(1).join(' ') || '';
@@ -205,13 +220,12 @@ app.post('/api/reservations', async (req, res) => {
     const record = await base('Reservations').create([
       {
         "fields": {
-          // Only include fields that exist in your Airtable base
           "Reservation ID": reservationId,
           "First Name": firstName,
           "Last Name": lastName,
           "Phone Number": phone || '',
           "Reservation Date": date,
-          "Arrival Time": time,
+          "Arrival Time": arrivalTimeISO, // Now using proper ISO date format
           "Total People": parseInt(guests),
           "Special Requests": specialRequests || '',
           "Reservation Status": "Pending",
@@ -220,9 +234,6 @@ app.post('/api/reservations', async (req, res) => {
           "Show-Only Count": 0,
           "Kids Count": 0,
           "Newsletter Opt-In": false
-          // Removed "Email" field since it doesn't exist
-          // Removed "Call ID" field since it might not exist
-          // Removed "Created" field since it might not exist
         }
       }
     ]);
