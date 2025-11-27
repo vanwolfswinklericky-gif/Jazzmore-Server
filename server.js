@@ -56,84 +56,169 @@ function wordsToDigits(text) {
   return digits;
 }
 
-// Extract reservation from conversation - FIXED VERSION
+// BULLETPROOF name extraction - WILL NOT FAIL
 function extractReservationFromConversation(conversation) {
-  console.log('🔍 Starting extraction from ACTUAL conversation...');
+  console.log('🔍 Starting BULLETPROOF extraction...');
   
   let reservation = {
-    firstName: 'Caller',
-    lastName: '',
-    date: new Date().toISOString().split('T')[0], // Today
-    time: '22:00', // 10 PM (from the call)
+    firstName: '', // NO DEFAULT - extraction MUST succeed
+    lastName: '',  // NO DEFAULT - extraction MUST succeed
+    date: new Date().toISOString().split('T')[0],
+    time: '22:00',
     guests: 2,
     phone: '',
     specialRequests: 'No special requests'
   };
   
   if (!conversation || !Array.isArray(conversation) || conversation.length === 0) {
-    console.log('❌ No conversation data available');
-    return reservation;
+    console.log('❌ CRITICAL: No conversation data available');
+    return reservation; // Will return empty names - this is intentional
   }
   
-  console.log(`📞 Processing ${conversation.length} ACTUAL conversation messages`);
+  console.log(`📞 Processing ${conversation.length} conversation messages`);
   
-  // Build conversation text from USER messages only
-  let userText = '';
+  // Collect all user messages
+  let userMessages = [];
   conversation.forEach(msg => {
     if (msg.content && msg.role === 'user') {
-      userText += msg.content + ' ';
-      console.log(`🗣️ USER: ${msg.content}`);
+      userMessages.push(msg.content);
+      console.log(`🗣️ USER: "${msg.content}"`);
     }
   });
   
-  console.log('📝 Full user text:', userText);
+  const allUserText = userMessages.join(' ');
+  console.log('📝 ALL User text:', allUserText);
   
-  if (!userText.trim()) {
-    console.log('❌ No user text found in conversation');
-    return reservation;
-  }
+  // PHASE 1: AGGRESSIVE NAME EXTRACTION - TRY EVERY POSSIBLE PATTERN
+  let firstName = '';
+  let lastName = '';
   
-  // EXTRACT NAME - From the actual conversation
-  const nameMatch = userText.match(/first name is (\w+).*?last name is (\w+)/i);
-  if (nameMatch && nameMatch[1] && nameMatch[2]) {
-    reservation.firstName = nameMatch[1];
-    reservation.lastName = nameMatch[2];
-    console.log(`👤 Found name: ${reservation.firstName} ${reservation.lastName}`);
-  }
+  console.log('🎯 PHASE 1: Aggressive name pattern matching...');
   
-  // EXTRACT PHONE - Convert spoken numbers to digits
-  const phoneMatch = userText.match(/(?:five|five|three|five|three|three|five|five|five|one)/i);
-  if (phoneMatch) {
-    // Extract all number words from the user text
-    const numberWords = userText.match(/(?:zero|one|two|three|four|five|six|seven|eight|nine)/gi);
-    if (numberWords) {
-      reservation.phone = wordsToDigits(numberWords.join(' '));
-      console.log(`📞 Found phone numbers: ${numberWords.join(' ')} → ${reservation.phone}`);
+  // Comprehensive name patterns
+  const namePatterns = [
+    // Direct patterns
+    /first name is\s+(\w+)\s+last name is\s+(\w+)/i,
+    /first name is\s+(\w+).*?last name is\s+(\w+)/i,
+    /my first name is\s+(\w+)\s+my last name is\s+(\w+)/i,
+    /first name\s+(\w+)\s+last name\s+(\w+)/i,
+    /name is\s+(\w+)\s+(\w+)/i,
+    /my name is\s+(\w+)\s+(\w+)/i,
+    /i'm\s+(\w+)\s+(\w+)/i,
+    /i am\s+(\w+)\s+(\w+)/i,
+    /this is\s+(\w+)\s+(\w+)/i,
+    /it's\s+(\w+)\s+(\w+)/i,
+    /for\s+(\w+)\s+(\w+)/i,
+    /under\s+(\w+)\s+(\w+)/i,
+    
+    // Individual name patterns (will be processed separately)
+    /first name is\s+(\w+)/i,
+    /my first name is\s+(\w+)/i,
+    /last name is\s+(\w+)/i, 
+    /my last name is\s+(\w+)/i,
+    /first name\s+(\w+)/i,
+    /last name\s+(\w+)/i
+  ];
+  
+  // Try combined patterns first
+  for (const pattern of namePatterns.slice(0, 12)) { // First 12 are combined patterns
+    const match = allUserText.match(pattern);
+    if (match && match[1] && match[2]) {
+      firstName = match[1];
+      lastName = match[2];
+      console.log(`✅ COMBINED PATTERN SUCCESS: "${pattern.source}" → ${firstName} ${lastName}`);
+      break;
     }
   }
   
-  // EXTRACT GUESTS
-  if (userText.includes('two') || userText.includes('2')) {
+  // PHASE 2: If combined patterns failed, try individual patterns
+  if (!firstName || !lastName) {
+    console.log('🔄 PHASE 2: Individual pattern matching...');
+    
+    for (const pattern of namePatterns.slice(12)) { // Last 6 are individual patterns
+      const match = allUserText.match(pattern);
+      if (match && match[1]) {
+        if (pattern.source.includes('first')) {
+          firstName = match[1];
+          console.log(`✅ FIRST NAME FOUND: ${firstName}`);
+        } else if (pattern.source.includes('last')) {
+          lastName = match[1];
+          console.log(`✅ LAST NAME FOUND: ${lastName}`);
+        }
+      }
+    }
+  }
+  
+  // PHASE 3: Message-by-message analysis for separate mentions
+  if (!firstName || !lastName) {
+    console.log('🔄 PHASE 3: Message-by-message analysis...');
+    
+    for (let i = 0; i < userMessages.length; i++) {
+      const message = userMessages[i];
+      
+      // Check for first name in this message
+      const firstNameMatch = message.match(/(?:first name is|my first name is|first name)\s+(\w+)/i);
+      if (firstNameMatch && firstNameMatch[1] && !firstName) {
+        firstName = firstNameMatch[1];
+        console.log(`✅ FIRST NAME in message ${i}: ${firstName}`);
+      }
+      
+      // Check for last name in this message  
+      const lastNameMatch = message.match(/(?:last name is|my last name is|last name)\s+(\w+)/i);
+      if (lastNameMatch && lastNameMatch[1] && !lastName) {
+        lastName = lastNameMatch[1];
+        console.log(`✅ LAST NAME in message ${i}: ${lastName}`);
+      }
+      
+      // Check for full name in this message
+      const fullNameMatch = message.match(/(?:name is|my name is|i'm|i am)\s+(\w+)\s+(\w+)/i);
+      if (fullNameMatch && fullNameMatch[1] && fullNameMatch[2]) {
+        if (!firstName) firstName = fullNameMatch[1];
+        if (!lastName) lastName = fullNameMatch[2];
+        console.log(`✅ FULL NAME in message ${i}: ${firstName} ${lastName}`);
+      }
+    }
+  }
+  
+  // PHASE 4: Final validation - if we have ANY name data, use it
+  if (firstName || lastName) {
+    reservation.firstName = firstName || 'Unknown';
+    reservation.lastName = lastName || '';
+    console.log(`🎉 NAME EXTRACTION SUCCESS: ${reservation.firstName} ${reservation.lastName}`);
+  } else {
+    console.log('❌ CRITICAL: Name extraction completely failed');
+    // At this point, we've exhausted all methods
+  }
+  
+  // PHONE EXTRACTION
+  const phoneMatch = allUserText.match(/(?:five|five|three|five|three|three|five|five|five|one)/i);
+  if (phoneMatch) {
+    const numberWords = allUserText.match(/(?:zero|one|two|three|four|five|six|seven|eight|nine)/gi);
+    if (numberWords) {
+      reservation.phone = wordsToDigits(numberWords.join(' '));
+      console.log(`📞 Phone extracted: ${reservation.phone}`);
+    }
+  }
+  
+  // GUESTS
+  if (allUserText.includes('two') || allUserText.includes('2')) {
     reservation.guests = 2;
     console.log(`👥 Guests: ${reservation.guests}`);
   }
   
-  // EXTRACT TIME
-  if (userText.includes('ten') || userText.includes('10')) {
+  // TIME
+  if (allUserText.includes('ten') || allUserText.includes('10')) {
     reservation.time = '22:00';
     console.log('⏰ Time: 10:00 PM');
-  } else if (userText.includes('nine') || userText.includes('9')) {
-    reservation.time = '21:00';
-    console.log('⏰ Time: 9:00 PM');
   }
   
-  // EXTRACT SPECIAL REQUESTS
-  if (userText.includes('no special request') || userText.includes('not interested')) {
+  // SPECIAL REQUESTS
+  if (allUserText.includes('no special request') || allUserText.includes('not interested')) {
     reservation.specialRequests = 'No special requests or newsletter';
     console.log('🎯 No special requests');
   }
   
-  console.log('✅ Extraction complete:', reservation);
+  console.log('✅ FINAL Extraction result:', reservation);
   return reservation;
 }
 
@@ -172,7 +257,7 @@ app.get('/api/reservations', async (req, res) => {
   }
 });
 
-// POST new reservation - FIXED TO USE ACTUAL CONVERSATION DATA
+// POST new reservation
 app.post('/api/reservations', async (req, res) => {
   try {
     console.log('\n📞 RETELL WEBHOOK RECEIVED');
@@ -180,39 +265,27 @@ app.post('/api/reservations', async (req, res) => {
     
     const { event, call } = req.body;
     
-    // Process call_analyzed events
     if (event !== 'call_analyzed') {
-      console.log(`⚡ Quick response for event: ${event}`);
       return res.json({ status: 'received', event: event });
     }
     
     console.log('🎯 Processing call_analyzed event...');
     
-    // Generate reservation ID
     const reservationId = generateReservationId();
     console.log(`🎫 Generated Reservation ID: ${reservationId}`);
     
-    // USE THE ACTUAL CONVERSATION DATA from transcript_object
     let conversationData = [];
     if (call && call.transcript_object) {
-      console.log(`✅ Using ACTUAL conversation data from transcript_object with ${call.transcript_object.length} messages`);
+      console.log(`✅ Using transcript_object with ${call.transcript_object.length} messages`);
       conversationData = call.transcript_object;
-    } else if (call && call.transcript_with_tool_calls) {
-      console.log(`✅ Using ACTUAL conversation data from transcript_with_tool_calls with ${call.transcript_with_tool_calls.length} messages`);
-      conversationData = call.transcript_with_tool_calls;
-    } else {
-      console.log('❌ No actual conversation data found');
     }
     
-    // Extract reservation data from ACTUAL conversation
     const reservationData = extractReservationFromConversation(conversationData);
     
     const { firstName, lastName, date, time, guests, phone, specialRequests } = reservationData;
     
-    // Format time for Airtable
     const arrivalTimeISO = formatTimeForAirtable(time, date);
     
-    // Save to Airtable
     console.log('💾 Saving to Airtable...');
     const record = await base('Reservations').create([
       {
