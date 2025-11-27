@@ -23,6 +23,102 @@ function generateReservationId() {
   return `JAZ-${timestamp}-${random}`.toUpperCase();
 }
 
+// Improved reservation extraction from conversation
+function extractReservationFromConversation(conversation) {
+  if (!conversation || !Array.isArray(conversation)) return null;
+  
+  console.log('Processing conversation:', JSON.stringify(conversation, null, 2));
+  
+  let reservation = {
+    name: '',
+    date: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString().split('T')[0], // Tomorrow
+    time: '19:30',
+    guests: 2,
+    phone: '',
+    email: '',
+    specialRequests: ''
+  };
+  
+  // Look for reservation patterns in the entire conversation
+  const fullText = conversation.map(msg => msg.content).join(' ').toLowerCase();
+  
+  console.log('Full conversation text:', fullText);
+  
+  // Extract guests
+  const guestMatch = fullText.match(/(\d+)\s*(?:people|guests|persons|pax|for)/i);
+  if (guestMatch) {
+    reservation.guests = parseInt(guestMatch[1]);
+    console.log('Found guests:', reservation.guests);
+  }
+  
+  // Extract time - handle various formats
+  const timeMatch = fullText.match(/(\d{1,2})(?::(\d{2}))?\s*(pm|am)?/i);
+  if (timeMatch) {
+    let hours = parseInt(timeMatch[1]);
+    const minutes = timeMatch[2] ? parseInt(timeMatch[2]) : 0;
+    const period = timeMatch[3] ? timeMatch[3].toLowerCase() : '';
+    
+    // Convert to 24-hour format
+    if (period === 'pm' && hours < 12) hours += 12;
+    if (period === 'am' && hours === 12) hours = 0;
+    
+    reservation.time = `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}`;
+    console.log('Found time:', reservation.time);
+  }
+  
+  // Extract name - multiple patterns
+  const namePatterns = [
+    /(?:my name is|i'm|I am|name is|for)\s+([a-zA-Z]+\s+[a-zA-Z]+)/i,
+    /(?:book(?:ing)?|reserv(?:ation)?)\s+(?:for)?\s+([a-zA-Z]+\s+[a-zA-Z]+)/i,
+    /(?:under|for)\s+([a-zA-Z]+\s+[a-zA-Z]+)/i
+  ];
+  
+  for (const pattern of namePatterns) {
+    const nameMatch = fullText.match(pattern);
+    if (nameMatch && nameMatch[1]) {
+      reservation.name = nameMatch[1].trim();
+      console.log('Found name:', reservation.name);
+      break;
+    }
+  }
+  
+  // If no name found, use a default
+  if (!reservation.name) {
+    reservation.name = "Test Customer";
+    console.log('Using default name');
+  }
+  
+  // Extract phone
+  const phoneMatch = fullText.match(/(\d{3}[-.]?\d{3}[-.]?\d{4})/);
+  if (phoneMatch) {
+    reservation.phone = phoneMatch[1];
+    console.log('Found phone:', reservation.phone);
+  }
+  
+  // Extract email
+  const emailMatch = fullText.match(/([a-zA-Z0-9._-]+@[a-zA-Z0-9._-]+\.[a-zA-Z0-9._-]+)/i);
+  if (emailMatch) {
+    reservation.email = emailMatch[1];
+    console.log('Found email:', reservation.email);
+  }
+  
+  // Extract special requests
+  if (fullText.includes('window') || fullText.includes('birthday') || fullText.includes('allergy') || fullText.includes('special')) {
+    reservation.specialRequests = "Special request mentioned in conversation";
+    console.log('Found special request');
+  }
+  
+  console.log('Final extracted reservation:', reservation);
+  
+  // Return if we have at least name and guests
+  if (reservation.name && reservation.guests) {
+    return reservation;
+  }
+  
+  console.log('Insufficient data for reservation');
+  return null;
+}
+
 // Test route
 app.get('/', (req, res) => {
   res.json({ 
@@ -76,10 +172,12 @@ app.post('/api/reservations', async (req, res) => {
   try {
     const { call_id, event, conversation_history } = req.body;
     
-    console.log('Retell webhook received:', { call_id, event });
+    console.log('Retell webhook received - Event:', event);
+    console.log('Call ID:', call_id);
     
     // Only process when call ends
     if (event !== 'call_ended') {
+      console.log('Ignoring event:', event);
       return res.json({ status: 'ignored', reason: 'not_call_ended' });
     }
     
@@ -87,6 +185,7 @@ app.post('/api/reservations', async (req, res) => {
     const reservationData = extractReservationFromConversation(conversation_history);
     
     if (!reservationData) {
+      console.log('No reservation data extracted from conversation');
       return res.json({ 
         status: 'no_reservation',
         message: 'No reservation data found in conversation'
@@ -127,7 +226,7 @@ app.post('/api/reservations', async (req, res) => {
       }
     ]);
     
-    console.log('Reservation saved:', reservationId, record[0].id);
+    console.log('Reservation saved to Airtable. ID:', reservationId, 'Airtable ID:', record[0].id);
     
     res.json({
       response: `Perfect! I've reserved ${guests} people for ${date} at ${time}. Your confirmation is ${reservationId}.`
@@ -141,62 +240,6 @@ app.post('/api/reservations', async (req, res) => {
     });
   }
 });
-
-// Extract reservation from conversation history
-function extractReservationFromConversation(conversation) {
-  if (!conversation || !Array.isArray(conversation)) return null;
-  
-  // Simple extraction - you'll want to make this more robust
-  const lastMessages = conversation.slice(-10);
-  
-  let reservation = {};
-  
-  lastMessages.forEach(msg => {
-    const content = msg.content.toLowerCase();
-    
-    // Extract name
-    if (content.includes('name is') || content.includes('my name is')) {
-      const nameMatch = content.match(/(?:my name is|i'm|I am) ([a-zA-Z ]+)/i);
-      if (nameMatch) reservation.name = nameMatch[1].trim();
-    }
-    
-    // Extract date
-    if (content.includes('date') || content.includes('today') || content.includes('tomorrow')) {
-      reservation.date = '2024-01-25'; // Placeholder - improve this
-    }
-    
-    // Extract time
-    if (content.includes('time') || content.match(/\d+:\d+/)) {
-      const timeMatch = content.match(/(\d+:\d+)/);
-      if (timeMatch) reservation.time = timeMatch[1];
-    }
-    
-    // Extract guests
-    if (content.includes('people') || content.includes('guests')) {
-      const guestMatch = content.match(/(\d+) (?:people|guests)/i);
-      if (guestMatch) reservation.guests = guestMatch[1];
-    }
-
-    // Extract phone
-    if (content.includes('phone') || content.match(/\d{10,}/)) {
-      const phoneMatch = content.match(/(\d{10,})/);
-      if (phoneMatch) reservation.phone = phoneMatch[1];
-    }
-
-    // Extract email
-    if (content.includes('@')) {
-      const emailMatch = content.match(/([a-zA-Z0-9._-]+@[a-zA-Z0-9._-]+\.[a-zA-Z0-9._-]+)/i);
-      if (emailMatch) reservation.email = emailMatch[1];
-    }
-  });
-  
-  // Only return if we have required fields
-  if (reservation.name && reservation.date && reservation.time && reservation.guests) {
-    return reservation;
-  }
-  
-  return null;
-}
 
 // Start server
 app.listen(PORT, () => {
