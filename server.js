@@ -79,6 +79,7 @@ function extractReservationFromConversation(conversation) {
     // Convert to 24-hour format
     if (period === 'pm' && hours < 12) hours += 12;
     if (period === 'am' && hours === 12) hours = 0;
+    if (hours === 24) hours = 0; // Handle midnight
     
     reservation.time = `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}`;
     console.log('Found time:', reservation.time);
@@ -178,22 +179,61 @@ app.get('/api/reservations', async (req, res) => {
   }
 });
 
-// POST new reservation (Retell AI webhook) - UPDATED TIME FORMAT
+// POST new reservation (Retell AI webhook) - WITH DEBUG LOGGING
 app.post('/api/reservations', async (req, res) => {
   try {
-    const { call_id, event, conversation_history } = req.body;
+    console.log('=== FULL RETELL WEBHOOK REQUEST ===');
+    console.log('Headers:', JSON.stringify(req.headers, null, 2));
+    console.log('Full Body:', JSON.stringify(req.body, null, 2));
+    console.log('=== END WEBHOOK REQUEST ===');
     
-    console.log('Retell webhook received - Event:', event);
-    console.log('Call ID:', call_id);
+    const { call_id, event, conversation_history, transcript } = req.body;
     
-    // Only process when call ends
-    if (event !== 'call_ended') {
+    console.log('Extracted fields:');
+    console.log('- call_id:', call_id);
+    console.log('- event:', event);
+    console.log('- conversation_history:', conversation_history ? `Array(${conversation_history.length})` : 'undefined');
+    console.log('- transcript:', transcript);
+    
+    // Process both call_ended and call_analyzed events
+    if (event !== 'call_ended' && event !== 'call_analyzed') {
       console.log('Ignoring event:', event);
-      return res.json({ status: 'ignored', reason: 'not_call_ended' });
+      return res.json({ status: 'ignored', reason: 'unhandled_event' });
+    }
+    
+    // Try different conversation data locations
+    let conversationData = conversation_history;
+    
+    // If no conversation_history, check for transcript or other fields
+    if (!conversationData && transcript) {
+      console.log('Using transcript instead of conversation_history');
+      // Convert transcript to conversation format if needed
+      conversationData = [{ role: 'user', content: transcript }];
+    }
+    
+    // If still no data, check for any array in the body
+    if (!conversationData) {
+      console.log('Looking for conversation data in other fields...');
+      for (const [key, value] of Object.entries(req.body)) {
+        if (Array.isArray(value) && value.length > 0 && value[0].role) {
+          console.log('Found conversation data in field:', key);
+          conversationData = value;
+          break;
+        }
+      }
+    }
+    
+    if (!conversationData) {
+      console.log('No conversation data found in any field');
+      console.log('All body keys:', Object.keys(req.body));
+      return res.json({ 
+        status: 'no_conversation_data',
+        message: 'No conversation data found in webhook'
+      });
     }
     
     // Extract reservation details from conversation
-    const reservationData = extractReservationFromConversation(conversation_history);
+    const reservationData = extractReservationFromConversation(conversationData);
     
     if (!reservationData) {
       console.log('No reservation data extracted from conversation');
@@ -225,7 +265,7 @@ app.post('/api/reservations', async (req, res) => {
           "Last Name": lastName,
           "Phone Number": phone || '',
           "Reservation Date": date,
-          "Arrival Time": arrivalTimeISO, // Now using proper ISO date format
+          "Arrival Time": arrivalTimeISO,
           "Total People": parseInt(guests),
           "Special Requests": specialRequests || '',
           "Reservation Status": "Pending",
@@ -238,14 +278,16 @@ app.post('/api/reservations', async (req, res) => {
       }
     ]);
     
-    console.log('Reservation saved to Airtable. ID:', reservationId, 'Airtable ID:', record[0].id);
+    console.log('🎉 RESERVATION SUCCESSFULLY SAVED TO AIRTABLE!');
+    console.log('Reservation ID:', reservationId);
+    console.log('Airtable Record ID:', record[0].id);
     
     res.json({
       response: `Perfect! I've reserved ${guests} people for ${date} at ${time}. Your confirmation is ${reservationId}.`
     });
     
   } catch (error) {
-    console.error('Webhook error:', error);
+    console.error('❌ WEBHOOK ERROR:', error);
     res.status(500).json({ 
       error: 'Failed to process reservation',
       details: error.message 
