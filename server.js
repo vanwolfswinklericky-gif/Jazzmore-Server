@@ -165,12 +165,12 @@ app.get('/api/reservations', async (req, res) => {
   }
 });
 
-// POST new reservation - FIXED FOR NEW DATA STRUCTURE
+// POST new reservation - COMPLETE DEBUG VERSION
 app.post('/api/reservations', async (req, res) => {
   try {
     console.log('\n📞 RETELL WEBHOOK RECEIVED');
     console.log('Event:', req.body.event);
-    console.log('Available data keys:', Object.keys(req.body));
+    console.log('All request keys:', Object.keys(req.body));
     
     const { event, call } = req.body;
     
@@ -182,56 +182,54 @@ app.post('/api/reservations', async (req, res) => {
     
     console.log('🎯 Processing call_analyzed event...');
     
-    // DEBUG: Explore the call object structure
+    // COMPLETE DEBUG: Log the ENTIRE call object structure
     if (call) {
-      console.log('📞 Call object keys:', Object.keys(call));
-      console.log('🔍 Exploring call object...');
+      console.log('=== COMPLETE CALL OBJECT STRUCTURE ===');
+      console.log('Call object type:', typeof call);
+      console.log('Call object keys:', Object.keys(call));
       
-      // Look for conversation data in various locations within call object
-      if (call.transcript_with_tool_calls) {
-        console.log(`✅ Found transcript_with_tool_calls with ${call.transcript_with_tool_calls.length} items`);
-      }
-      if (call.conversation_history) {
-        console.log(`✅ Found conversation_history with ${call.conversation_history.length} items`);
-      }
-      if (call.transcript) {
-        console.log(`✅ Found transcript: ${call.transcript.substring(0, 100)}...`);
-      }
+      // Log the entire call object (limited to avoid too much output)
+      console.log('Full call object:', JSON.stringify(call, null, 2).substring(0, 2000) + '...');
       
-      // Log all array properties in call object
+      // Look for ANY array that might contain conversation
+      let foundConversation = false;
       for (const [key, value] of Object.entries(call)) {
         if (Array.isArray(value)) {
-          console.log(`📋 call.${key}: Array with ${value.length} items`);
-          if (value.length > 0 && value[0].content) {
-            console.log(`   Sample: ${value[0].content.substring(0, 50)}...`);
+          console.log(`\n📋 Found array at call.${key} with ${value.length} items`);
+          if (value.length > 0) {
+            console.log(`   First item:`, JSON.stringify(value[0]));
+            foundConversation = true;
           }
         }
       }
+      
+      if (!foundConversation) {
+        console.log('❌ No arrays found in call object that might contain conversation');
+      }
+      
     } else {
-      console.log('❌ No call object found');
+      console.log('❌ No call object found in request');
+      console.log('Full request body:', JSON.stringify(req.body, null, 2));
     }
     
     // Generate reservation ID
     const reservationId = generateReservationId();
     console.log(`🎫 Generated Reservation ID: ${reservationId}`);
     
-    // Try to find conversation data in the call object
-    let conversationData = null;
-    
-    if (call) {
-      // Try different possible locations for conversation data
-      conversationData = call.transcript_with_tool_calls || 
-                        call.conversation_history || 
-                        call.transcript_content ||
-                        null;
-    }
-    
-    if (!conversationData) {
-      console.log('❌ No conversation data found in call object');
-      // If no structured data, try to use the entire call object as fallback
-      conversationData = [];
-    } else {
-      console.log(`✅ Using conversation data with ${conversationData.length} messages`);
+    // Try to extract from call_analysis if conversation data is missing
+    let conversationData = [];
+    if (call && call.call_analysis && call.call_analysis.custom_analysis_data) {
+      console.log('📊 Attempting to extract from call_analysis...');
+      const analysis = call.call_analysis.custom_analysis_data;
+      console.log('Call analysis:', analysis);
+      
+      // Create a simple conversation from analysis summary
+      if (analysis['Clients CALL SUMMARY']) {
+        conversationData = [
+          { role: 'user', content: analysis['Clients CALL SUMMARY'] }
+        ];
+        console.log('✅ Created conversation from call analysis');
+      }
     }
     
     // Extract reservation data
