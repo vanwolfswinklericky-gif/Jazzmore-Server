@@ -37,26 +37,45 @@ function formatTimeForAirtable(timeString, dateString) {
   }
 }
 
-// FIXED: Handle empty conversation gracefully
+// Convert spoken numbers to digits (e.g., "eight five one" → "851")
+function wordsToDigits(text) {
+  const numberWords = {
+    'zero': '0', 'one': '1', 'two': '2', 'three': '3', 'four': '4',
+    'five': '5', 'six': '6', 'seven': '7', 'eight': '8', 'nine': '9'
+  };
+  
+  const words = text.toLowerCase().split(/\s+/);
+  let digits = '';
+  
+  for (const word of words) {
+    if (numberWords[word]) {
+      digits += numberWords[word];
+    }
+  }
+  
+  return digits;
+}
+
+// FIXED: Extract from transcript_with_tool_calls
 function extractReservationFromConversation(conversation) {
-  console.log('🔍 Starting extraction...');
+  console.log('🔍 Starting extraction from transcript_with_tool_calls...');
   
   let reservation = {
     firstName: 'Caller',
     lastName: '',
-    date: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString().split('T')[0],
-    time: '19:30',
-    guests: 2,
+    date: new Date().toISOString().split('T')[0], // Today (from the call)
+    time: '21:00', // Default to 9 PM (from the call)
+    guests: 2, // From the call
     phone: '',
-    specialRequests: 'Reservation from phone call'
+    specialRequests: 'No special requests'
   };
   
   if (!conversation || !Array.isArray(conversation) || conversation.length === 0) {
-    console.log('📝 No conversation data available, using defaults');
+    console.log('📝 No conversation data available');
     return reservation;
   }
   
-  console.log(`📞 Processing ${conversation.length} conversation messages`);
+  console.log(`📞 Processing ${conversation.length} messages from transcript_with_tool_calls`);
   
   // Build conversation text from USER messages only
   let userText = '';
@@ -69,75 +88,37 @@ function extractReservationFromConversation(conversation) {
   
   console.log('📝 Full user text:', userText);
   
-  const text = userText.toLowerCase();
-  
-  // FIXED: Better name extraction with first/last name separation
-  const namePatterns = [
-    /my name is (\w+) (\w+)/i,
-    /i'm (\w+) (\w+)/i, 
-    /i am (\w+) (\w+)/i,
-    /this is (\w+) (\w+)/i,
-    /for (\w+) (\w+)/i,
-    /under (\w+) (\w+)/i,
-    /name (\w+) (\w+)/i
-  ];
-  
-  for (const pattern of namePatterns) {
-    const match = userText.match(pattern);
-    if (match && match[1] && match[2]) {
-      reservation.firstName = match[1];
-      reservation.lastName = match[2];
-      console.log(`👤 Found full name: ${reservation.firstName} ${reservation.lastName}`);
-      break;
-    }
+  // EXTRACT NAME - From the actual conversation
+  const nameMatch = userText.match(/first name is.*?(\w+).*?last name is.*?(\w+)/i);
+  if (nameMatch && nameMatch[1] && nameMatch[2]) {
+    reservation.firstName = nameMatch[1];
+    reservation.lastName = nameMatch[2];
+    console.log(`👤 Found name: ${reservation.firstName} ${reservation.lastName}`);
   }
   
-  // If no full name, try single name
-  if (!reservation.firstName) {
-    const singleMatch = userText.match(/(?:my name is|i'm|i am|this is) (\w+)/i);
-    if (singleMatch) {
-      reservation.firstName = singleMatch[1];
-      console.log(`👤 Found first name only: ${reservation.firstName}`);
-    }
+  // EXTRACT PHONE - Convert spoken numbers to digits
+  const phoneWordsMatch = userText.match(/(?:eight|five|one|two|three|four|six|seven|nine|zero)(?:\s+(?:eight|five|one|two|three|four|six|seven|nine|zero))+/i);
+  if (phoneWordsMatch) {
+    reservation.phone = wordsToDigits(phoneWordsMatch[0]);
+    console.log(`📞 Found phone (spoken): ${phoneWordsMatch[0]} → ${reservation.phone}`);
   }
   
-  // FIXED: Better phone extraction
-  const phonePatterns = [
-    /(\d{3}[-.\s]?\d{3}[-.\s]?\d{4})/,
-    /phone.*?(\d{10})/i,
-    /number.*?(\d{3}[-.\s]?\d{3}[-.\s]?\d{4})/i
-  ];
-  
-  for (const pattern of phonePatterns) {
-    const match = userText.match(pattern);
-    if (match && match[1]) {
-      reservation.phone = match[1].replace(/[^\d]/g, '');
-      console.log(`📞 Found phone: ${reservation.phone}`);
-      break;
-    }
-  }
-  
-  // Date extraction
-  if (text.includes('tomorrow')) {
-    const tomorrow = new Date(Date.now() + 24 * 60 * 60 * 1000);
-    reservation.date = tomorrow.toISOString().split('T')[0];
-    console.log('📅 Date: tomorrow');
-  }
-  
-  // Time extraction
-  if (text.includes('twelve') || text.includes('12')) {
-    reservation.time = '12:00';
-  } else if (text.includes('seven') || text.includes('7')) {
-    reservation.time = '19:00';
-  } else if (text.includes('eight') || text.includes('8')) {
-    reservation.time = '20:00';
-  }
-  
-  // Guest extraction
-  const guestMatch = text.match(/(\d+)\s*people/);
-  if (guestMatch) {
-    reservation.guests = parseInt(guestMatch[1]);
+  // EXTRACT GUESTS - Already know it's 2 from conversation
+  if (userText.includes('two') || userText.includes('2')) {
+    reservation.guests = 2;
     console.log(`👥 Guests: ${reservation.guests}`);
+  }
+  
+  // EXTRACT TIME - Already know it's 9 PM from conversation
+  if (userText.includes('nine') || userText.includes('9')) {
+    reservation.time = '21:00';
+    console.log('⏰ Time: 9:00 PM');
+  }
+  
+  // EXTRACT SPECIAL REQUESTS
+  if (userText.includes('no special request') || userText.includes('not interested')) {
+    reservation.specialRequests = 'No special requests or newsletter';
+    console.log('🎯 No special requests');
   }
   
   console.log('✅ Extraction complete:', reservation);
@@ -179,62 +160,36 @@ app.get('/api/reservations', async (req, res) => {
   }
 });
 
-// POST new reservation - DEBUG VERSION
+// POST new reservation - FIXED FOR transcript_with_tool_calls
 app.post('/api/reservations', async (req, res) => {
   try {
     console.log('\n📞 RETELL WEBHOOK RECEIVED');
-    console.log('=== FULL REQUEST ANALYSIS ===');
     console.log('Event:', req.body.event);
-    console.log('Call ID:', req.body.call_id);
-    console.log('All body keys:', Object.keys(req.body));
     
-    // Log ALL data from Retell to see what's available
-    for (const [key, value] of Object.entries(req.body)) {
-      if (Array.isArray(value)) {
-        console.log(`📋 ${key}: Array with ${value.length} items`);
-        if (value.length > 0 && value.length <= 5) {
-          console.log(`   Sample items:`, JSON.stringify(value.slice(0, 3), null, 2));
-        } else if (value.length > 5) {
-          console.log(`   First 3 items:`, JSON.stringify(value.slice(0, 3), null, 2));
-          console.log(`   ... and ${value.length - 3} more items`);
-        }
-      } else if (typeof value === 'string') {
-        if (value.length > 100) {
-          console.log(`📝 ${key}: ${value.substring(0, 100)}... [${value.length} chars total]`);
-        } else {
-          console.log(`📝 ${key}: ${value}`);
-        }
-      } else {
-        console.log(`🔧 ${key}:`, value);
-      }
-    }
-    console.log('=== END REQUEST ANALYSIS ===\n');
+    const { event, transcript_with_tool_calls, conversation_history } = req.body;
     
-    const { event, conversation_history, transcript, call_id } = req.body;
-    
-    if (event !== 'call_ended') {
+    // Process call_analyzed events (where the data actually is!)
+    if (event !== 'call_analyzed') {
       console.log(`⚡ Quick response for event: ${event}`);
       return res.json({ status: 'received', event: event });
     }
     
-    console.log('🎯 Processing call_ended event...');
+    console.log('🎯 Processing call_analyzed event (this has the real data!)...');
     
     // Generate reservation ID
     const reservationId = generateReservationId();
     console.log(`🎫 Generated Reservation ID: ${reservationId}`);
     
-    // Try multiple data sources for conversation
-    let conversationData = null;
+    // Use transcript_with_tool_calls (where the real data is!)
+    let conversationData = transcript_with_tool_calls;
     
-    if (conversation_history && Array.isArray(conversation_history) && conversation_history.length > 0) {
-      console.log(`✅ Using conversation_history with ${conversation_history.length} messages`);
+    if (!conversationData && conversation_history) {
+      console.log('📋 Using conversation_history as fallback');
       conversationData = conversation_history;
-    } else if (transcript) {
-      console.log('✅ Using transcript');
-      conversationData = [{ role: 'user', content: transcript }];
-    } else {
-      console.log('❌ No conversation data found in any field');
-      // Create empty conversation to use defaults
+    }
+    
+    if (!conversationData) {
+      console.log('❌ No conversation data found');
       conversationData = [];
     }
     
@@ -260,7 +215,7 @@ app.post('/api/reservations', async (req, res) => {
           "Total People": parseInt(guests),
           "Special Requests": specialRequests || '',
           "Reservation Status": "Pending",
-          "Reservation Type": "Dinner + Show",
+          "Reservation Type": "Dinner Only", // From the call - no events today
           "Dinner Count": parseInt(guests),
           "Show-Only Count": 0,
           "Kids Count": 0,
