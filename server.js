@@ -167,7 +167,7 @@ app.get('/api/reservations', async (req, res) => {
   }
 });
 
-// POST new reservation (Retell AI webhook)
+// POST new reservation (Retell AI webhook) - UPDATED FIELDS
 app.post('/api/reservations', async (req, res) => {
   try {
     const { call_id, event, conversation_history } = req.body;
@@ -197,7 +197,7 @@ app.post('/api/reservations', async (req, res) => {
     // Generate reservation ID
     const reservationId = generateReservationId();
     
-    // Save to Airtable
+    // Save to Airtable - USING ONLY FIELDS THAT EXIST IN YOUR BASE
     const nameParts = name.split(' ');
     const firstName = nameParts[0];
     const lastName = nameParts.slice(1).join(' ') || '';
@@ -205,10 +205,10 @@ app.post('/api/reservations', async (req, res) => {
     const record = await base('Reservations').create([
       {
         "fields": {
+          // Only include fields that exist in your Airtable base
           "Reservation ID": reservationId,
           "First Name": firstName,
           "Last Name": lastName,
-          "Email": email || '',
           "Phone Number": phone || '',
           "Reservation Date": date,
           "Arrival Time": time,
@@ -219,9 +219,10 @@ app.post('/api/reservations', async (req, res) => {
           "Dinner Count": parseInt(guests),
           "Show-Only Count": 0,
           "Kids Count": 0,
-          "Newsletter Opt-In": false,
-          "Call ID": call_id,
-          "Created": new Date().toISOString()
+          "Newsletter Opt-In": false
+          // Removed "Email" field since it doesn't exist
+          // Removed "Call ID" field since it might not exist
+          // Removed "Created" field since it might not exist
         }
       }
     ]);
