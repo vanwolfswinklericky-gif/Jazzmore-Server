@@ -27,7 +27,12 @@ function generateReservationId() {
 app.get('/', (req, res) => {
   res.json({ 
     message: '🎵 Jazzamore Server is running!',
-    status: 'Ready for reservations'
+    status: 'Ready for reservations',
+    endpoints: {
+      health: '/health',
+      createReservation: 'POST /api/reservations',
+      getReservations: 'GET /api/reservations'
+    }
   });
 });
 
@@ -39,7 +44,34 @@ app.get('/health', (req, res) => {
   });
 });
 
-// Retell AI Webhook Endpoint - UPDATED
+// GET all reservations
+app.get('/api/reservations', async (req, res) => {
+  try {
+    if (process.env.AIRTABLE_TOKEN && process.env.AIRTABLE_BASE_ID) {
+      const records = await base('Reservations').select().firstPage();
+      
+      const reservations = records.map(record => ({
+        id: record.id,
+        ...record.fields
+      }));
+
+      return res.json({
+        success: true,
+        count: reservations.length,
+        reservations: reservations
+      });
+    }
+
+    res.json({
+      message: 'Connect Airtable to see real reservations'
+    });
+
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// POST new reservation (Retell AI webhook)
 app.post('/api/reservations', async (req, res) => {
   try {
     const { call_id, event, conversation_history } = req.body;
@@ -74,7 +106,7 @@ app.post('/api/reservations', async (req, res) => {
     const record = await base('Reservations').create([
       {
         "fields": {
-          "Reservation ID": reservationId,  // NEW FIELD
+          "Reservation ID": reservationId,
           "First Name": firstName,
           "Last Name": lastName,
           "Email": email || '',
@@ -115,7 +147,7 @@ function extractReservationFromConversation(conversation) {
   if (!conversation || !Array.isArray(conversation)) return null;
   
   // Simple extraction - you'll want to make this more robust
-  const lastMessages = conversation.slice(-10); // Last 5 exchanges
+  const lastMessages = conversation.slice(-10);
   
   let reservation = {};
   
@@ -130,8 +162,7 @@ function extractReservationFromConversation(conversation) {
     
     // Extract date
     if (content.includes('date') || content.includes('today') || content.includes('tomorrow')) {
-      // You'll need to implement proper date parsing
-      reservation.date = '2024-01-25'; // Placeholder
+      reservation.date = '2024-01-25'; // Placeholder - improve this
     }
     
     // Extract time
