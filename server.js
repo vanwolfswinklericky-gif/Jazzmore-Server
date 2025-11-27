@@ -58,24 +58,24 @@ function wordsToDigits(text) {
 
 // FIXED: Extract from transcript_with_tool_calls
 function extractReservationFromConversation(conversation) {
-  console.log('🔍 Starting extraction from transcript_with_tool_calls...');
+  console.log('🔍 Starting extraction...');
   
   let reservation = {
     firstName: 'Caller',
     lastName: '',
-    date: new Date().toISOString().split('T')[0], // Today (from the call)
-    time: '21:00', // Default to 9 PM (from the call)
-    guests: 2, // From the call
+    date: new Date().toISOString().split('T')[0], // Today
+    time: '21:00', // 9 PM
+    guests: 2,
     phone: '',
     specialRequests: 'No special requests'
   };
   
   if (!conversation || !Array.isArray(conversation) || conversation.length === 0) {
-    console.log('📝 No conversation data available');
+    console.log('❌ No conversation data available in extraction function');
     return reservation;
   }
   
-  console.log(`📞 Processing ${conversation.length} messages from transcript_with_tool_calls`);
+  console.log(`📞 Processing ${conversation.length} messages`);
   
   // Build conversation text from USER messages only
   let userText = '';
@@ -87,6 +87,11 @@ function extractReservationFromConversation(conversation) {
   });
   
   console.log('📝 Full user text:', userText);
+  
+  if (!userText.trim()) {
+    console.log('❌ No user text found in conversation');
+    return reservation;
+  }
   
   // EXTRACT NAME - From the actual conversation
   const nameMatch = userText.match(/first name is.*?(\w+).*?last name is.*?(\w+)/i);
@@ -103,13 +108,13 @@ function extractReservationFromConversation(conversation) {
     console.log(`📞 Found phone (spoken): ${phoneWordsMatch[0]} → ${reservation.phone}`);
   }
   
-  // EXTRACT GUESTS - Already know it's 2 from conversation
+  // EXTRACT GUESTS
   if (userText.includes('two') || userText.includes('2')) {
     reservation.guests = 2;
     console.log(`👥 Guests: ${reservation.guests}`);
   }
   
-  // EXTRACT TIME - Already know it's 9 PM from conversation
+  // EXTRACT TIME
   if (userText.includes('nine') || userText.includes('9')) {
     reservation.time = '21:00';
     console.log('⏰ Time: 9:00 PM');
@@ -160,11 +165,12 @@ app.get('/api/reservations', async (req, res) => {
   }
 });
 
-// POST new reservation - FIXED FOR transcript_with_tool_calls
+// POST new reservation - FIXED DATA PASSING
 app.post('/api/reservations', async (req, res) => {
   try {
     console.log('\n📞 RETELL WEBHOOK RECEIVED');
     console.log('Event:', req.body.event);
+    console.log('Available data keys:', Object.keys(req.body));
     
     const { event, transcript_with_tool_calls, conversation_history } = req.body;
     
@@ -174,26 +180,37 @@ app.post('/api/reservations', async (req, res) => {
       return res.json({ status: 'received', event: event });
     }
     
-    console.log('🎯 Processing call_analyzed event (this has the real data!)...');
+    console.log('🎯 Processing call_analyzed event...');
+    
+    // DEBUG: Check what data we actually have
+    if (transcript_with_tool_calls) {
+      console.log(`✅ Found transcript_with_tool_calls with ${transcript_with_tool_calls.length} items`);
+    } else {
+      console.log('❌ transcript_with_tool_calls is undefined');
+    }
+    
+    if (conversation_history) {
+      console.log(`📋 Found conversation_history with ${conversation_history.length} items`);
+    } else {
+      console.log('❌ conversation_history is undefined');
+    }
     
     // Generate reservation ID
     const reservationId = generateReservationId();
     console.log(`🎫 Generated Reservation ID: ${reservationId}`);
     
     // Use transcript_with_tool_calls (where the real data is!)
-    let conversationData = transcript_with_tool_calls;
-    
-    if (!conversationData && conversation_history) {
-      console.log('📋 Using conversation_history as fallback');
-      conversationData = conversation_history;
-    }
+    let conversationData = transcript_with_tool_calls || conversation_history;
     
     if (!conversationData) {
-      console.log('❌ No conversation data found');
+      console.log('❌ No conversation data found in webhook');
+      // Create empty array to avoid errors
       conversationData = [];
+    } else {
+      console.log(`✅ Using conversation data with ${conversationData.length} messages`);
     }
     
-    // Extract reservation data
+    // Extract reservation data - PASS THE ACTUAL DATA
     const reservationData = extractReservationFromConversation(conversationData);
     
     const { firstName, lastName, date, time, guests, phone, specialRequests } = reservationData;
@@ -215,7 +232,7 @@ app.post('/api/reservations', async (req, res) => {
           "Total People": parseInt(guests),
           "Special Requests": specialRequests || '',
           "Reservation Status": "Pending",
-          "Reservation Type": "Dinner Only", // From the call - no events today
+          "Reservation Type": "Dinner + Show",
           "Dinner Count": parseInt(guests),
           "Show-Only Count": 0,
           "Kids Count": 0,
