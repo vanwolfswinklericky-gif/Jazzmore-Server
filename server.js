@@ -56,7 +56,7 @@ function wordsToDigits(text) {
   return digits;
 }
 
-// FIXED: Proper pattern priority for name extraction
+// FIXED: Proper pattern priority for name extraction with guest counting
 function extractReservationFromConversation(conversation) {
   console.log('🔍 Starting PRIORITIZED extraction...');
   
@@ -66,6 +66,8 @@ function extractReservationFromConversation(conversation) {
     date: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString().split('T')[0], // Tomorrow (Saturday)
     time: '22:00',
     guests: 2,
+    adults: 2,        // ADDED: Track adults separately
+    children: 0,      // ADDED: Track children separately
     phone: '',
     specialRequests: 'No special requests'
   };
@@ -193,18 +195,53 @@ function extractReservationFromConversation(conversation) {
     console.log(`📞 Phone numbers found: ${numberWords.join(' ')} → ${reservation.phone}`);
   }
   
-  // FIXED: Better guest count extraction
-  const guestMatch = allUserText.match(/(\d+)\s*(?:people|persons|guests)/i);
-  if (guestMatch) {
-    reservation.guests = parseInt(guestMatch[1]);
-    console.log(`👥 Guests from pattern: ${reservation.guests}`);
-  } else if (allUserText.includes('three') || allUserText.includes('3')) {
-    reservation.guests = 3;
-    console.log(`👥 Guests from text: ${reservation.guests}`);
-  } else if (allUserText.includes('two') || allUserText.includes('2')) {
-    reservation.guests = 2;
-    console.log(`👥 Guests from text: ${reservation.guests}`);
+  // FIXED: BETTER GUEST COUNT EXTRACTION WITH CHILDREN DETECTION
+  let totalGuests = 2;
+  let adults = 2;
+  let children = 0;
+
+  // Look for explicit "adults and children" pattern first
+  const adultsChildrenMatch = allUserText.match(/(\d+)\s+adults?\s+and\s+(\d+)\s+children?/i);
+  if (adultsChildrenMatch) {
+    adults = parseInt(adultsChildrenMatch[1]);
+    children = parseInt(adultsChildrenMatch[2]);
+    totalGuests = adults + children;
+    console.log(`👥 Adults/Children found: ${adults} adults + ${children} children = ${totalGuests} total`);
+  } 
+  // Look for total people count
+  else if (allUserText.match(/(\d+)\s+people/)) {
+    const peopleMatch = allUserText.match(/(\d+)\s+people/);
+    totalGuests = parseInt(peopleMatch[1]);
+    adults = totalGuests; // Assume all adults if not specified
+    children = 0;
+    console.log(`👥 Total people: ${totalGuests}`);
   }
+  // Look for children mentioned separately
+  else if (allUserText.match(/(\d+)\s+children?/)) {
+    const childrenMatch = allUserText.match(/(\d+)\s+children?/);
+    children = parseInt(childrenMatch[1]);
+    // If we have children but no adult count mentioned, assume at least 1 adult
+    const adultMatch = allUserText.match(/(\d+)\s+adults?/);
+    adults = adultMatch ? parseInt(adultMatch[1]) : 1;
+    totalGuests = adults + children;
+    console.log(`👥 Children detected: ${children} children + ${adults} adults = ${totalGuests} total`);
+  }
+  // Fallback to number detection
+  else if (allUserText.includes('three') || allUserText.includes('3')) {
+    totalGuests = 3;
+    adults = 3;
+    children = 0;
+    console.log(`👥 Guests from text: ${totalGuests}`);
+  } else if (allUserText.includes('two') || allUserText.includes('2')) {
+    totalGuests = 2;
+    adults = 2;
+    children = 0;
+    console.log(`👥 Guests from text: ${totalGuests}`);
+  }
+
+  reservation.guests = totalGuests;
+  reservation.adults = adults;
+  reservation.children = children;
   
   // FIXED: Date extraction for "Saturday"
   if (allUserText.includes('saturday')) {
@@ -293,7 +330,7 @@ app.post('/api/reservations', async (req, res) => {
     
     const reservationData = extractReservationFromConversation(conversationData);
     
-    const { firstName, lastName, date, time, guests, phone, specialRequests } = reservationData;
+    const { firstName, lastName, date, time, guests, adults, children, phone, specialRequests } = reservationData;
     
     const arrivalTimeISO = formatTimeForAirtable(time, date);
     
@@ -308,12 +345,12 @@ app.post('/api/reservations', async (req, res) => {
           "Reservation Date": date,
           "Arrival Time": arrivalTimeISO,
           "Total People": parseInt(guests),
+          "Dinner Count": parseInt(adults),      // FIXED: Use adults count for dinner
+          "Show-Only Count": 0,
+          "Kids Count": parseInt(children),      // FIXED: Use children count
           "Special Requests": specialRequests || '',
           "Reservation Status": "Pending",
           "Reservation Type": "Dinner + Show",
-          "Dinner Count": parseInt(guests),
-          "Show-Only Count": 0,
-          "Kids Count": 0,
           "Newsletter Opt-In": false
         }
       }
@@ -323,12 +360,12 @@ app.post('/api/reservations', async (req, res) => {
     console.log('Reservation ID:', reservationId);
     console.log('Name:', `${firstName} ${lastName}`.trim());
     console.log('Date/Time:', date, time);
-    console.log('Guests:', guests);
+    console.log('Guests:', guests, `(${adults} adults + ${children} children)`);
     console.log('Phone:', phone || 'Not provided');
     console.log('Airtable Record ID:', record[0].id);
     
     res.json({
-      response: `Perfect! I've reserved ${guests} people for ${date} at ${time}. Your confirmation is ${reservationId}.`
+      response: `Perfect! I've reserved ${guests} people (${adults} adults + ${children} children) for ${date} at ${time}. Your confirmation is ${reservationId}.`
     });
     
   } catch (error) {
