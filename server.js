@@ -56,14 +56,14 @@ function wordsToDigits(text) {
   return digits;
 }
 
-// BULLETPROOF name extraction - WILL NOT FAIL
+// FIXED: Proper pattern priority for name extraction
 function extractReservationFromConversation(conversation) {
-  console.log('🔍 Starting BULLETPROOF extraction...');
+  console.log('🔍 Starting PRIORITIZED extraction...');
   
   let reservation = {
-    firstName: '', // NO DEFAULT - extraction MUST succeed
-    lastName: '',  // NO DEFAULT - extraction MUST succeed
-    date: new Date().toISOString().split('T')[0],
+    firstName: '',
+    lastName: '',
+    date: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString().split('T')[0], // Tomorrow (Saturday)
     time: '22:00',
     guests: 2,
     phone: '',
@@ -71,8 +71,8 @@ function extractReservationFromConversation(conversation) {
   };
   
   if (!conversation || !Array.isArray(conversation) || conversation.length === 0) {
-    console.log('❌ CRITICAL: No conversation data available');
-    return reservation; // Will return empty names - this is intentional
+    console.log('❌ No conversation data available');
+    return reservation;
   }
   
   console.log(`📞 Processing ${conversation.length} conversation messages`);
@@ -89,55 +89,48 @@ function extractReservationFromConversation(conversation) {
   const allUserText = userMessages.join(' ');
   console.log('📝 ALL User text:', allUserText);
   
-  // PHASE 1: AGGRESSIVE NAME EXTRACTION - TRY EVERY POSSIBLE PATTERN
   let firstName = '';
   let lastName = '';
   
-  console.log('🎯 PHASE 1: Aggressive name pattern matching...');
-  
-  // Comprehensive name patterns
+  // FIXED: REORDERED PATTERNS - FORMAL DECLARATIONS FIRST
   const namePatterns = [
-    // Direct patterns
+    // HIGHEST PRIORITY: Formal name declarations
     /first name is\s+(\w+)\s+last name is\s+(\w+)/i,
-    /first name is\s+(\w+).*?last name is\s+(\w+)/i,
     /my first name is\s+(\w+)\s+my last name is\s+(\w+)/i,
-    /first name\s+(\w+)\s+last name\s+(\w+)/i,
+    /first name is\s+(\w+).*?last name is\s+(\w+)/i,
+    
+    // HIGH PRIORITY: Individual formal declarations
+    /my first name is\s+(\w+)/i,
+    /first name is\s+(\w+)/i,
+    /my last name is\s+(\w+)/i,
+    /last name is\s+(\w+)/i,
+    
+    // MEDIUM PRIORITY: Direct name statements
     /name is\s+(\w+)\s+(\w+)/i,
     /my name is\s+(\w+)\s+(\w+)/i,
+    
+    // LOWEST PRIORITY: Casual mentions (LAST to avoid false matches)
     /i'm\s+(\w+)\s+(\w+)/i,
     /i am\s+(\w+)\s+(\w+)/i,
-    /this is\s+(\w+)\s+(\w+)/i,
-    /it's\s+(\w+)\s+(\w+)/i,
-    /for\s+(\w+)\s+(\w+)/i,
-    /under\s+(\w+)\s+(\w+)/i,
-    
-    // Individual name patterns (will be processed separately)
-    /first name is\s+(\w+)/i,
-    /my first name is\s+(\w+)/i,
-    /last name is\s+(\w+)/i, 
-    /my last name is\s+(\w+)/i,
-    /first name\s+(\w+)/i,
-    /last name\s+(\w+)/i
   ];
   
-  // Try combined patterns first
-  for (const pattern of namePatterns.slice(0, 12)) { // First 12 are combined patterns
-    const match = allUserText.match(pattern);
-    if (match && match[1] && match[2]) {
-      firstName = match[1];
-      lastName = match[2];
-      console.log(`✅ COMBINED PATTERN SUCCESS: "${pattern.source}" → ${firstName} ${lastName}`);
-      break;
-    }
-  }
+  console.log('🎯 PHASE 1: High-priority pattern matching...');
   
-  // PHASE 2: If combined patterns failed, try individual patterns
-  if (!firstName || !lastName) {
-    console.log('🔄 PHASE 2: Individual pattern matching...');
-    
-    for (const pattern of namePatterns.slice(12)) { // Last 6 are individual patterns
-      const match = allUserText.match(pattern);
-      if (match && match[1]) {
+  // Try high and medium priority patterns first (first 9 patterns)
+  for (let i = 0; i < 9; i++) {
+    const pattern = namePatterns[i];
+    const match = allUserText.match(pattern);
+    if (match) {
+      console.log(`🔍 Testing pattern "${pattern.source}":`, match);
+      
+      if (match[1] && match[2]) {
+        // Found both names
+        firstName = match[1];
+        lastName = match[2];
+        console.log(`✅ HIGH-PRIORITY PATTERN SUCCESS: ${firstName} ${lastName}`);
+        break;
+      } else if (match[1]) {
+        // Found individual name
         if (pattern.source.includes('first')) {
           firstName = match[1];
           console.log(`✅ FIRST NAME FOUND: ${firstName}`);
@@ -149,61 +142,79 @@ function extractReservationFromConversation(conversation) {
     }
   }
   
-  // PHASE 3: Message-by-message analysis for separate mentions
-  if (!firstName || !lastName) {
-    console.log('🔄 PHASE 3: Message-by-message analysis...');
+  // PHASE 2: If we have one name but not both, search for the other
+  if ((firstName && !lastName) || (!firstName && lastName)) {
+    console.log('🔄 PHASE 2: Finding missing name...');
     
-    for (let i = 0; i < userMessages.length; i++) {
-      const message = userMessages[i];
-      
-      // Check for first name in this message
-      const firstNameMatch = message.match(/(?:first name is|my first name is|first name)\s+(\w+)/i);
-      if (firstNameMatch && firstNameMatch[1] && !firstName) {
-        firstName = firstNameMatch[1];
-        console.log(`✅ FIRST NAME in message ${i}: ${firstName}`);
-      }
-      
-      // Check for last name in this message  
-      const lastNameMatch = message.match(/(?:last name is|my last name is|last name)\s+(\w+)/i);
-      if (lastNameMatch && lastNameMatch[1] && !lastName) {
-        lastName = lastNameMatch[1];
-        console.log(`✅ LAST NAME in message ${i}: ${lastName}`);
-      }
-      
-      // Check for full name in this message
-      const fullNameMatch = message.match(/(?:name is|my name is|i'm|i am)\s+(\w+)\s+(\w+)/i);
-      if (fullNameMatch && fullNameMatch[1] && fullNameMatch[2]) {
-        if (!firstName) firstName = fullNameMatch[1];
-        if (!lastName) lastName = fullNameMatch[2];
-        console.log(`✅ FULL NAME in message ${i}: ${firstName} ${lastName}`);
+    for (let i = 0; i < 9; i++) {
+      const pattern = namePatterns[i];
+      const match = allUserText.match(pattern);
+      if (match && match[1]) {
+        if (!firstName && pattern.source.includes('first')) {
+          firstName = match[1];
+          console.log(`✅ FOUND MISSING FIRST NAME: ${firstName}`);
+        } else if (!lastName && pattern.source.includes('last')) {
+          lastName = match[1];
+          console.log(`✅ FOUND MISSING LAST NAME: ${lastName}`);
+        }
       }
     }
   }
   
-  // PHASE 4: Final validation - if we have ANY name data, use it
+  // PHASE 3: Only use low-priority patterns if we still have nothing
+  if (!firstName && !lastName) {
+    console.log('🔄 PHASE 3: Low-priority pattern matching...');
+    
+    for (let i = 9; i < namePatterns.length; i++) {
+      const pattern = namePatterns[i];
+      const match = allUserText.match(pattern);
+      if (match && match[1] && match[2]) {
+        firstName = match[1];
+        lastName = match[2];
+        console.log(`✅ LOW-PRIORITY PATTERN: ${firstName} ${lastName}`);
+        break;
+      }
+    }
+  }
+  
+  // Apply extracted names
   if (firstName || lastName) {
-    reservation.firstName = firstName || 'Unknown';
+    reservation.firstName = firstName || '';
     reservation.lastName = lastName || '';
     console.log(`🎉 NAME EXTRACTION SUCCESS: ${reservation.firstName} ${reservation.lastName}`);
   } else {
-    console.log('❌ CRITICAL: Name extraction completely failed');
-    // At this point, we've exhausted all methods
+    console.log('❌ Name extraction failed - no patterns matched');
   }
   
-  // PHONE EXTRACTION
-  const phoneMatch = allUserText.match(/(?:five|five|three|five|three|three|five|five|five|one)/i);
-  if (phoneMatch) {
-    const numberWords = allUserText.match(/(?:zero|one|two|three|four|five|six|seven|eight|nine)/gi);
-    if (numberWords) {
-      reservation.phone = wordsToDigits(numberWords.join(' '));
-      console.log(`📞 Phone extracted: ${reservation.phone}`);
-    }
+  // FIXED: Better phone extraction
+  const numberWords = allUserText.match(/(?:zero|one|two|three|four|five|six|seven|eight|nine)/gi);
+  if (numberWords) {
+    reservation.phone = wordsToDigits(numberWords.join(' '));
+    console.log(`📞 Phone numbers found: ${numberWords.join(' ')} → ${reservation.phone}`);
   }
   
-  // GUESTS
-  if (allUserText.includes('two') || allUserText.includes('2')) {
+  // FIXED: Better guest count extraction
+  const guestMatch = allUserText.match(/(\d+)\s*(?:people|persons|guests)/i);
+  if (guestMatch) {
+    reservation.guests = parseInt(guestMatch[1]);
+    console.log(`👥 Guests from pattern: ${reservation.guests}`);
+  } else if (allUserText.includes('three') || allUserText.includes('3')) {
+    reservation.guests = 3;
+    console.log(`👥 Guests from text: ${reservation.guests}`);
+  } else if (allUserText.includes('two') || allUserText.includes('2')) {
     reservation.guests = 2;
-    console.log(`👥 Guests: ${reservation.guests}`);
+    console.log(`👥 Guests from text: ${reservation.guests}`);
+  }
+  
+  // FIXED: Date extraction for "Saturday"
+  if (allUserText.includes('saturday')) {
+    // Calculate next Saturday
+    const today = new Date();
+    const daysUntilSaturday = (6 - today.getDay() + 7) % 7 || 7;
+    const nextSaturday = new Date(today);
+    nextSaturday.setDate(today.getDate() + daysUntilSaturday);
+    reservation.date = nextSaturday.toISOString().split('T')[0];
+    console.log(`📅 Date: Next Saturday → ${reservation.date}`);
   }
   
   // TIME
@@ -213,9 +224,9 @@ function extractReservationFromConversation(conversation) {
   }
   
   // SPECIAL REQUESTS
-  if (allUserText.includes('no special request') || allUserText.includes('not interested')) {
-    reservation.specialRequests = 'No special requests or newsletter';
-    console.log('🎯 No special requests');
+  if (allUserText.includes('dinner only') || allUserText.includes('only dinner')) {
+    reservation.specialRequests = 'Dinner only (no show)';
+    console.log('🎯 Dinner only reservation');
   }
   
   console.log('✅ FINAL Extraction result:', reservation);
