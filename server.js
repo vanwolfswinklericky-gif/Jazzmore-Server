@@ -202,13 +202,25 @@ function extractGuestInfo(conversation) {
   let adults = 2;
   let children = 0;
 
+  // Create a number map for word-to-digit conversion
+  const numberMap = {
+    'zero': 0, 'one': 1, 'two': 2, 'three': 3, 'four': 4, 'five': 5,
+    'six': 6, 'seven': 7, 'eight': 8, 'nine': 9, 'ten': 10
+  };
+
+  // Convert word numbers to digits in the text for easier parsing
+  let processedText = allUserText.toLowerCase();
+  Object.keys(numberMap).forEach(word => {
+    processedText = processedText.replace(new RegExp(word, 'g'), numberMap[word]);
+  });
+
   // STRATEGY 1: Direct "X adults and Y children" pattern (HIGHEST PRIORITY)
-  const adultsChildrenMatch = allUserText.match(/(\d+)\s+adults?\s+and\s+(\d+)\s+children?/i);
+  const adultsChildrenMatch = processedText.match(/(\d+)\s+adults?\s+and\s+(\d+)\s+children?/);
   if (adultsChildrenMatch) {
     adults = parseInt(adultsChildrenMatch[1]);
     children = parseInt(adultsChildrenMatch[2]);
     totalGuests = adults + children;
-    console.log(`✅ Adults/Children combo: ${adults} adults + ${children} children = ${totalGuests} total`);
+    console.log(`✅ Adults/Children found: ${adults} adults + ${children} children = ${totalGuests} total`);
   }
   
   // STRATEGY 2: Direct children patterns
@@ -426,6 +438,10 @@ function extractReservationFromConversation(conversation) {
     const today = new Date();
     reservation.date = today.toISOString().split('T')[0];
     console.log(`📅 Date: Today → ${reservation.date}`);
+  } else if (allUserText.includes('tomorrow')) {
+    const tomorrow = new Date(Date.now() + 24 * 60 * 60 * 1000);
+    reservation.date = tomorrow.toISOString().split('T')[0];
+    console.log(`📅 Date: Tomorrow → ${reservation.date}`);
   } else if (allUserText.includes('saturday')) {
     // Calculate next Saturday
     const today = new Date();
@@ -440,6 +456,9 @@ function extractReservationFromConversation(conversation) {
   if (allUserText.includes('ten twenty five') || allUserText.includes('10:25')) {
     reservation.time = '22:25';
     console.log('⏰ Time: 10:25 PM → 22:25');
+  } else if (allUserText.includes('seven thirty') || allUserText.includes('7:30')) {
+    reservation.time = '19:30';
+    console.log('⏰ Time: 7:30 PM → 19:30');
   } else if (allUserText.includes('ten') || allUserText.includes('10')) {
     reservation.time = '22:00';
     console.log('⏰ Time: 10:00 PM → 22:00');
