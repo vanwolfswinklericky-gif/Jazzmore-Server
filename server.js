@@ -1,3 +1,5 @@
+
+
 const express = require('express');
 const Airtable = require('airtable');
 const cors = require('cors');
@@ -36,7 +38,11 @@ const MULTILINGUAL_PATTERNS = {
       totalPeople: /(\d+)\s+(?:people|persons|guests)\s+(?:in my|in the|in our)\s+(?:party|group|priority)/i,
       childrenOnly: /(\d+)\s+(?:children|kids)/i,
       adultsOnly: /(\d+)\s+(?:adults?)/i,
-      solo: /(?:just me|only me|solo|by myself)/i
+      solo: /(?:just me|only me|solo|by myself)/i,
+      // Natural language patterns
+      family: /(?:me,? my (?:wife|husband)(?:,? and)? my (\d+) (?:children|kids))/i,
+      coupleWithKids: /(?:me and my (?:wife|husband)(?: and)? (\d+) (?:children|kids))/i,
+      couple: /(?:me and my (?:wife|husband)|my (?:wife|husband) and I)/i
     },
     
     // Date patterns
@@ -71,6 +77,13 @@ const MULTILINGUAL_PATTERNS = {
     specialRequests: {
       dinnerOnly: /\b(?:dinner only|only dinner|just dinner)\b/i,
       noShow: /\b(?:no show|not for show|just dinner)\b/i
+    },
+    
+    // Number words
+    numberWords: {
+      'zero': '0', 'one': '1', 'two': '2', 'three': '3', 'four': '4',
+      'five': '5', 'six': '6', 'seven': '7', 'eight': '8', 'nine': '9',
+      'ten': '10'
     }
   },
   
@@ -92,7 +105,11 @@ const MULTILINGUAL_PATTERNS = {
       totalPeople: /(\d+)\s+(?:persone|ospiti)\s+(?:nel mio|nella mia|nel nostro)\s+(?:gruppo|partito)/i,
       childrenOnly: /(\d+)\s+(?:bambini|ragazzi)/i,
       adultsOnly: /(\d+)\s+(?:adulti)/i,
-      solo: /(?:solo io|soltanto io|da solo|da sola)/i
+      solo: /(?:solo io|soltanto io|da solo|da sola)/i,
+      // Natural language patterns
+      family: /(?:io,? mia (?:moglie|marito)(?:,? e)? mia (\d+) (?:bambini|figli))/i,
+      coupleWithKids: /(?:io e mia (?:moglie|marito)(?: e)? (\d+) (?:bambini|figli))/i,
+      couple: /(?:io e (?:mia moglie|mio marito)|siamo in due)/i
     },
     
     // Date patterns - Italian
@@ -127,126 +144,16 @@ const MULTILINGUAL_PATTERNS = {
     specialRequests: {
       dinnerOnly: /\b(?:solo cena|soltanto cena|cena solamente)\b/i,
       noShow: /\b(?:niente spettacolo|senza spettacolo|solo per cena)\b/i
+    },
+    
+    // Number words - Italian
+    numberWords: {
+      'zero': '0', 'uno': '1', 'due': '2', 'tre': '3', 'quattro': '4',
+      'cinque': '5', 'sei': '6', 'sette': '7', 'otto': '8', 'nove': '9',
+      'dieci': '10'
     }
   }
 };
-
-// NATURAL LANGUAGE PATTERNS FOR ADVANCED UNDERSTANDING
-const NATURAL_LANGUAGE_PATTERNS = {
-  'english': {
-    guestPatterns: {
-      family: /(?:me,? my (?:wife|husband)(?:,? and)? (\d+) (?:kids?|children))/i,
-      coupleWithKids: /(?:my (?:wife|husband) and I(?:,? and)? (\d+) (?:kids?|children))/i,
-      solo: /(?:just me|only me|solo|by myself|just myself)/i,
-      couple: /(?:me and my (?:wife|husband)|my (?:wife|husband) and I|we are two|a couple)/i,
-      group: /(?:group of (\d+)|(\d+) of us|\d+\s*(?:people|friends))/i
-    },
-    timePatterns: {
-      halfPast: /(?:half past|thirty past)\s+(\d+)/i,
-      quarterPast: /(?:quarter past|fifteen past)\s+(\d+)/i,
-      quarterTo: /(?:quarter to|fifteen to)\s+(\d+)/i,
-      morning: /(\d+)\s*(?:am|in the morning)/i,
-      evening: /(\d+)\s*(?:pm|in the evening|at night)/i
-    }
-  },
-  'italian': {
-    guestPatterns: {
-      family: /(?:io,? mia (?:moglie|marito)(?:,? e)? (\d+) (?:bambini|figli))/i,
-      coupleWithKids: /(?:io e mia (?:moglie|marito)(?:,? e)? (\d+) (?:bambini|figli))/i,
-      solo: /(?:solo io|soltanto io|da solo|da sola)/i,
-      couple: /(?:io e (?:mia moglie|mio marito)|siamo in due|una coppia)/i,
-      group: /(?:gruppo di (\d+)|\d+\s*(?:persone|amici))/i
-    },
-    timePatterns: {
-      halfPast: /(?:e mezzo|mezza)\s+(\d+)/i,
-      quarterPast: /(?:e un quarto|\d+\s*e quindici)/i,
-      quarterTo: /(?:meno un quarto|\d+\s*meno quindici)/i,
-      morning: /(\d+)\s*(?:di mattina|mattina)/i,
-      evening: /(\d+)\s*(?:di sera|sera|pomeriggio)/i
-    }
-  }
-};
-
-// CONVERSATION STATE TRACKING FOR CORRECTION HANDLING
-class ConversationState {
-  constructor() {
-    this.currentField = null;
-    this.extractedData = {
-      firstName: '',
-      lastName: '',
-      guests: { total: 0, adults: 0, children: 0 },
-      date: '',
-      time: '',
-      phone: ''
-    };
-    this.correctionHistory = [];
-  }
-
-  updateState(assistantMessage, userResponse) {
-    const content = assistantMessage.toLowerCase();
-    
-    // Track what field we're asking for
-    if (content.includes('first name') || content.includes('nome')) {
-      this.currentField = 'firstName';
-    } else if (content.includes('last name') || content.includes('cognome')) {
-      this.currentField = 'lastName';
-    } else if (content.includes('phone') || content.includes('telefono')) {
-      this.currentField = 'phone';
-    } else if (content.includes('people') || content.includes('persone')) {
-      this.currentField = 'guests';
-    } else if (content.includes('date') || content.includes('data')) {
-      this.currentField = 'date';
-    } else if (content.includes('time') || content.includes('ora')) {
-      this.currentField = 'time';
-    }
-
-    // Process user response
-    this.processUserResponse(userResponse);
-  }
-
-  processUserResponse(userResponse) {
-    if (!this.currentField) return;
-
-    const response = userResponse.toLowerCase();
-    
-    // Detect corrections
-    const isCorrection = response.match(/\b(?:actually|sorry|correction|correct|no,?|wait|scusa|correggo|aspetta)\b/i);
-    
-    if (isCorrection) {
-      this.correctionHistory.push({
-        field: this.currentField,
-        previous: this.extractedData[this.currentField],
-        new: userResponse,
-        timestamp: new Date()
-      });
-      console.log(`🔄 Correction detected for ${this.currentField}`);
-    }
-
-    // Extract data based on current field
-    switch (this.currentField) {
-      case 'firstName':
-        const firstName = extractFirstName(userResponse);
-        if (firstName) this.extractedData.firstName = firstName;
-        break;
-      case 'lastName':
-        const lastName = extractLastName(userResponse);
-        if (lastName) this.extractedData.lastName = lastName;
-        break;
-      case 'guests':
-        const guests = extractGuestInfoFromText(userResponse);
-        if (guests) this.extractedData.guests = guests;
-        break;
-      case 'phone':
-        const phone = extractPhoneFromResponse(userResponse);
-        if (phone) this.extractedData.phone = phone;
-        break;
-    }
-  }
-
-  getFinalData() {
-    return this.extractedData;
-  }
-}
 
 // Generate unique reservation ID
 function generateReservationId() {
@@ -289,25 +196,12 @@ function detectLanguage(conversation) {
   const englishCount = englishIndicators.filter(word => allText.includes(word)).length;
   
   console.log(`🌍 Language detection - Italian: ${italianCount}, English: ${englishCount}`);
-  return italianCount >= englishCount ? 'italian' : 'english';
+  return italianCount > englishCount ? 'italian' : 'english';
 }
 
 // MULTILINGUAL: Convert spoken numbers to digits
 function wordsToDigits(text, language) {
-  const numberWords = {
-    'english': {
-      'zero': '0', 'one': '1', 'two': '2', 'three': '3', 'four': '4',
-      'five': '5', 'six': '6', 'seven': '7', 'eight': '8', 'nine': '9',
-      'ten': '10', 'double': '', 'triple': ''
-    },
-    'italian': {
-      'zero': '0', 'uno': '1', 'due': '2', 'tre': '3', 'quattro': '4',
-      'cinque': '5', 'sei': '6', 'sette': '7', 'otto': '8', 'nove': '9',
-      'dieci': '10', 'doppio': '', 'doppia': '', 'triplo': '', 'tripla': ''
-    }
-  };
-
-  const langWords = numberWords[language] || numberWords.english;
+  const langWords = MULTILINGUAL_PATTERNS[language]?.numberWords || MULTILINGUAL_PATTERNS.english.numberWords;
   let processedText = text.toLowerCase();
   
   // Replace number words
@@ -320,100 +214,7 @@ function wordsToDigits(text, language) {
   return digits;
 }
 
-// ENHANCED: Natural language guest counting
-function extractGuestsNaturalLanguage(text, language) {
-  const patterns = NATURAL_LANGUAGE_PATTERNS[language]?.guestPatterns;
-  if (!patterns) return null;
-
-  let adults = 0;
-  let children = 0;
-
-  // Family patterns: "me, my wife and 2 kids"
-  const familyMatch = text.match(patterns.family);
-  if (familyMatch) {
-    adults = 2; // Assuming couple
-    children = parseInt(familyMatch[1]) || 0;
-    return { adults, children, total: adults + children };
-  }
-
-  // Couple with kids: "my wife and I and 2 children"
-  const coupleKidsMatch = text.match(patterns.coupleWithKids);
-  if (coupleKidsMatch) {
-    adults = 2;
-    children = parseInt(coupleKidsMatch[1]) || 0;
-    return { adults, children, total: adults + children };
-  }
-
-  // Solo: "just me"
-  if (text.match(patterns.solo)) {
-    return { adults: 1, children: 0, total: 1 };
-  }
-
-  // Couple: "me and my wife"
-  if (text.match(patterns.couple)) {
-    return { adults: 2, children: 0, total: 2 };
-  }
-
-  // Group: "group of 5"
-  const groupMatch = text.match(patterns.group);
-  if (groupMatch) {
-    const total = parseInt(groupMatch[1]) || parseInt(groupMatch[2]) || 0;
-    return { adults: total, children: 0, total };
-  }
-
-  return null;
-}
-
-// ENHANCED: Complex time parsing
-function parseComplexTimeExpression(text, language) {
-  const patterns = NATURAL_LANGUAGE_PATTERNS[language]?.timePatterns;
-  if (!patterns) return null;
-
-  let hour = 0;
-  let minute = 0;
-  let isPM = false;
-
-  // Half past: "half past eight" → 20:30
-  const halfPastMatch = text.match(patterns.halfPast);
-  if (halfPastMatch) {
-    hour = parseInt(halfPastMatch[1]);
-    minute = 30;
-    isPM = hour < 12; // Assume PM for evening times
-  }
-
-  // Quarter past: "quarter past seven" → 19:15
-  const quarterPastMatch = text.match(patterns.quarterPast);
-  if (quarterPastMatch) {
-    hour = parseInt(quarterPastMatch[1]);
-    minute = 15;
-    isPM = hour < 12;
-  }
-
-  // Quarter to: "quarter to nine" → 20:45
-  const quarterToMatch = text.match(patterns.quarterTo);
-  if (quarterToMatch) {
-    hour = parseInt(quarterToMatch[1]) - 1;
-    minute = 45;
-    isPM = hour < 12;
-  }
-
-  // Time of day indicators
-  if (text.match(patterns.evening)) {
-    isPM = true;
-  }
-
-  // Convert to 24-hour format
-  if (isPM && hour < 12) hour += 12;
-  if (hour === 12 && !isPM) hour = 0; // Midnight
-
-  if (hour > 0) {
-    return `${hour.toString().padStart(2, '0')}:${minute.toString().padStart(2, '0')}`;
-  }
-
-  return null;
-}
-
-// MULTILINGUAL: Name extraction
+// ROBUST MULTILINGUAL NAME EXTRACTION
 function extractNamesFromConversation(conversation) {
   console.log('🎯 Starting MULTILINGUAL name extraction...');
   
@@ -422,26 +223,93 @@ function extractNamesFromConversation(conversation) {
   
   let firstName = '';
   let lastName = '';
-  let nameCandidates = [];
+  
+  const userMessages = conversation.filter(msg => msg.role === 'user').map(msg => msg.content);
+  const allUserText = userMessages.join(' ');
+  
+  console.log('🔍 Raw user text:', allUserText);
 
-  // Strategy 1: Conversation flow analysis
-  for (let i = 0; i < conversation.length; i++) {
-    const msg = conversation[i];
-    
-    if (msg.role === 'assistant' && msg.content) {
-      const content = msg.content.toLowerCase();
-      const isNameRequest = patterns.nameRequests.some(pattern => content.includes(pattern));
+  // Clean the text for analysis
+  const cleanText = allUserText.replace(/[?!.,;:]/g, ' ').replace(/\s+/g, ' ').trim();
+  console.log('🔍 Cleaned text:', cleanText);
+
+  // STRATEGY 1: Direct pattern matching with language-specific patterns
+  const nameCandidates = [];
+  
+  // Apply language-specific patterns
+  for (const pattern of patterns.namePatterns) {
+    const matches = cleanText.match(pattern);
+    if (matches) {
+      if (matches[1] && matches[2]) {
+        nameCandidates.push(matches[1]);
+        nameCandidates.push(matches[2]);
+      } else if (matches[1]) {
+        nameCandidates.push(matches[1]);
+      }
+    }
+  }
+  
+  // STRATEGY 2: Standalone capitalized words
+  const standaloneNames = cleanText.match(/\b([A-Z][a-z]{2,})\b/g) || [];
+  nameCandidates.push(...standaloneNames);
+
+  console.log('🔍 Raw name candidates:', nameCandidates);
+
+  // Filter out common words
+  const commonWords = {
+    'english': ['hello', 'yes', 'no', 'ok', 'thank', 'please', 'reservation', 'today', 'tomorrow', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'],
+    'italian': ['ciao', 'si', 'no', 'grazie', 'per favore', 'prenotazione', 'oggi', 'domani', 'lunedì', 'martedì', 'mercoledì', 'giovedì', 'venerdì', 'sabato', 'domenica']
+  };
+  
+  const langCommonWords = commonWords[detectedLanguage] || commonWords.english;
+  
+  const uniqueNames = [...new Set(nameCandidates)].filter(name => 
+    name.length >= 2 && 
+    !langCommonWords.includes(name.toLowerCase()) &&
+    !/^\d+$/.test(name)
+  );
+
+  console.log('🔍 Filtered unique names:', uniqueNames);
+
+  // Assign names
+  if (uniqueNames.length >= 1) {
+    firstName = uniqueNames[0];
+    console.log(`✅ First name assigned: ${firstName}`);
+  }
+  
+  if (uniqueNames.length >= 2) {
+    for (let i = 1; i < uniqueNames.length; i++) {
+      if (uniqueNames[i] !== firstName) {
+        lastName = uniqueNames[i];
+        console.log(`✅ Last name assigned: ${lastName}`);
+        break;
+      }
+    }
+  }
+
+  // STRATEGY 3: Conversation context
+  if (!firstName || !lastName) {
+    for (let i = 0; i < conversation.length; i++) {
+      const msg = conversation[i];
       
-      if (isNameRequest) {
-        console.log(`🗣️ Name request detected in ${detectedLanguage}: "${msg.content}"`);
+      if (msg.role === 'assistant' && msg.content) {
+        const content = msg.content.toLowerCase();
+        const isNameRequest = patterns.nameRequests.some(pattern => content.includes(pattern));
         
-        for (let j = i + 1; j < Math.min(i + 4, conversation.length); j++) {
-          const userMsg = conversation[j];
-          if (userMsg.role === 'user' && userMsg.content) {
-            const extracted = extractNameFromResponse(userMsg.content, detectedLanguage);
-            if (extracted) {
-              nameCandidates.push(extracted);
-              console.log(`✅ Name candidate: ${JSON.stringify(extracted)}`);
+        if (isNameRequest) {
+          for (let j = i + 1; j < Math.min(i + 3, conversation.length); j++) {
+            const userMsg = conversation[j];
+            if (userMsg.role === 'user' && userMsg.content) {
+              const nameMatch = userMsg.content.match(/([A-Z][a-z]{2,})/);
+              if (nameMatch) {
+                if (!firstName) {
+                  firstName = nameMatch[1];
+                  console.log(`✅ First name from context: ${firstName}`);
+                } else if (!lastName) {
+                  lastName = nameMatch[1];
+                  console.log(`✅ Last name from context: ${lastName}`);
+                }
+              }
             }
           }
         }
@@ -449,258 +317,130 @@ function extractNamesFromConversation(conversation) {
     }
   }
 
-  // Strategy 2: Pattern matching
-  const allUserText = conversation.filter(msg => msg.role === 'user')
-    .map(msg => msg.content).join(' ');
-
-  for (const pattern of patterns.namePatterns) {
-    const match = allUserText.match(pattern);
-    if (match) {
-      console.log(`🔍 Name pattern matched: ${pattern.source} →`, match);
-      if (match[1] && match[2]) {
-        nameCandidates.push({ first: cleanName(match[1]), last: cleanName(match[2]) });
-      } else if (match[1]) {
-        if (pattern.source.includes('nome') || pattern.source.includes('first')) {
-          nameCandidates.push({ first: cleanName(match[1]) });
-        } else if (pattern.source.includes('cognome') || pattern.source.includes('last')) {
-          nameCandidates.push({ last: cleanName(match[1]) });
-        }
-      }
-    }
-  }
-
-  // Process candidates
-  if (nameCandidates.length > 0) {
-    const bestCandidate = nameCandidates.find(c => c.first && c.last) || nameCandidates[0];
-    firstName = bestCandidate.first || '';
-    lastName = bestCandidate.last || '';
-    
-    if (nameCandidates.length > 1) {
-      const firstCandidate = nameCandidates.find(c => c.first);
-      const lastCandidate = nameCandidates.find(c => c.last);
-      if (firstCandidate) firstName = firstCandidate.first;
-      if (lastCandidate) lastName = lastCandidate.last;
-    }
-  }
-
-  console.log(`🎉 FINAL Names (${detectedLanguage}): ${firstName} ${lastName}`);
+  console.log(`🎉 FINAL Names (${detectedLanguage}): "${firstName}" "${lastName}"`);
   return { firstName, lastName };
 }
 
-function extractNameFromResponse(text, language) {
-  const cleanText = text.replace(/[?!.,]/g, '').trim();
-  const singleWord = cleanText.match(/^([a-zA-Z\u00C0-\u024F\u0400-\u04FF']{2,})$/);
-  
-  if (singleWord) return { first: singleWord[1] };
-  
-  if (language === 'italian') {
-    const italianPattern = cleanText.match(/^(?:mi chiamo|sono|il mio nome è)\s+([a-zA-Z\u00C0-\u024F\u0400-\u04FF']{2,})$/i);
-    if (italianPattern) return { first: italianPattern[1] };
-    
-    const twoWords = cleanText.match(/^(?:mi chiamo|sono)\s+([a-zA-Z\u00C0-\u024F\u0400-\u04FF']{2,})\s+([a-zA-Z\u00C0-\u024F\u0400-\u04FF']{2,})$/i);
-    if (twoWords) return { first: twoWords[1], last: twoWords[2] };
-  } else {
-    const englishPattern = cleanText.match(/^(?:my name is|i am|it is)\s+([a-zA-Z\u00C0-\u024F\u0400-\u04FF']{2,})$/i);
-    if (englishPattern) return { first: englishPattern[1] };
-    
-    const twoWords = cleanText.match(/^(?:my name is|i am)\s+([a-zA-Z\u00C0-\u024F\u0400-\u04FF']{2,})\s+([a-zA-Z\u00C0-\u024F\u0400-\u04FF']{2,})$/i);
-    if (twoWords) return { first: twoWords[1], last: twoWords[2] };
-  }
-  
-  return null;
-}
-
-// Helper functions for state tracking
-function extractFirstName(text) {
-  const match = text.match(/^(?:my name is|i am|mi chiamo|sono)\s+([a-zA-Z\u00C0-\u024F\u0400-\u04FF']{2,})/i);
-  return match ? cleanName(match[1]) : cleanName(text);
-}
-
-function extractLastName(text) {
-  return cleanName(text);
-}
-
-function extractGuestInfoFromText(text) {
-  const detectedLanguage = detectLanguage([{ role: 'user', content: text }]);
-  const naturalResult = extractGuestsNaturalLanguage(text, detectedLanguage);
-  return naturalResult || { total: 2, adults: 2, children: 0 };
-}
-
-function extractPhoneFromResponse(text) {
-  const detectedLanguage = detectLanguage([{ role: 'user', content: text }]);
-  const digits = wordsToDigits(text, detectedLanguage);
-  return digits.length >= 10 ? `+39${digits.slice(-10)}` : '';
-}
-
-function cleanName(name) {
-  return name ? name.replace(/[?!.,]/g, '').trim() : '';
-}
-
-// MULTILINGUAL: Phone extraction
-function extractPhoneNumber(conversation) {
-  console.log('📞 Starting MULTILINGUAL phone extraction...');
+// ROBUST MULTILINGUAL GUEST COUNTING
+function extractGuestInfo(conversation) {
+  console.log('👥 Starting MULTILINGUAL guest extraction...');
   
   const detectedLanguage = detectLanguage(conversation);
-  const patterns = MULTILINGUAL_PATTERNS[detectedLanguage];
+  const patterns = MULTILINGUAL_PATTERNS[detectedLanguage].guestPatterns;
   
-  let bestPhoneCandidate = '';
-
-  // Strategy 1: Conversation context
-  for (let i = 0; i < conversation.length; i++) {
-    const msg = conversation[i];
-    
-    if (msg.role === 'assistant' && msg.content) {
-      const content = msg.content.toLowerCase();
-      const isPhoneRequest = patterns.phoneContext.some(pattern => content.includes(pattern));
-      
-      if (isPhoneRequest) {
-        console.log(`📱 Phone request detected in ${detectedLanguage}`);
-        
-        for (let j = i + 1; j < Math.min(i + 4, conversation.length); j++) {
-          const userMsg = conversation[j];
-          if (userMsg.role === 'user' && userMsg.content) {
-            const phoneDigits = wordsToDigits(userMsg.content, detectedLanguage);
-            if (phoneDigits.length >= 10) {
-              bestPhoneCandidate = phoneDigits.slice(-10);
-              console.log(`✅ Contextual phone found: ${bestPhoneCandidate}`);
-              return `+39${bestPhoneCandidate}`;
-            }
-          }
-        }
-      }
-    }
-  }
-
-  // Strategy 2: Extract from all conversation
   const allUserText = conversation.filter(msg => msg.role === 'user')
-    .map(msg => msg.content).join(' ');
-  
-  const phoneDigits = wordsToDigits(allUserText, detectedLanguage);
-  if (phoneDigits.length >= 10) {
-    bestPhoneCandidate = phoneDigits.slice(-10);
-    console.log(`✅ Phone from all text: ${bestPhoneCandidate}`);
-  }
+    .map(msg => msg.content).join(' ').toLowerCase();
 
-  return bestPhoneCandidate ? `+39${bestPhoneCandidate}` : '';
-}
-
-// ENHANCED GUEST COUNTING WITH NATURAL LANGUAGE
-function extractAdvancedGuestInfo(conversation) {
-  console.log('👥 Starting ADVANCED guest extraction...');
-  
-  const detectedLanguage = detectLanguage(conversation);
-  const allUserText = conversation.filter(msg => msg.role === 'user')
-    .map(msg => msg.content).join(' ');
+  console.log('🔍 Guest extraction text:', allUserText);
 
   let totalGuests = 2;
   let adults = 2;
   let children = 0;
 
-  // Step 1: Try natural language first
-  const naturalResult = extractGuestsNaturalLanguage(allUserText, detectedLanguage);
-  if (naturalResult) {
-    console.log(`✅ Natural language guests: ${JSON.stringify(naturalResult)}`);
-    return naturalResult;
-  }
+  // Convert word numbers to digits for processing
+  let processedText = allUserText;
+  const numberWords = MULTILINGUAL_PATTERNS[detectedLanguage].numberWords;
+  Object.entries(numberWords).forEach(([word, digit]) => {
+    processedText = processedText.replace(new RegExp(word, 'gi'), digit);
+  });
 
-  // Step 2: Try structured patterns
-  const patterns = MULTILINGUAL_PATTERNS[detectedLanguage].guestPatterns;
+  // PATTERN 1: Natural language family patterns
+  const familyPattern1 = processedText.match(patterns.family);
+  if (familyPattern1) {
+    adults = 2;
+    children = parseInt(familyPattern1[1]) || 0;
+    totalGuests = adults + children;
+    console.log(`✅ ${detectedLanguage.toUpperCase()} Family pattern: ${adults} adults + ${children} children = ${totalGuests}`);
+  }
   
-  // Expanded pattern matching
-  const adultsChildrenMatch = allUserText.match(patterns.adultsChildren);
+  // PATTERN 2: Couple with kids
+  const familyPattern2 = processedText.match(patterns.coupleWithKids);
+  if (familyPattern2) {
+    adults = 2;
+    children = parseInt(familyPattern2[1]) || 0;
+    totalGuests = adults + children;
+    console.log(`✅ ${detectedLanguage.toUpperCase()} Couple with kids: ${adults} adults + ${children} children = ${totalGuests}`);
+  }
+  
+  // PATTERN 3: Direct adult/child counts
+  const adultsChildrenMatch = processedText.match(patterns.adultsChildren);
   if (adultsChildrenMatch) {
     adults = parseInt(adultsChildrenMatch[1]);
     children = parseInt(adultsChildrenMatch[2]);
     totalGuests = adults + children;
-  } else {
-    // Individual component extraction
-    const childrenMatch = allUserText.match(patterns.childrenOnly);
-    const adultsMatch = allUserText.match(patterns.adultsOnly);
-    const totalMatch = allUserText.match(patterns.totalPeople);
-
-    if (childrenMatch) children = parseInt(childrenMatch[1]);
-    if (adultsMatch) adults = parseInt(adultsMatch[1]);
-    if (totalMatch) totalGuests = parseInt(totalMatch[1]);
-
-    // Reconcile totals
-    if (totalGuests === 2 && (adults > 2 || children > 0)) {
-      totalGuests = adults + children;
-    } else if (totalGuests > 2) {
-      adults = totalGuests - children;
-    }
+    console.log(`✅ ${detectedLanguage.toUpperCase()} Direct count: ${adults} adults + ${children} children = ${totalGuests}`);
+  }
+  
+  // PATTERN 4: Children only
+  const childrenMatch = processedText.match(patterns.childrenOnly);
+  if (childrenMatch) {
+    children = parseInt(childrenMatch[1]) || 0;
+    console.log(`✅ ${detectedLanguage.toUpperCase()} Children detected: ${children}`);
   }
 
-  // Step 3: Solo traveler check
-  if (allUserText.match(patterns.solo)) {
+  // PATTERN 5: Total people
+  const peopleMatch = processedText.match(patterns.totalPeople);
+  if (peopleMatch) {
+    totalGuests = parseInt(peopleMatch[1]);
+    adults = totalGuests - children;
+    console.log(`✅ ${detectedLanguage.toUpperCase()} Total people: ${totalGuests}`);
+  }
+
+  // PATTERN 6: Solo traveler
+  if (processedText.match(patterns.solo)) {
     totalGuests = 1;
     adults = 1;
     children = 0;
+    console.log(`✅ ${detectedLanguage.toUpperCase()} Solo traveler`);
   }
 
-  // Step 4: Validation
-  ({ totalGuests, adults, children } = validateGuestCounts(totalGuests, adults, children));
-  
-  console.log(`✅ Advanced guest extraction: ${totalGuests} total (${adults} adults + ${children} children)`);
-  
-  return { totalGuests, adults, children };
-}
-
-function validateGuestCounts(totalGuests, adults, children) {
-  if (children > totalGuests) {
-    children = Math.max(0, totalGuests - 1);
-    adults = totalGuests - children;
-  } else {
-    adults = totalGuests - children;
+  // PATTERN 7: Couple without kids
+  if (processedText.match(patterns.couple)) {
+    totalGuests = 2;
+    adults = 2;
+    children = 0;
+    console.log(`✅ ${detectedLanguage.toUpperCase()} Couple`);
   }
-  
-  if (children > 0 && adults < 1) {
-    adults = 1;
+
+  // FINAL VALIDATION
+  if (children > 0 && adults < 2) {
+    adults = 2;
     totalGuests = adults + children;
+    console.log(`✅ ${detectedLanguage.toUpperCase()} Adjusted: minimum 2 adults with children`);
   }
-  
+
+  if (totalGuests < (adults + children)) {
+    totalGuests = adults + children;
+    console.log(`✅ ${detectedLanguage.toUpperCase()} Recalculated total`);
+  }
+
+  console.log(`✅ ${detectedLanguage.toUpperCase()} FINAL: ${totalGuests} total (${adults} adults + ${children} children)`);
   return { totalGuests, adults, children };
 }
 
-// ENHANCED: Complex time extraction
-function extractComplexTime(conversation) {
-  const detectedLanguage = detectLanguage(conversation);
-  const allUserText = conversation.filter(msg => msg.role === 'user')
-    .map(msg => msg.content).join(' ').toLowerCase();
-
-  let time = '22:00'; // Default
-
-  // Try complex time expressions first
-  const complexTime = parseComplexTimeExpression(allUserText, detectedLanguage);
-  if (complexTime) {
-    console.log(`✅ Complex time expression: ${complexTime}`);
-    return complexTime;
-  }
-
-  // Fallback to basic time patterns
-  const patterns = MULTILINGUAL_PATTERNS[detectedLanguage].timePatterns;
+// MULTILINGUAL PHONE EXTRACTION
+function extractPhoneNumber(conversation) {
+  console.log('📞 Starting MULTILINGUAL phone extraction...');
   
-  // Expanded time matching with priority
-  const timeMatches = [
-    { pattern: patterns.sevenThirty, time: '19:30' },
-    { pattern: patterns.seven, time: '19:00' },
-    { pattern: patterns.eightThirty, time: '20:30' },
-    { pattern: patterns.eight, time: '20:00' },
-    { pattern: patterns.nine, time: '21:00' },
-    { pattern: patterns.ten, time: '22:00' },
-  ];
+  const detectedLanguage = detectLanguage(conversation);
+  
+  const allUserText = conversation.filter(msg => msg.role === 'user')
+    .map(msg => msg.content).join(' ');
 
-  for (const match of timeMatches) {
-    if (allUserText.match(match.pattern)) {
-      time = match.time;
-      console.log(`✅ Basic time pattern: ${time}`);
-      break;
-    }
+  // Extract and convert numbers
+  const phoneDigits = wordsToDigits(allUserText, detectedLanguage);
+  
+  if (phoneDigits.length >= 10) {
+    const finalPhone = '+39' + phoneDigits.slice(-10);
+    console.log(`✅ ${detectedLanguage.toUpperCase()} Phone number: ${finalPhone}`);
+    return finalPhone;
   }
 
-  return time;
+  console.log(`❌ ${detectedLanguage.toUpperCase()} No valid phone number found`);
+  return '';
 }
 
-// MULTILINGUAL: Date extraction
+// MULTILINGUAL DATE/TIME EXTRACTION
 function extractDateTime(conversation) {
   console.log('📅 Starting MULTILINGUAL date/time extraction...');
   
@@ -710,7 +450,8 @@ function extractDateTime(conversation) {
   const allUserText = conversation.filter(msg => msg.role === 'user')
     .map(msg => msg.content).join(' ').toLowerCase();
 
-  let date = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString().split('T')[0]; // Default tomorrow
+  let date = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+  let time = '22:00';
 
   // DATE EXTRACTION
   if (allUserText.match(patterns.datePatterns.today)) {
@@ -733,7 +474,25 @@ function extractDateTime(conversation) {
     }
   }
 
-  return { date, time: extractComplexTime(conversation) };
+  // TIME EXTRACTION
+  const timeMatches = [
+    { pattern: patterns.timePatterns.sevenThirty, time: '19:30' },
+    { pattern: patterns.timePatterns.seven, time: '19:00' },
+    { pattern: patterns.timePatterns.eightThirty, time: '20:30' },
+    { pattern: patterns.timePatterns.eight, time: '20:00' },
+    { pattern: patterns.timePatterns.nine, time: '21:00' },
+    { pattern: patterns.timePatterns.ten, time: '22:00' },
+  ];
+
+  for (const match of timeMatches) {
+    if (allUserText.match(match.pattern)) {
+      time = match.time;
+      console.log(`✅ ${detectedLanguage.toUpperCase()} Time: ${time}`);
+      break;
+    }
+  }
+
+  return { date, time };
 }
 
 function getNextDayOfWeek(dayName) {
@@ -756,7 +515,7 @@ function getNextDayOfWeek(dayName) {
   return nextDay;
 }
 
-// MULTILINGUAL: Special requests extraction
+// MULTILINGUAL SPECIAL REQUESTS
 function extractSpecialRequests(conversation) {
   const detectedLanguage = detectLanguage(conversation);
   const patterns = MULTILINGUAL_PATTERNS[detectedLanguage];
@@ -775,29 +534,12 @@ function extractSpecialRequests(conversation) {
   return specialRequests;
 }
 
-// MAIN EXTRACTION FUNCTION WITH ALL ENHANCEMENTS
+// MAIN EXTRACTION FUNCTION
 function extractReservationFromConversation(conversation) {
-  console.log('🔍 Starting ULTIMATE extraction with all enhancements...');
+  console.log('🔍 Starting MULTILINGUAL extraction...');
   
   const detectedLanguage = detectLanguage(conversation);
   console.log(`🌍 Primary language: ${detectedLanguage}`);
-  
-  // Initialize conversation state for correction tracking
-  const state = new ConversationState();
-  
-  // Process conversation with state tracking
-  for (let i = 0; i < conversation.length; i++) {
-    const msg = conversation[i];
-    
-    if (msg.role === 'assistant') {
-      const nextUserMsg = conversation[i + 1];
-      if (nextUserMsg && nextUserMsg.role === 'user') {
-        state.updateState(msg.content, nextUserMsg.content);
-      }
-    }
-  }
-
-  const stateData = state.getFinalData();
   
   let reservation = {
     firstName: '',
@@ -830,15 +572,15 @@ function extractReservationFromConversation(conversation) {
   const allUserText = userMessages.join(' ');
   console.log('📝 ALL User text:', allUserText);
   
-  // EXTRACT ALL FIELDS WITH ENHANCED METHODS
-  // Use state data when available, fallback to pattern matching
-  reservation.firstName = stateData.firstName || extractNamesFromConversation(conversation).firstName;
-  reservation.lastName = stateData.lastName || extractNamesFromConversation(conversation).lastName;
+  // EXTRACT ALL FIELDS MULTILINGUALLY
+  const names = extractNamesFromConversation(conversation);
+  reservation.firstName = names.firstName;
+  reservation.lastName = names.lastName;
   
-  reservation.phone = stateData.phone || extractPhoneNumber(conversation);
+  reservation.phone = extractPhoneNumber(conversation);
   
-  const guests = stateData.guests.total ? stateData.guests : extractAdvancedGuestInfo(conversation);
-  reservation.guests = guests.totalGuests || guests.total;
+  const guests = extractGuestInfo(conversation);
+  reservation.guests = guests.totalGuests;
   reservation.adults = guests.adults;
   reservation.children = guests.children;
   
@@ -847,17 +589,12 @@ function extractReservationFromConversation(conversation) {
   reservation.time = datetime.time;
   
   reservation.specialRequests = extractSpecialRequests(conversation);
-
-  // Log corrections for debugging
-  if (state.correctionHistory.length > 0) {
-    console.log('📝 Correction history:', state.correctionHistory);
-  }
-
-  console.log('✅ ULTIMATE Extraction result:', reservation);
+  
+  console.log('✅ MULTILINGUAL Extraction result:', reservation);
   return reservation;
 }
 
-// Express server routes (unchanged)
+// Express server routes (same as before)
 app.get('/', (req, res) => {
   res.json({ 
     message: '🎵 Jazzamore Server is running!',
