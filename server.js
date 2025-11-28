@@ -56,233 +56,9 @@ function wordsToDigits(text) {
   return digits;
 }
 
-// ENHANCED: Robust phone extraction without breaking changes
-function extractPhoneNumber(conversation) {
-  console.log('📞 Starting ENHANCED phone extraction...');
-  
-  const numberWords = {
-    'zero': '0', 'one': '1', 'two': '2', 'three': '3', 'four': '4',
-    'five': '5', 'six': '6', 'seven': '7', 'eight': '8', 'nine': '9'
-  };
-
-  // Strategy 1: Look for phone number in conversation context
-  let bestPhoneCandidate = '';
-  
-  // Track when assistant asks for phone number
-  for (let i = 0; i < conversation.length; i++) {
-    const msg = conversation[i];
-    
-    if (msg.role === 'assistant' && msg.content && 
-        msg.content.toLowerCase().includes('phone')) {
-      
-      // Look at next few user responses for phone number
-      for (let j = i + 1; j < Math.min(i + 4, conversation.length); j++) {
-        const userMsg = conversation[j];
-        if (userMsg.role === 'user' && userMsg.content) {
-          const phone = extractPhoneFromText(userMsg.content, numberWords);
-          if (phone && phone.length >= 10) {
-            console.log(`✅ Contextual phone found: ${phone}`);
-            return `+39${phone.slice(-10)}`;
-          }
-        }
-      }
-    }
-  }
-
-  // Strategy 2: Fallback to original approach (preserves existing behavior)
-  const allUserText = conversation.filter(msg => msg.role === 'user')
-    .map(msg => msg.content)
-    .join(' ');
-  
-  const numberWordsInText = allUserText.match(/(?:zero|one|two|three|four|five|six|seven|eight|nine)/gi);
-  if (numberWordsInText) {
-    const digitsFromWords = wordsToDigits(numberWordsInText.join(' '));
-    if (digitsFromWords.length >= 10) {
-      bestPhoneCandidate = digitsFromWords.slice(-10);
-      console.log(`✅ Fallback phone from words: ${bestPhoneCandidate}`);
-    }
-  }
-
-  // Strategy 3: Look for digit sequences
-  const digitSequences = allUserText.match(/\d+/g) || [];
-  for (const seq of digitSequences) {
-    if (seq.length >= 10) {
-      bestPhoneCandidate = seq.slice(-10);
-      console.log(`✅ Phone from digit sequence: ${bestPhoneCandidate}`);
-      break;
-    }
-  }
-
-  return bestPhoneCandidate ? `+39${bestPhoneCandidate}` : '';
-}
-
-// NEW: Helper function for phone extraction
-function extractPhoneFromText(text, numberWords) {
-  // Convert number words to digits
-  let processedText = text.toLowerCase();
-  Object.entries(numberWords).forEach(([word, digit]) => {
-    processedText = processedText.replace(new RegExp(word, 'g'), digit);
-  });
-  
-  // Extract all digits
-  const allDigits = processedText.replace(/\D/g, '');
-  
-  // Look for 10-digit sequences
-  if (allDigits.length >= 10) {
-    return allDigits.slice(-10);
-  }
-  
-  return '';
-}
-
-// NEW: Helper function to parse numbers from text
-function parseNumber(text) {
-  const numberMap = {
-    'one': 1, 'two': 2, 'three': 3, 'four': 4, 'five': 5,
-    'six': 6, 'seven': 7, 'eight': 8, 'nine': 9, 'ten': 10
-  };
-  
-  if (numberMap[text.toLowerCase()]) {
-    return numberMap[text.toLowerCase()];
-  }
-  
-  return parseInt(text) || 0;
-}
-
-// UPDATED: Better validation that doesn't override correct data
-function validateGuestCounts(totalGuests, adults, children) {
-  const originalTotal = totalGuests;
-  const originalAdults = adults;
-  const originalChildren = children;
-  
-  // If we have explicit adults + children, trust that combination
-  const hasExplicitCombo = (adults > 0 && children > 0) || (adults + children) > 2;
-  
-  if (hasExplicitCombo) {
-    // Trust the explicit counts and recalculate total
-    totalGuests = adults + children;
-    console.log(`✅ Trusting explicit counts: ${adults} adults + ${children} children = ${totalGuests} total`);
-  } else {
-    // Ensure children don't exceed total
-    if (children > totalGuests) {
-      console.log(`🔄 Adjusting: children (${children}) > total (${totalGuests})`);
-      children = Math.max(0, totalGuests - 1); // Leave at least 1 adult
-      adults = totalGuests - children;
-    } else {
-      // Recalculate adults based on validated children
-      adults = totalGuests - children;
-    }
-  }
-  
-  // Final sanity check
-  if (children > 0 && adults < 1) {
-    adults = 1;
-    totalGuests = adults + children;
-    console.log(`🔄 Ensuring at least 1 adult with children: ${adults} adult + ${children} children`);
-  }
-  
-  // Log if we made changes
-  if (originalTotal !== totalGuests || originalAdults !== adults || originalChildren !== children) {
-    console.log(`🔄 Validation adjusted: ${originalTotal}t/${originalAdults}a/${originalChildren}c → ${totalGuests}t/${adults}a/${children}c`);
-  }
-  
-  return { totalGuests, adults, children };
-}
-
-// ENHANCED: Fixed guest extraction with proper adult/child counting
-function extractGuestInfo(conversation) {
-  console.log('👥 Starting ENHANCED guest extraction...');
-  
-  const allUserText = conversation.filter(msg => msg.role === 'user')
-    .map(msg => msg.content)
-    .join(' ')
-    .toLowerCase();
-
-  let totalGuests = 2;
-  let adults = 2;
-  let children = 0;
-
-  // STRATEGY 1: Direct "X adults and Y children" pattern (HIGHEST PRIORITY)
-  const adultsChildrenMatch = allUserText.match(/(\d+)\s+adults?\s+and\s+(\d+)\s+children?/i);
-  if (adultsChildrenMatch) {
-    adults = parseInt(adultsChildrenMatch[1]);
-    children = parseInt(adultsChildrenMatch[2]);
-    totalGuests = adults + children;
-    console.log(`✅ Adults/Children combo: ${adults} adults + ${children} children = ${totalGuests} total`);
-  }
-  
-  // STRATEGY 2: Direct children patterns
-  const directChildrenMatches = [
-    ...allUserText.matchAll(/(\d+)\s+children/g),
-    ...allUserText.matchAll(/(\d+)\s+kids/g),
-    ...allUserText.matchAll(/(one|two|three|four|five|six|seven|eight|nine|ten)\s+children/g)
-  ];
-  
-  if (directChildrenMatches.length > 0 && children === 0) { // Only if not already set
-    const lastMatch = directChildrenMatches[directChildrenMatches.length - 1];
-    children = parseNumber(lastMatch[1]);
-    console.log(`✅ Direct children count: ${children}`);
-  }
-
-  // STRATEGY 3: Total party size patterns
-  const partyMatches = [
-    ...allUserText.matchAll(/(\d+)\s+people?\s+(?:in my|in the|in our) party/g),
-    ...allUserText.matchAll(/(\d+)\s+people?\s+total/g),
-    ...allUserText.matchAll(/(one|two|three|four|five|six|seven|eight|nine|ten)\s+people/g),
-    ...allUserText.matchAll(/(\d+)\s+guests?/g)
-  ];
-  
-  if (partyMatches.length > 0) {
-    const lastMatch = partyMatches[partyMatches.length - 1];
-    const newTotal = parseNumber(lastMatch[1]);
-    
-    // Only update if we don't have a more specific adults+children count
-    if (!adultsChildrenMatch) {
-      totalGuests = newTotal;
-      adults = totalGuests - children; // Calculate adults based on children
-      console.log(`✅ Total guests: ${totalGuests} (calculated adults: ${adults})`);
-    }
-  }
-
-  // STRATEGY 4: Individual adult mentions (if we have children but no adults specified)
-  const adultMatches = [
-    ...allUserText.matchAll(/(\d+)\s+adults?/g),
-    ...allUserText.matchAll(/(one|two|three|four|five|six|seven|eight|nine|ten)\s+adults/g)
-  ];
-  
-  if (adultMatches.length > 0 && !adultsChildrenMatch) {
-    const lastMatch = adultMatches[adultMatches.length - 1];
-    adults = parseNumber(lastMatch[1]);
-    totalGuests = adults + children;
-    console.log(`✅ Adults mentioned: ${adults} (recalculated total: ${totalGuests})`);
-  }
-
-  // STRATEGY 5: Fallback to simple number detection (original logic)
-  if (totalGuests === 2 && !adultsChildrenMatch && partyMatches.length === 0) {
-    if (allUserText.includes('three') || allUserText.includes('3')) {
-      totalGuests = 3;
-      adults = totalGuests - children;
-    } else if (allUserText.includes('four') || allUserText.includes('4')) {
-      totalGuests = 4;
-      adults = totalGuests - children;
-    } else if (allUserText.includes('five') || allUserText.includes('5')) {
-      totalGuests = 5;
-      adults = totalGuests - children;
-    }
-    console.log(`✅ Fallback guest count: ${totalGuests}`);
-  }
-
-  // ENHANCED: Data validation (NEW - doesn't break existing flow)
-  ({ totalGuests, adults, children } = validateGuestCounts(totalGuests, adults, children));
-
-  console.log(`✅ FINAL guest count: ${totalGuests} total (${adults} adults + ${children} children)`);
-  
-  return { totalGuests, adults, children };
-}
-
-// UPDATED: Enhanced extraction with better logging
+// FIXED: Use the WORKING name extraction patterns with improved guest counting
 function extractReservationFromConversation(conversation) {
-  console.log('🔍 Starting ENHANCED extraction...');
+  console.log('🔍 Starting extraction...');
   
   let reservation = {
     firstName: '',
@@ -318,7 +94,7 @@ function extractReservationFromConversation(conversation) {
   let firstName = '';
   let lastName = '';
   
-  // FIXED: REORDERED PATTERNS - FORMAL DECLARATIONS FIRST
+  // USE THE WORKING PATTERNS FROM YOUR ORIGINAL CODE
   const namePatterns = [
     // HIGHEST PRIORITY: Formal name declarations
     /first name is\s+(\w+)\s+last name is\s+(\w+)/i,
@@ -412,22 +188,93 @@ function extractReservationFromConversation(conversation) {
     console.log('❌ Name extraction failed - no patterns matched');
   }
   
-  // ENHANCED: Use improved phone extraction
-  reservation.phone = extractPhoneNumber(conversation);
+  // FIXED: Better phone extraction - Clean up the digits
+  const numberWords = allUserText.match(/(?:zero|one|two|three|four|five|six|seven|eight|nine)/gi);
+  if (numberWords) {
+    // Convert words to digits and clean up
+    let phoneDigits = wordsToDigits(numberWords.join(' '));
+    
+    // Extract only the digits and take the last 10 for Italian number
+    const cleanDigits = phoneDigits.replace(/\D/g, '');
+    if (cleanDigits.length >= 10) {
+      reservation.phone = '+39' + cleanDigits.slice(-10);
+      console.log(`📞 Clean phone number: ${reservation.phone}`);
+    } else {
+      reservation.phone = phoneDigits;
+      console.log(`📞 Phone numbers found: ${numberWords.join(' ')} → ${reservation.phone}`);
+    }
+  }
   
-  // ENHANCED: Use improved guest extraction  
-  const guestInfo = extractGuestInfo(conversation);
-  reservation.guests = guestInfo.totalGuests;
-  reservation.adults = guestInfo.adults;
-  reservation.children = guestInfo.children;
+  // FIXED: IMPROVED GUEST COUNT EXTRACTION
+  let totalGuests = 2;
+  let adults = 2;
+  let children = 0;
+
+  // Look for explicit "adults and children" pattern first (including word numbers)
+  const adultsChildrenMatch = allUserText.match(/(\d+)\s+adults?\s+and\s+(\d+)\s+children?/i);
+  const wordAdultsChildrenMatch = allUserText.match(/(one|two|three|four|five|six|seven|eight|nine|ten)\s+adults?\s+and\s+(one|two|three|four|five|six|seven|eight|nine|ten)\s+children?/i);
   
-  // FIXED: Date extraction for "today"
+  if (adultsChildrenMatch) {
+    adults = parseInt(adultsChildrenMatch[1]);
+    children = parseInt(adultsChildrenMatch[2]);
+    totalGuests = adults + children;
+    console.log(`👥 Adults/Children found: ${adults} adults + ${children} children = ${totalGuests} total`);
+  } 
+  else if (wordAdultsChildrenMatch) {
+    const numberMap = {
+      'one': 1, 'two': 2, 'three': 3, 'four': 4, 'five': 5,
+      'six': 6, 'seven': 7, 'eight': 8, 'nine': 9, 'ten': 10
+    };
+    adults = numberMap[wordAdultsChildrenMatch[1].toLowerCase()];
+    children = numberMap[wordAdultsChildrenMatch[2].toLowerCase()];
+    totalGuests = adults + children;
+    console.log(`👥 Word-based Adults/Children: ${adults} adults + ${children} children = ${totalGuests} total`);
+  }
+  // Look for total people count
+  else if (allUserText.match(/(\d+)\s+people/)) {
+    const peopleMatch = allUserText.match(/(\d+)\s+people/);
+    totalGuests = parseInt(peopleMatch[1]);
+    adults = totalGuests; // Assume all adults if not specified
+    children = 0;
+    console.log(`👥 Total people: ${totalGuests}`);
+  }
+  // Look for children mentioned separately
+  else if (allUserText.match(/(\d+)\s+children?/)) {
+    const childrenMatch = allUserText.match(/(\d+)\s+children?/);
+    children = parseInt(childrenMatch[1]);
+    // If we have children but no adult count mentioned, assume at least 1 adult
+    const adultMatch = allUserText.match(/(\d+)\s+adults?/);
+    adults = adultMatch ? parseInt(adultMatch[1]) : 1;
+    totalGuests = adults + children;
+    console.log(`👥 Children detected: ${children} children + ${adults} adults = ${totalGuests} total`);
+  }
+  // Fallback to number detection
+  else if (allUserText.includes('three') || allUserText.includes('3')) {
+    totalGuests = 3;
+    adults = 3;
+    children = 0;
+    console.log(`👥 Guests from text: ${totalGuests}`);
+  } else if (allUserText.includes('two') || allUserText.includes('2')) {
+    totalGuests = 2;
+    adults = 2;
+    children = 0;
+    console.log(`👥 Guests from text: ${totalGuests}`);
+  }
+
+  reservation.guests = totalGuests;
+  reservation.adults = adults;
+  reservation.children = children;
+  
+  // Date extraction
   if (allUserText.includes('today')) {
     const today = new Date();
     reservation.date = today.toISOString().split('T')[0];
     console.log(`📅 Date: Today → ${reservation.date}`);
+  } else if (allUserText.includes('tomorrow')) {
+    const tomorrow = new Date(Date.now() + 24 * 60 * 60 * 1000);
+    reservation.date = tomorrow.toISOString().split('T')[0];
+    console.log(`📅 Date: Tomorrow → ${reservation.date}`);
   } else if (allUserText.includes('saturday')) {
-    // Calculate next Saturday
     const today = new Date();
     const daysUntilSaturday = (6 - today.getDay() + 7) % 7 || 7;
     const nextSaturday = new Date(today);
@@ -436,13 +283,13 @@ function extractReservationFromConversation(conversation) {
     console.log(`📅 Date: Next Saturday → ${reservation.date}`);
   }
   
-  // TIME - Handle "ten twenty five" as 22:25
-  if (allUserText.includes('ten twenty five') || allUserText.includes('10:25')) {
-    reservation.time = '22:25';
-    console.log('⏰ Time: 10:25 PM → 22:25');
+  // TIME
+  if (allUserText.includes('seven thirty') || allUserText.includes('7:30')) {
+    reservation.time = '19:30';
+    console.log('⏰ Time: 7:30 PM');
   } else if (allUserText.includes('ten') || allUserText.includes('10')) {
     reservation.time = '22:00';
-    console.log('⏰ Time: 10:00 PM → 22:00');
+    console.log('⏰ Time: 10:00 PM');
   }
   
   // SPECIAL REQUESTS
@@ -451,7 +298,7 @@ function extractReservationFromConversation(conversation) {
     console.log('🎯 Dinner only reservation');
   }
   
-  console.log('✅ ENHANCED Extraction result:', reservation);
+  console.log('✅ FINAL Extraction result:', reservation);
   return reservation;
 }
 
