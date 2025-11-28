@@ -149,27 +149,47 @@ function parseNumber(text) {
   return parseInt(text) || 0;
 }
 
-// NEW: Data validation (safe addition)
+// UPDATED: Better validation that doesn't override correct data
 function validateGuestCounts(totalGuests, adults, children) {
-  // Ensure children don't exceed total
-  if (children > totalGuests) {
-    console.log(`🔄 Adjusting: children (${children}) > total (${totalGuests})`);
-    children = Math.max(0, totalGuests - 1); // Leave at least 1 adult
+  const originalTotal = totalGuests;
+  const originalAdults = adults;
+  const originalChildren = children;
+  
+  // If we have explicit adults + children, trust that combination
+  const hasExplicitCombo = (adults > 0 && children > 0) || (adults + children) > 2;
+  
+  if (hasExplicitCombo) {
+    // Trust the explicit counts and recalculate total
+    totalGuests = adults + children;
+    console.log(`✅ Trusting explicit counts: ${adults} adults + ${children} children = ${totalGuests} total`);
+  } else {
+    // Ensure children don't exceed total
+    if (children > totalGuests) {
+      console.log(`🔄 Adjusting: children (${children}) > total (${totalGuests})`);
+      children = Math.max(0, totalGuests - 1); // Leave at least 1 adult
+      adults = totalGuests - children;
+    } else {
+      // Recalculate adults based on validated children
+      adults = totalGuests - children;
+    }
   }
   
-  // Recalculate adults based on validated children
-  adults = totalGuests - children;
-  
-  // Ensure at least 1 adult if children present
+  // Final sanity check
   if (children > 0 && adults < 1) {
     adults = 1;
     totalGuests = adults + children;
+    console.log(`🔄 Ensuring at least 1 adult with children: ${adults} adult + ${children} children`);
+  }
+  
+  // Log if we made changes
+  if (originalTotal !== totalGuests || originalAdults !== adults || originalChildren !== children) {
+    console.log(`🔄 Validation adjusted: ${originalTotal}t/${originalAdults}a/${originalChildren}c → ${totalGuests}t/${adults}a/${children}c`);
   }
   
   return { totalGuests, adults, children };
 }
 
-// ENHANCED: Robust children detection without breaking changes
+// ENHANCED: Fixed guest extraction with proper adult/child counting
 function extractGuestInfo(conversation) {
   console.log('👥 Starting ENHANCED guest extraction...');
   
@@ -182,45 +202,74 @@ function extractGuestInfo(conversation) {
   let adults = 2;
   let children = 0;
 
-  // ENHANCED: Multiple detection strategies
+  // STRATEGY 1: Direct "X adults and Y children" pattern (HIGHEST PRIORITY)
+  const adultsChildrenMatch = allUserText.match(/(\d+)\s+adults?\s+and\s+(\d+)\s+children?/i);
+  if (adultsChildrenMatch) {
+    adults = parseInt(adultsChildrenMatch[1]);
+    children = parseInt(adultsChildrenMatch[2]);
+    totalGuests = adults + children;
+    console.log(`✅ Adults/Children combo: ${adults} adults + ${children} children = ${totalGuests} total`);
+  }
   
-  // Strategy 1: Direct children patterns (HIGH CONFIDENCE)
+  // STRATEGY 2: Direct children patterns
   const directChildrenMatches = [
     ...allUserText.matchAll(/(\d+)\s+children/g),
     ...allUserText.matchAll(/(\d+)\s+kids/g),
     ...allUserText.matchAll(/(one|two|three|four|five|six|seven|eight|nine|ten)\s+children/g)
   ];
   
-  if (directChildrenMatches.length > 0) {
+  if (directChildrenMatches.length > 0 && children === 0) { // Only if not already set
     const lastMatch = directChildrenMatches[directChildrenMatches.length - 1];
     children = parseNumber(lastMatch[1]);
     console.log(`✅ Direct children count: ${children}`);
   }
 
-  // Strategy 2: Total party size
+  // STRATEGY 3: Total party size patterns
   const partyMatches = [
     ...allUserText.matchAll(/(\d+)\s+people?\s+(?:in my|in the|in our) party/g),
     ...allUserText.matchAll(/(\d+)\s+people?\s+total/g),
-    ...allUserText.matchAll(/(one|two|three|four|five|six|seven|eight|nine|ten)\s+people/g)
+    ...allUserText.matchAll(/(one|two|three|four|five|six|seven|eight|nine|ten)\s+people/g),
+    ...allUserText.matchAll(/(\d+)\s+guests?/g)
   ];
   
   if (partyMatches.length > 0) {
     const lastMatch = partyMatches[partyMatches.length - 1];
-    totalGuests = parseNumber(lastMatch[1]);
-    console.log(`✅ Total guests: ${totalGuests}`);
+    const newTotal = parseNumber(lastMatch[1]);
+    
+    // Only update if we don't have a more specific adults+children count
+    if (!adultsChildrenMatch) {
+      totalGuests = newTotal;
+      adults = totalGuests - children; // Calculate adults based on children
+      console.log(`✅ Total guests: ${totalGuests} (calculated adults: ${adults})`);
+    }
   }
 
-  // Strategy 3: Original logic (preserved for backward compatibility)
-  const adultsChildrenMatch = allUserText.match(/(\d+)\s+adults?\s+and\s+(\d+)\s+children?/i);
-  if (adultsChildrenMatch) {
-    adults = parseInt(adultsChildrenMatch[1]);
-    children = parseInt(adultsChildrenMatch[2]);
+  // STRATEGY 4: Individual adult mentions (if we have children but no adults specified)
+  const adultMatches = [
+    ...allUserText.matchAll(/(\d+)\s+adults?/g),
+    ...allUserText.matchAll(/(one|two|three|four|five|six|seven|eight|nine|ten)\s+adults/g)
+  ];
+  
+  if (adultMatches.length > 0 && !adultsChildrenMatch) {
+    const lastMatch = adultMatches[adultMatches.length - 1];
+    adults = parseNumber(lastMatch[1]);
     totalGuests = adults + children;
-    console.log(`✅ Adults/Children combo: ${adults} + ${children}`);
-  } else if (allUserText.match(/(\d+)\s+people/)) {
-    const peopleMatch = allUserText.match(/(\d+)\s+people/);
-    totalGuests = parseInt(peopleMatch[1]);
-    adults = totalGuests - children; // Use detected children if any
+    console.log(`✅ Adults mentioned: ${adults} (recalculated total: ${totalGuests})`);
+  }
+
+  // STRATEGY 5: Fallback to simple number detection (original logic)
+  if (totalGuests === 2 && !adultsChildrenMatch && partyMatches.length === 0) {
+    if (allUserText.includes('three') || allUserText.includes('3')) {
+      totalGuests = 3;
+      adults = totalGuests - children;
+    } else if (allUserText.includes('four') || allUserText.includes('4')) {
+      totalGuests = 4;
+      adults = totalGuests - children;
+    } else if (allUserText.includes('five') || allUserText.includes('5')) {
+      totalGuests = 5;
+      adults = totalGuests - children;
+    }
+    console.log(`✅ Fallback guest count: ${totalGuests}`);
   }
 
   // ENHANCED: Data validation (NEW - doesn't break existing flow)
