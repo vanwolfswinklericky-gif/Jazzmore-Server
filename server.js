@@ -44,24 +44,32 @@ function convertDayToDate(dayName) {
     'sunday': 0, 'monday': 1, 'tuesday': 2, 'wednesday': 3,
     'thursday': 4, 'friday': 5, 'saturday': 6,
     'domenica': 0, 'lunedì': 1, 'martedì': 2, 'mercoledì': 3,
-    'giovedì': 4, 'venerdì': 5, 'sabato': 6
+    'giovedì': 4, 'venerdì': 5, 'sabato': 6,
+    'today': 'today', 'oggi': 'today', 'tomorrow': 'tomorrow', 'domani': 'tomorrow'
   };
   
   const targetDay = dayMap[dayName.toLowerCase()];
-  if (targetDay === undefined) {
-    // Default to tomorrow if day not recognized
+  
+  if (targetDay === 'today') {
+    return today.toISOString().split('T')[0];
+  } else if (targetDay === 'tomorrow') {
     const tomorrow = new Date(today);
     tomorrow.setDate(today.getDate() + 1);
     return tomorrow.toISOString().split('T')[0];
+  } else if (targetDay !== undefined) {
+    const daysUntil = (targetDay - today.getDay() + 7) % 7 || 7;
+    const targetDate = new Date(today);
+    targetDate.setDate(today.getDate() + daysUntil);
+    return targetDate.toISOString().split('T')[0];
   }
   
-  const daysUntil = (targetDay - today.getDay() + 7) % 7 || 7;
-  const targetDate = new Date(today);
-  targetDate.setDate(today.getDate() + daysUntil);
-  return targetDate.toISOString().split('T')[0];
+  // Default to tomorrow if day not recognized
+  const tomorrow = new Date(today);
+  tomorrow.setDate(today.getDate() + 1);
+  return tomorrow.toISOString().split('T')[0];
 }
 
-// SIMPLE STRUCTURED DATA EXTRACTION
+// UPDATED STRUCTURED DATA EXTRACTION - HANDLES SINGLE LINE FORMAT
 function extractStructuredData(conversation) {
   console.log('🔍 Looking for structured reservation data...');
   
@@ -88,26 +96,44 @@ function extractStructuredData(conversation) {
     
     if (msg.role === 'assistant' && msg.content && msg.content.includes('RESERVATION_DATA:')) {
       console.log('✅ Found structured reservation data!');
+      console.log('📝 Full message:', msg.content);
+      
       const content = msg.content;
       
-      // Simple extraction from structured format
-      const firstNameMatch = content.match(/First Name:\s*([^\n,]+)/i);
-      const lastNameMatch = content.match(/Last Name:\s*([^\n,]+)/i);
-      const phoneMatch = content.match(/Phone:\s*([^\n,]+)/i);
-      const guestsMatch = content.match(/Guests:\s*([^\n,]+)/i);
-      const adultsMatch = content.match(/Adults:\s*([^\n,]+)/i);
-      const childrenMatch = content.match(/Children:\s*([^\n,]+)/i);
-      const dateMatch = content.match(/Date:\s*([^\n,]+)/i);
-      const timeMatch = content.match(/Time:\s*([^\n,]+)/i);
-      const requestsMatch = content.match(/Special Requests:\s*([^\n,]+)/i);
-      const newsletterMatch = content.match(/Newsletter:\s*(yes|no)/i);
+      // Extract everything after RESERVATION_DATA:
+      const dataMatch = content.match(/RESERVATION_DATA:\s*(.*)/i);
+      if (!dataMatch) {
+        console.log('❌ Could not extract data section');
+        return defaultReservation;
+      }
+      
+      const dataSection = dataMatch[1];
+      console.log('📋 Data section found:', dataSection);
+
+      // Parse fields from the data section (handles single-line format)
+      const firstNameMatch = dataSection.match(/First Name:\s*(\w+)/i);
+      const lastNameMatch = dataSection.match(/Last Name:\s*(\w+)/i);
+      const phoneMatch = dataSection.match(/Phone:\s*(\d+)/i);
+      const guestsMatch = dataSection.match(/Guests:\s*(\d+)/i);
+      const adultsMatch = dataSection.match(/Adults:\s*(\d+)/i);
+      const childrenMatch = dataSection.match(/Children:\s*(\d+)/i);
+      const dateMatch = dataSection.match(/Date:\s*(\w+)/i);
+      const timeMatch = dataSection.match(/Time:\s*(\d+:\d+)/i);
+      const requestsMatch = dataSection.match(/Special Requests:\s*([^,]+)/i);
+      const newsletterMatch = dataSection.match(/Newsletter:\s*(yes|no)/i);
+      
+      console.log('🔍 Field matches:', {
+        firstNameMatch, lastNameMatch, phoneMatch, guestsMatch,
+        adultsMatch, childrenMatch, dateMatch, timeMatch, 
+        requestsMatch, newsletterMatch
+      });
       
       if (firstNameMatch) defaultReservation.firstName = firstNameMatch[1].trim();
       if (lastNameMatch) defaultReservation.lastName = lastNameMatch[1].trim();
-      if (phoneMatch) defaultReservation.phone = '+39' + phoneMatch[1].replace(/\D/g, '').slice(-10);
-      if (guestsMatch) defaultReservation.guests = parseInt(guestsMatch[1]) || 2;
-      if (adultsMatch) defaultReservation.adults = parseInt(adultsMatch[1]) || defaultReservation.guests;
-      if (childrenMatch) defaultReservation.children = parseInt(childrenMatch[1]) || 0;
+      if (phoneMatch) defaultReservation.phone = '+39' + phoneMatch[1];
+      if (guestsMatch) defaultReservation.guests = parseInt(guestsMatch[1]);
+      if (adultsMatch) defaultReservation.adults = parseInt(adultsMatch[1]);
+      if (childrenMatch) defaultReservation.children = parseInt(childrenMatch[1]);
       if (dateMatch) defaultReservation.date = convertDayToDate(dateMatch[1].trim());
       if (timeMatch) defaultReservation.time = timeMatch[1].trim();
       if (requestsMatch) {
@@ -121,7 +147,14 @@ function extractStructuredData(conversation) {
     }
   }
   
-  console.log('❌ No structured data found, using defaults');
+  console.log('❌ No structured data found in conversation');
+  // Log all assistant messages to debug
+  conversation.forEach((msg, index) => {
+    if (msg.role === 'assistant') {
+      console.log(`Assistant message ${index}:`, msg.content);
+    }
+  });
+  
   return defaultReservation;
 }
 
