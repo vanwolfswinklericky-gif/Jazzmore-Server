@@ -37,11 +37,35 @@ function formatTimeForAirtable(timeString, dateString) {
   }
 }
 
-// ENGLISH - EXTRACT FROM AGENT CONFIRMATIONS
-function extractFromAgentConfirmations(conversation) {
-  console.log('🎯 Extracting from AGENT confirmations...');
+// Convert day name to actual date
+function convertDayToDate(dayName) {
+  const today = new Date();
+  const dayMap = {
+    'sunday': 0, 'monday': 1, 'tuesday': 2, 'wednesday': 3,
+    'thursday': 4, 'friday': 5, 'saturday': 6,
+    'domenica': 0, 'lunedì': 1, 'martedì': 2, 'mercoledì': 3,
+    'giovedì': 4, 'venerdì': 5, 'sabato': 6
+  };
   
-  let reservation = {
+  const targetDay = dayMap[dayName.toLowerCase()];
+  if (targetDay === undefined) {
+    // Default to tomorrow if day not recognized
+    const tomorrow = new Date(today);
+    tomorrow.setDate(today.getDate() + 1);
+    return tomorrow.toISOString().split('T')[0];
+  }
+  
+  const daysUntil = (targetDay - today.getDay() + 7) % 7 || 7;
+  const targetDate = new Date(today);
+  targetDate.setDate(today.getDate() + daysUntil);
+  return targetDate.toISOString().split('T')[0];
+}
+
+// SIMPLE STRUCTURED DATA EXTRACTION
+function extractStructuredData(conversation) {
+  console.log('🔍 Looking for structured reservation data...');
+  
+  const defaultReservation = {
     firstName: '',
     lastName: '',
     date: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString().split('T')[0],
@@ -50,318 +74,55 @@ function extractFromAgentConfirmations(conversation) {
     adults: 2,
     children: 0,
     phone: '',
-    specialRequests: 'No special requests'
+    specialRequests: 'No special requests',
+    newsletter: false
   };
 
   if (!conversation || !Array.isArray(conversation)) {
-    return reservation;
-  }
-
-  // Look for agent confirmation patterns
-  for (let i = 0; i < conversation.length; i++) {
-    const msg = conversation[i];
-    
-    if (msg.role === 'assistant' && msg.content) {
-      const content = msg.content;
-      
-      // NAME CONFIRMATION: "So I have Tony Mazarazzi"
-      const nameMatch = content.match(/so i have\s+([A-Z][a-z]+)\s+([A-Z][a-z]+)/i) || 
-                       content.match(/i have\s+([A-Z][a-z]+)\s+([A-Z][a-z]+)/i) ||
-                       content.match(/reservation for\s+([A-Z][a-z]+)\s+([A-Z][a-z]+)/i);
-      
-      if (nameMatch && nameMatch[1] && nameMatch[2]) {
-        reservation.firstName = nameMatch[1];
-        reservation.lastName = nameMatch[2];
-        console.log(`✅ Name from agent confirmation: ${reservation.firstName} ${reservation.lastName}`);
-      }
-      
-      // GUEST COUNT CONFIRMATION: "for 2 people", "for 2 guests"
-      const guestMatch = content.match(/for\s+(\d+)\s+(?:people|guests)/i) ||
-                        content.match(/reservation for\s+(\d+)/i) ||
-                        content.match(/(\d+)\s+(?:people|guests)/i);
-      
-      if (guestMatch && guestMatch[1]) {
-        reservation.guests = parseInt(guestMatch[1]);
-        reservation.adults = reservation.guests;
-        console.log(`✅ Guests from agent confirmation: ${reservation.guests}`);
-      }
-      
-      // DATE/TIME CONFIRMATION: "on Thursday at 9 PM", "for Thursday at 9 PM"
-      const dateTimeMatch = content.match(/(?:on|for)\s+(\w+)\s+(?:at|for)\s+(\d+)(?::(\d+))?\s*(AM|PM)?/i) ||
-                           content.match(/(\w+)\s+at\s+(\d+)(?::(\d+))?\s*(AM|PM)?/i);
-      
-      if (dateTimeMatch) {
-        // Extract and format time
-        let hours = parseInt(dateTimeMatch[2]);
-        const minutes = dateTimeMatch[3] || '00';
-        const period = dateTimeMatch[4] ? dateTimeMatch[4].toUpperCase() : 'PM';
-        
-        // Convert to 24-hour format
-        if (period === 'PM' && hours < 12) hours += 12;
-        if (period === 'AM' && hours === 12) hours = 0;
-        
-        reservation.time = `${hours.toString().padStart(2, '0')}:${minutes}`;
-        console.log(`✅ Time from agent confirmation: ${reservation.time}`);
-        
-        // Handle date
-        const dayMatch = dateTimeMatch[1].toLowerCase();
-        const today = new Date();
-        
-        if (dayMatch.includes('today')) {
-          reservation.date = today.toISOString().split('T')[0];
-        } else if (dayMatch.includes('tomorrow')) {
-          const tomorrow = new Date(today);
-          tomorrow.setDate(today.getDate() + 1);
-          reservation.date = tomorrow.toISOString().split('T')[0];
-        } else if (dayMatch.includes('thurs')) {
-          const daysUntilThursday = (4 - today.getDay() + 7) % 7 || 7;
-          const nextThursday = new Date(today);
-          nextThursday.setDate(today.getDate() + daysUntilThursday);
-          reservation.date = nextThursday.toISOString().split('T')[0];
-        } else if (dayMatch.includes('fri')) {
-          const daysUntilFriday = (5 - today.getDay() + 7) % 7 || 7;
-          const nextFriday = new Date(today);
-          nextFriday.setDate(today.getDate() + daysUntilFriday);
-          reservation.date = nextFriday.toISOString().split('T')[0];
-        } else if (dayMatch.includes('sat')) {
-          const daysUntilSaturday = (6 - today.getDay() + 7) % 7 || 7;
-          const nextSaturday = new Date(today);
-          nextSaturday.setDate(today.getDate() + daysUntilSaturday);
-          reservation.date = nextSaturday.toISOString().split('T')[0];
-        } else if (dayMatch.includes('sun')) {
-          const daysUntilSunday = (7 - today.getDay() + 7) % 7 || 7;
-          const nextSunday = new Date(today);
-          nextSunday.setDate(today.getDate() + daysUntilSunday);
-          reservation.date = nextSunday.toISOString().split('T')[0];
-        } else if (dayMatch.includes('mon')) {
-          const daysUntilMonday = (1 - today.getDay() + 7) % 7 || 7;
-          const nextMonday = new Date(today);
-          nextMonday.setDate(today.getDate() + daysUntilMonday);
-          reservation.date = nextMonday.toISOString().split('T')[0];
-        } else if (dayMatch.includes('tues')) {
-          const daysUntilTuesday = (2 - today.getDay() + 7) % 7 || 7;
-          const nextTuesday = new Date(today);
-          nextTuesday.setDate(today.getDate() + daysUntilTuesday);
-          reservation.date = nextTuesday.toISOString().split('T')[0];
-        } else if (dayMatch.includes('wed')) {
-          const daysUntilWednesday = (3 - today.getDay() + 7) % 7 || 7;
-          const nextWednesday = new Date(today);
-          nextWednesday.setDate(today.getDate() + daysUntilWednesday);
-          reservation.date = nextWednesday.toISOString().split('T')[0];
-        }
-        console.log(`✅ Date from agent confirmation: ${reservation.date}`);
-      }
-      
-      // PHONE CONFIRMATION: "phone number is", "contact number is"
-      const phoneMatch = content.match(/phone number is\s+([+\d\s\-\(\)]+)/i) ||
-                        content.match(/contact number is\s+([+\d\s\-\(\)]+)/i);
-      
-      if (phoneMatch && phoneMatch[1]) {
-        // Clean the phone number
-        const cleanPhone = phoneMatch[1].replace(/\D/g, '');
-        if (cleanPhone.length >= 10) {
-          reservation.phone = '+39' + cleanPhone.slice(-10);
-          console.log(`✅ Phone from agent confirmation: ${reservation.phone}`);
-        }
-      }
-      
-      // SPECIAL REQUESTS
-      if (content.includes('dinner only') || content.includes('only dinner')) {
-        reservation.specialRequests = 'Dinner only (no show)';
-        console.log('✅ Special request from agent: Dinner only');
-      }
-    }
-  }
-
-  return reservation;
-}
-
-// ITALIAN - EXTRACT FROM AGENT CONFIRMATIONS
-function extractFromAgentConfirmationsItalian(conversation) {
-  console.log('🎯 Estraendo dalle conferme dell AGENTE...');
-  
-  let reservation = {
-    firstName: '',
-    lastName: '',
-    date: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString().split('T')[0],
-    time: '22:00',
-    guests: 2,
-    adults: 2,
-    children: 0,
-    phone: '',
-    specialRequests: 'Nessuna richiesta speciale'
-  };
-
-  if (!conversation || !Array.isArray(conversation)) {
-    return reservation;
-  }
-
-  // Cerca pattern di conferma dell'agente
-  for (let i = 0; i < conversation.length; i++) {
-    const msg = conversation[i];
-    
-    if (msg.role === 'assistant' && msg.content) {
-      const content = msg.content;
-      
-      // CONFERMA NOME: "Quindi ho Tony Mazarazzi"
-      const nameMatch = content.match(/quindi ho\s+([A-Z][a-z]+)\s+([A-Z][a-z]+)/i) || 
-                       content.match(/ho\s+([A-Z][a-z]+)\s+([A-Z][a-z]+)/i) ||
-                       content.match(/prenotazione per\s+([A-Z][a-z]+)\s+([A-Z][a-z]+)/i);
-      
-      if (nameMatch && nameMatch[1] && nameMatch[2]) {
-        reservation.firstName = nameMatch[1];
-        reservation.lastName = nameMatch[2];
-        console.log(`✅ Nome dalla conferma agente: ${reservation.firstName} ${reservation.lastName}`);
-      }
-      
-      // CONFERMA NUMERO OSPITI: "per 2 persone", "per 2 ospiti"
-      const guestMatch = content.match(/per\s+(\d+)\s+(?:persone|ospiti)/i) ||
-                        content.match(/prenotazione per\s+(\d+)/i) ||
-                        content.match(/(\d+)\s+(?:persone|ospiti)/i);
-      
-      if (guestMatch && guestMatch[1]) {
-        reservation.guests = parseInt(guestMatch[1]);
-        reservation.adults = reservation.guests;
-        console.log(`✅ Ospiti dalla conferma agente: ${reservation.guests}`);
-      }
-      
-      // CONFERMA DATA/ORA: "giovedì alle 21", "per giovedì alle 21"
-      const dateTimeMatch = content.match(/(?:per|il)\s+(\w+)\s+(?:alle|alle ore)\s+(\d+)(?::(\d+))?/i) ||
-                           content.match(/(\w+)\s+alle\s+(\d+)(?::(\d+))?/i);
-      
-      if (dateTimeMatch) {
-        let hours = parseInt(dateTimeMatch[2]);
-        const minutes = dateTimeMatch[3] || '00';
-        
-        // Assume evening hours if not specified
-        if (hours < 8) hours += 12;
-        
-        reservation.time = `${hours.toString().padStart(2, '0')}:${minutes}`;
-        console.log(`✅ Orario dalla conferma agente: ${reservation.time}`);
-        
-        // Gestione data
-        const dayMatch = dateTimeMatch[1].toLowerCase();
-        const today = new Date();
-        
-        if (dayMatch.includes('oggi')) {
-          reservation.date = today.toISOString().split('T')[0];
-        } else if (dayMatch.includes('domani')) {
-          const tomorrow = new Date(today);
-          tomorrow.setDate(today.getDate() + 1);
-          reservation.date = tomorrow.toISOString().split('T')[0];
-        } else if (dayMatch.includes('giov')) {
-          const daysUntilThursday = (4 - today.getDay() + 7) % 7 || 7;
-          const nextThursday = new Date(today);
-          nextThursday.setDate(today.getDate() + daysUntilThursday);
-          reservation.date = nextThursday.toISOString().split('T')[0];
-        } else if (dayMatch.includes('ven')) {
-          const daysUntilFriday = (5 - today.getDay() + 7) % 7 || 7;
-          const nextFriday = new Date(today);
-          nextFriday.setDate(today.getDate() + daysUntilFriday);
-          reservation.date = nextFriday.toISOString().split('T')[0];
-        } else if (dayMatch.includes('sab')) {
-          const daysUntilSaturday = (6 - today.getDay() + 7) % 7 || 7;
-          const nextSaturday = new Date(today);
-          nextSaturday.setDate(today.getDate() + daysUntilSaturday);
-          reservation.date = nextSaturday.toISOString().split('T')[0];
-        } else if (dayMatch.includes('dom')) {
-          const daysUntilSunday = (7 - today.getDay() + 7) % 7 || 7;
-          const nextSunday = new Date(today);
-          nextSunday.setDate(today.getDate() + daysUntilSunday);
-          reservation.date = nextSunday.toISOString().split('T')[0];
-        } else if (dayMatch.includes('lun')) {
-          const daysUntilMonday = (1 - today.getDay() + 7) % 7 || 7;
-          const nextMonday = new Date(today);
-          nextMonday.setDate(today.getDate() + daysUntilMonday);
-          reservation.date = nextMonday.toISOString().split('T')[0];
-        } else if (dayMatch.includes('mar')) {
-          const daysUntilTuesday = (2 - today.getDay() + 7) % 7 || 7;
-          const nextTuesday = new Date(today);
-          nextTuesday.setDate(today.getDate() + daysUntilTuesday);
-          reservation.date = nextTuesday.toISOString().split('T')[0];
-        } else if (dayMatch.includes('mer')) {
-          const daysUntilWednesday = (3 - today.getDay() + 7) % 7 || 7;
-          const nextWednesday = new Date(today);
-          nextWednesday.setDate(today.getDate() + daysUntilWednesday);
-          reservation.date = nextWednesday.toISOString().split('T')[0];
-        }
-        console.log(`✅ Data dalla conferma agente: ${reservation.date}`);
-      }
-      
-      // CONFERMA TELEFONO: "numero di telefono è", "telefono è"
-      const phoneMatch = content.match(/numero di telefono è\s+([+\d\s\-\(\)]+)/i) ||
-                        content.match(/telefono è\s+([+\d\s\-\(\)]+)/i);
-      
-      if (phoneMatch && phoneMatch[1]) {
-        const cleanPhone = phoneMatch[1].replace(/\D/g, '');
-        if (cleanPhone.length >= 10) {
-          reservation.phone = '+39' + cleanPhone.slice(-10);
-          console.log(`✅ Telefono dalla conferma agente: ${reservation.phone}`);
-        }
-      }
-      
-      // RICHIESTE SPECIALI
-      if (content.includes('solo cena') || content.includes('cena solamente')) {
-        reservation.specialRequests = 'Solo cena (no spettacolo)';
-        console.log('✅ Richiesta speciale dall agente: Solo cena');
-      }
-    }
-  }
-
-  return reservation;
-}
-
-// MAIN EXTRACTION FUNCTION - FOCUS ON AGENT CONFIRMATIONS
-function extractReservationFromConversation(conversation) {
-  console.log('🔍 Starting EXTRACTION from AGENT confirmations...');
-  
-  let defaultReservation = {
-    firstName: '',
-    lastName: '',
-    date: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString().split('T')[0],
-    time: '22:00',
-    guests: 2,
-    adults: 2,
-    children: 0,
-    phone: '',
-    specialRequests: 'No special requests'
-  };
-
-  if (!conversation || !Array.isArray(conversation) || conversation.length === 0) {
-    console.log('❌ No conversation data available');
     return defaultReservation;
   }
-  
-  console.log(`📞 Processing ${conversation.length} conversation messages`);
-  
-  // Log the conversation for debugging
-  conversation.forEach((msg, index) => {
-    console.log(`${index}. ${msg.role.toUpperCase()}: ${msg.content}`);
-  });
-  
-  // Detect language from conversation content
-  const allText = conversation.map(msg => msg.content).join(' ').toLowerCase();
-  const isItalian = allText.includes('grazie') || allText.includes('perfetto') || 
-                   allText.includes('prego') || allText.includes('ciao') ||
-                   allText.includes('buongiorno') || allText.includes('buonasera');
-  
-  console.log(`🌍 Language detected: ${isItalian ? 'Italian' : 'English'}`);
-  
-  // Use agent confirmation extraction
-  let reservation;
-  if (isItalian) {
-    reservation = extractFromAgentConfirmationsItalian(conversation);
-    // Update default for Italian
-    defaultReservation.specialRequests = 'Nessuna richiesta speciale';
-  } else {
-    reservation = extractFromAgentConfirmations(conversation);
+
+  // Look for the structured data pattern in agent messages
+  for (let i = 0; i < conversation.length; i++) {
+    const msg = conversation[i];
+    
+    if (msg.role === 'assistant' && msg.content && msg.content.includes('RESERVATION_DATA:')) {
+      console.log('✅ Found structured reservation data!');
+      const content = msg.content;
+      
+      // Simple extraction from structured format
+      const firstNameMatch = content.match(/First Name:\s*([^\n,]+)/i);
+      const lastNameMatch = content.match(/Last Name:\s*([^\n,]+)/i);
+      const phoneMatch = content.match(/Phone:\s*([^\n,]+)/i);
+      const guestsMatch = content.match(/Guests:\s*([^\n,]+)/i);
+      const adultsMatch = content.match(/Adults:\s*([^\n,]+)/i);
+      const childrenMatch = content.match(/Children:\s*([^\n,]+)/i);
+      const dateMatch = content.match(/Date:\s*([^\n,]+)/i);
+      const timeMatch = content.match(/Time:\s*([^\n,]+)/i);
+      const requestsMatch = content.match(/Special Requests:\s*([^\n,]+)/i);
+      const newsletterMatch = content.match(/Newsletter:\s*(yes|no)/i);
+      
+      if (firstNameMatch) defaultReservation.firstName = firstNameMatch[1].trim();
+      if (lastNameMatch) defaultReservation.lastName = lastNameMatch[1].trim();
+      if (phoneMatch) defaultReservation.phone = '+39' + phoneMatch[1].replace(/\D/g, '').slice(-10);
+      if (guestsMatch) defaultReservation.guests = parseInt(guestsMatch[1]) || 2;
+      if (adultsMatch) defaultReservation.adults = parseInt(adultsMatch[1]) || defaultReservation.guests;
+      if (childrenMatch) defaultReservation.children = parseInt(childrenMatch[1]) || 0;
+      if (dateMatch) defaultReservation.date = convertDayToDate(dateMatch[1].trim());
+      if (timeMatch) defaultReservation.time = timeMatch[1].trim();
+      if (requestsMatch) {
+        const requests = requestsMatch[1].trim();
+        defaultReservation.specialRequests = requests === 'None' ? 'No special requests' : requests;
+      }
+      if (newsletterMatch) defaultReservation.newsletter = newsletterMatch[1].toLowerCase() === 'yes';
+      
+      console.log('✅ Extracted structured data:', defaultReservation);
+      return defaultReservation;
+    }
   }
   
-  // Merge with defaults to ensure all fields are populated
-  const finalReservation = { ...defaultReservation, ...reservation };
-  
-  console.log('✅ FINAL Extraction result from agent confirmations:', finalReservation);
-  return finalReservation;
+  console.log('❌ No structured data found, using defaults');
+  return defaultReservation;
 }
 
 // Express server routes
@@ -419,9 +180,10 @@ app.post('/api/reservations', async (req, res) => {
       conversationData = call.transcript_object;
     }
     
-    const reservationData = extractReservationFromConversation(conversationData);
+    // Use simple structured data extraction
+    const reservationData = extractStructuredData(conversationData);
     
-    const { firstName, lastName, date, time, guests, adults, children, phone, specialRequests } = reservationData;
+    const { firstName, lastName, date, time, guests, adults, children, phone, specialRequests, newsletter } = reservationData;
     
     const arrivalTimeISO = formatTimeForAirtable(time, date);
     
@@ -442,7 +204,7 @@ app.post('/api/reservations', async (req, res) => {
           "Special Requests": specialRequests || '',
           "Reservation Status": "Pending",
           "Reservation Type": "Dinner + Show",
-          "Newsletter Opt-In": false
+          "Newsletter Opt-In": newsletter || false
         }
       }
     ]);
@@ -453,6 +215,7 @@ app.post('/api/reservations', async (req, res) => {
     console.log('Date/Time:', date, time);
     console.log('Guests:', guests, `(${adults} adults + ${children} children)`);
     console.log('Phone:', phone || 'Not provided');
+    console.log('Newsletter:', newsletter);
     console.log('Airtable Record ID:', record[0].id);
     
     res.json({
