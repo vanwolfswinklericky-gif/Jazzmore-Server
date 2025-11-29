@@ -37,527 +37,9 @@ function formatTimeForAirtable(timeString, dateString) {
   }
 }
 
-// Convert spoken numbers to digits
-function wordsToDigits(text) {
-  const numberWords = {
-    'zero': '0', 'one': '1', 'two': '2', 'three': '3', 'four': '4',
-    'five': '5', 'six': '6', 'seven': '7', 'eight': '8', 'nine': '9'
-  };
-  
-  const words = text.toLowerCase().split(/\s+/);
-  let digits = '';
-  
-  for (const word of words) {
-    if (numberWords[word]) {
-      digits += numberWords[word];
-    }
-  }
-  
-  return digits;
-}
-
-// Convert Italian spoken numbers to digits
-function wordsToDigitsItalian(text) {
-  const numberWords = {
-    'zero': '0', 'uno': '1', 'due': '2', 'tre': '3', 'quattro': '4',
-    'cinque': '5', 'sei': '6', 'sette': '7', 'otto': '8', 'nove': '9'
-  };
-  
-  const words = text.toLowerCase().split(/\s+/);
-  let digits = '';
-  
-  for (const word of words) {
-    if (numberWords[word]) {
-      digits += numberWords[word];
-    }
-  }
-  
-  return digits;
-}
-
-// ENGLISH NAME EXTRACTION
-function extractNamesFromConversation(conversation) {
-  console.log('🎯 Starting CLEAN name extraction...');
-  let firstName = '';
-  let lastName = '';
-
-  const userMessages = conversation.filter(msg => msg.role === 'user').map(msg => msg.content);
-  const allUserText = userMessages.join(' ');
-  console.log('🔍 Raw user text:', allUserText);
-
-  // 1) explicit statements
-  const explicitPatterns = [
-    /my first name is\s+([A-Z][a-z]+)/i,
-    /first name is\s+([A-Z][a-z]+)/i,
-    /my name is\s+([A-Z][a-z]+)(?:\s+([A-Z][a-z]+))?/i,
-    /i am\s+([A-Z][a-z]+)(?:\s+([A-Z][a-z]+))?/i
-  ];
-  for (const p of explicitPatterns) {
-    const m = allUserText.match(p);
-    if (m) {
-      firstName = m[1] || '';
-      lastName = m[2] || '';
-      console.log('✅ Name from explicit pattern:', firstName, lastName);
-      return { firstName, lastName };
-    }
-  }
-
-  // 2) Prefer explicit two-word "First Last"
-  const twoWordMatch = allUserText.match(/\b([A-Z][a-z]{2,})\s+([A-Z][a-z]{2,})\b/);
-  if (twoWordMatch) {
-    firstName = twoWordMatch[1];
-    lastName = twoWordMatch[2];
-    console.log('✅ Found two-word name:', firstName, lastName);
-    return { firstName, lastName };
-  }
-
-  // 3) Single-word fallback but filter common sentence-start or filler tokens
-  const filtered = allUserText.replace(/\b(five|four|one|three|two|eight|nine|six|seven|zero)\b/gi, '');
-  const capitalizedWords = filtered.match(/\b[A-Z][a-z]{2,}\b/g) || [];
-  console.log('🔍 Capitalized words (no numbers):', capitalizedWords);
-
-  const stopwords = new Set(['hello','yes','no','ok','thank','thanks','alright','make','this','that','only','just']);
-  const potentialNames = capitalizedWords.filter(w => !stopwords.has(w.toLowerCase()));
-  console.log('🔍 Potential names after filtering:', potentialNames);
-
-  if (potentialNames.length >= 2) {
-    firstName = potentialNames[0];
-    // pick next distinct that looks like a surname
-    for (let i = 1; i < potentialNames.length; i++) {
-      if (potentialNames[i] !== firstName) { lastName = potentialNames[i]; break; }
-    }
-  } else if (potentialNames.length === 1) {
-    firstName = potentialNames[0];
-  }
-
-  console.log(`🎉 FINAL Names: "${firstName}" "${lastName}"`);
-  return { firstName, lastName };
-}
-
-// ITALIAN NAME EXTRACTION
-function extractNamesFromConversationItalian(conversation) {
-  console.log('🎯 Starting Italian name extraction...');
-  let firstName = '';
-  let lastName = '';
-
-  const userMessages = conversation.filter(msg => msg.role === 'user').map(msg => msg.content);
-  const allUserText = userMessages.join(' ');
-  console.log('🔍 Testo utente:', allUserText);
-
-  // 1) Pattern espliciti italiani
-  const explicitPatterns = [
-    /mi chiamo\s+([A-Z][a-z]+)(?:\s+([A-Z][a-z]+))?/i,
-    /il mio nome è\s+([A-Z][a-z]+)(?:\s+([A-Z][a-z]+))?/i,
-    /sono\s+([A-Z][a-z]+)(?:\s+([A-Z][a-z]+))?/i,
-    /mi chiamo\s+([A-Z][a-z]+)/i,
-    /nome\s+([A-Z][a-z]+)/i,
-    /cognome\s+([A-Z][a-z]+)/i
-  ];
-  for (const p of explicitPatterns) {
-    const m = allUserText.match(p);
-    if (m) {
-      firstName = m[1] || '';
-      lastName = m[2] || '';
-      console.log('✅ Nome da pattern italiano:', firstName, lastName);
-      return { firstName, lastName };
-    }
-  }
-
-  // 2) Preferire due parole "Nome Cognome"
-  const twoWordMatch = allUserText.match(/\b([A-Z][a-z]{2,})\s+([A-Z][a-z]{2,})\b/);
-  if (twoWordMatch) {
-    firstName = twoWordMatch[1];
-    lastName = twoWordMatch[2];
-    console.log('✅ Trovato nome di due parole:', firstName, lastName);
-    return { firstName, lastName };
-  }
-
-  // 3) Fallback a una parola con filtraggio parole comuni
-  const filtered = allUserText.replace(/\b(uno|due|tre|quattro|cinque|sei|sette|otto|nove|dieci)\b/gi, '');
-  const capitalizedWords = filtered.match(/\b[A-Z][a-z]{2,}\b/g) || [];
-  console.log('🔍 Parole capitalizzate (senza numeri):', capitalizedWords);
-
-  const stopwords = new Set(['ciao','si','no','ok','grazie','per','vorrei','allora','quindi','buongiorno','buonasera','perfetto','va','bene']);
-  const potentialNames = capitalizedWords.filter(w => !stopwords.has(w.toLowerCase()));
-  console.log('🔍 Nomi potenziali dopo filtraggio:', potentialNames);
-
-  if (potentialNames.length >= 2) {
-    firstName = potentialNames[0];
-    // scegli il prossimo distinto che sembra un cognome
-    for (let i = 1; i < potentialNames.length; i++) {
-      if (potentialNames[i] !== firstName) { lastName = potentialNames[i]; break; }
-    }
-  } else if (potentialNames.length === 1) {
-    firstName = potentialNames[0];
-  }
-
-  console.log(`🎉 Nomi FINALI: "${firstName}" "${lastName}"`);
-  return { firstName, lastName };
-}
-
-// ENGLISH GUEST COUNTING
-function extractGuestInfo(conversation) {
-  console.log('👥 Starting guest extraction...');
-  const allUserText = conversation.filter(msg => msg.role === 'user')
-    .map(msg => msg.content).join(' ').toLowerCase();
-  console.log('🔍 Guest extraction text:', allUserText);
-
-  // safer default = 1 (assume solo unless stated)
-  let totalGuests = 1;
-  let adults = 1;
-  let children = 0;
-
-  // explicit phrases for solo
-  if (allUserText.includes('just me') ||
-      allUserText.includes('only me') ||
-      allUserText.includes('for myself') ||
-      allUserText.includes('myself') ||
-      allUserText.includes('alone')) {
-    totalGuests = 1; adults = 1; children = 0;
-    console.log('✅ Solo pattern matched');
-    return { totalGuests, adults, children };
-  }
-
-  // couple patterns
-  if (allUserText.includes('just me and my girlfriend') || allUserText.includes('me and my girlfriend') ||
-      allUserText.includes('me and my wife') || allUserText.includes('me and my husband')) {
-    totalGuests = 2; adults = 2; children = 0;
-    console.log('✅ Couple pattern: 2 people');
-    return { totalGuests, adults, children };
-  }
-
-  // family with children: "me my wife and 2 children" etc.
-  let m;
-  if ((m = allUserText.match(/me,? my (?:wife|husband)(?:,? and)? (?:my )?(\d+)\s+(?:children|kids)/))) {
-    children = parseInt(m[1]) || 0;
-    adults = 2;
-    totalGuests = adults + children;
-    console.log(`✅ Family pattern: ${totalGuests}`);
-    return { totalGuests, adults, children };
-  }
-
-  // explicit counts: "3 people" or "3 adults and 1 child"
-  if ((m = allUserText.match(/(\d+)\s+people/))) {
-    totalGuests = parseInt(m[1]);
-    adults = totalGuests;
-    console.log('✅ Total people pattern:', totalGuests);
-    return { totalGuests, adults, children };
-  }
-  if ((m = allUserText.match(/(\d+)\s+adults?\s+and\s+(\d+)\s+children?/))) {
-    adults = parseInt(m[1]); children = parseInt(m[2]);
-    totalGuests = adults + children;
-    console.log('✅ Adults/children pattern:', totalGuests);
-    return { totalGuests, adults, children };
-  }
-
-  // fallback: look for spoken digit words "two", "three" etc.
-  const wordToNum = { zero:0, one:1, two:2, three:3, four:4, five:5, six:6, seven:7, eight:8, nine:9, ten:10 };
-  const words = allUserText.split(/\W+/);
-  const nums = words.map(w => wordToNum[w]).filter(n => typeof n === 'number' && n > 0);
-  if (nums.length) {
-    totalGuests = Math.max(...nums);
-    adults = totalGuests;
-    console.log('✅ Word-number fallback:', totalGuests);
-    return { totalGuests, adults, children };
-  }
-
-  console.log(`✅ FINAL: ${totalGuests} total (${adults} adults + ${children} children)`);
-  return { totalGuests, adults, children };
-}
-
-// ITALIAN GUEST COUNTING
-function extractGuestInfoItalian(conversation) {
-  console.log('👥 Starting Italian guest extraction...');
-  const allUserText = conversation.filter(msg => msg.role === 'user')
-    .map(msg => msg.content).join(' ').toLowerCase();
-  console.log('🔍 Testo per estrazione ospiti:', allUserText);
-
-  // default più sicuro = 1 (singolo a meno che non specificato)
-  let totalGuests = 1;
-  let adults = 1;
-  let children = 0;
-
-  // frasi esplicite per singolo
-  if (allUserText.includes('solo io') ||
-      allUserText.includes('solo per me') ||
-      allUserText.includes('soltanto io') ||
-      allUserText.includes('da solo') ||
-      allUserText.includes('per me')) {
-    totalGuests = 1; adults = 1; children = 0;
-    console.log('✅ Pattern singolo riconosciuto');
-    return { totalGuests, adults, children };
-  }
-
-  // pattern coppia
-  if (allUserText.includes('io e mia moglie') || allUserText.includes('io e mio marito') ||
-      allUserText.includes('io e la mia ragazza') || allUserText.includes('io e il mio ragazzo') ||
-      allUserText.includes('io e mia moglie') || allUserText.includes('io e mio marito')) {
-    totalGuests = 2; adults = 2; children = 0;
-    console.log('✅ Pattern coppia: 2 persone');
-    return { totalGuests, adults, children };
-  }
-
-  // famiglia con bambini: "io, mia moglie e 2 bambini" etc.
-  let m;
-  if ((m = allUserText.match(/io,? (?:mia )?(?:moglie|marito|ragazza|ragazzo)(?:,? e)? (\d+) (?:bambini|figli)/))) {
-    children = parseInt(m[1]) || 0;
-    adults = 2;
-    totalGuests = adults + children;
-    console.log(`✅ Pattern famiglia: ${totalGuests}`);
-    return { totalGuests, adults, children };
-  }
-
-  // conteggi espliciti: "3 persone" o "3 adulti e 1 bambino"
-  if ((m = allUserText.match(/(\d+)\s+persone/))) {
-    totalGuests = parseInt(m[1]);
-    adults = totalGuests;
-    console.log('✅ Pattern persone totali:', totalGuests);
-    return { totalGuests, adults, children };
-  }
-  if ((m = allUserText.match(/(\d+)\s+adulti?\s+e\s+(\d+)\s+bambini?/))) {
-    adults = parseInt(m[1]); children = parseInt(m[2]);
-    totalGuests = adults + children;
-    console.log('✅ Pattern adulti/bambini:', totalGuests);
-    return { totalGuests, adults, children };
-  }
-
-  // fallback: cerca parole numeriche "due", "tre" etc.
-  const wordToNum = { zero:0, uno:1, due:2, tre:3, quattro:4, cinque:5, sei:6, sette:7, otto:8, nove:9, dieci:10 };
-  const words = allUserText.split(/\W+/);
-  const nums = words.map(w => wordToNum[w]).filter(n => typeof n === 'number' && n > 0);
-  if (nums.length) {
-    totalGuests = Math.max(...nums);
-    adults = totalGuests;
-    console.log('✅ Fallback parole-numero:', totalGuests);
-    return { totalGuests, adults, children };
-  }
-
-  console.log(`✅ FINALE: ${totalGuests} totali (${adults} adulti + ${children} bambini)`);
-  return { totalGuests, adults, children };
-}
-
-// ENGLISH PHONE EXTRACTION
-function extractPhoneNumber(conversation) {
-  console.log('📞 Starting phone extraction...');
-  
-  const allUserText = conversation.filter(msg => msg.role === 'user')
-    .map(msg => msg.content).join(' ').toLowerCase();
-
-  // Convert number words to digits first
-  const numberWords = {
-    'zero': '0', 'one': '1', 'two': '2', 'three': '3', 'four': '4',
-    'five': '5', 'six': '6', 'seven': '7', 'eight': '8', 'nine': '9'
-  };
-
-  let processedText = allUserText;
-  Object.entries(numberWords).forEach(([word, digit]) => {
-    processedText = processedText.replace(new RegExp(word, 'g'), digit);
-  });
-
-  // Extract all digits
-  const allDigits = processedText.replace(/\D/g, '');
-  console.log('🔍 All digits found:', allDigits);
-
-  // Look for phone number patterns (10+ digits)
-  if (allDigits.length >= 10) {
-    const phoneNumber = '+39' + allDigits.slice(-10);
-    console.log(`✅ Phone number extracted: ${phoneNumber}`);
-    return phoneNumber;
-  }
-
-  console.log('❌ No valid phone number found');
-  return '';
-}
-
-// ITALIAN PHONE EXTRACTION
-function extractPhoneNumberItalian(conversation) {
-  console.log('📞 Starting Italian phone extraction...');
-  
-  const allUserText = conversation.filter(msg => msg.role === 'user')
-    .map(msg => msg.content).join(' ').toLowerCase();
-
-  // Converti parole numeriche in cifre
-  const numberWords = {
-    'zero': '0', 'uno': '1', 'due': '2', 'tre': '3', 'quattro': '4',
-    'cinque': '5', 'sei': '6', 'sette': '7', 'otto': '8', 'nove': '9'
-  };
-
-  let processedText = allUserText;
-  Object.entries(numberWords).forEach(([word, digit]) => {
-    processedText = processedText.replace(new RegExp(word, 'g'), digit);
-  });
-
-  // Estrai tutte le cifre
-  const allDigits = processedText.replace(/\D/g, '');
-  console.log('🔍 Tutte le cifre trovate:', allDigits);
-
-  // Cerca pattern di numeri di telefono (10+ cifre)
-  if (allDigits.length >= 10) {
-    const phoneNumber = '+39' + allDigits.slice(-10);
-    console.log(`✅ Numero di telefono estratto: ${phoneNumber}`);
-    return phoneNumber;
-  }
-
-  console.log('❌ Nessun numero di telefono valido trovato');
-  return '';
-}
-
-// ENGLISH DATE AND TIME EXTRACTION
-function extractDateTime(conversation) {
-  console.log('📅 Starting date/time extraction...');
-  
-  const allUserText = conversation.filter(msg => msg.role === 'user')
-    .map(msg => msg.content).join(' ').toLowerCase();
-
-  let date = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString().split('T')[0]; // Default tomorrow
-  let time = '22:00'; // Default 10 PM
-
-  // DATE EXTRACTION
-  if (allUserText.includes('today')) {
-    const today = new Date();
-    date = today.toISOString().split('T')[0];
-    console.log(`✅ Date: Today → ${date}`);
-  } else if (allUserText.includes('tomorrow')) {
-    const tomorrow = new Date(Date.now() + 24 * 60 * 60 * 1000);
-    date = tomorrow.toISOString().split('T')[0];
-    console.log(`✅ Date: Tomorrow → ${date}`);
-  } else if (allUserText.includes('monday')) {
-    // Calculate next Monday
-    const today = new Date();
-    const daysUntilMonday = (1 - today.getDay() + 7) % 7 || 7;
-    const nextMonday = new Date(today);
-    nextMonday.setDate(today.getDate() + daysUntilMonday);
-    date = nextMonday.toISOString().split('T')[0];
-    console.log(`✅ Date: Next Monday → ${date}`);
-  }
-
-  // TIME EXTRACTION
-  if (allUserText.includes('seven') || allUserText.includes('7')) {
-    if (allUserText.includes('thirty') || allUserText.includes('30')) {
-      time = '19:30';
-      console.log('✅ Time: 7:30 PM');
-    } else {
-      time = '19:00';
-      console.log('✅ Time: 7:00 PM');
-    }
-  } else if (allUserText.includes('eight') || allUserText.includes('8')) {
-    if (allUserText.includes('thirty') || allUserText.includes('30')) {
-      time = '20:30';
-      console.log('✅ Time: 8:30 PM');
-    } else {
-      time = '20:00';
-      console.log('✅ Time: 8:00 PM');
-    }
-  } else if (allUserText.includes('nine') || allUserText.includes('9')) {
-    time = '21:00';
-    console.log('✅ Time: 9:00 PM');
-  } else if (allUserText.includes('ten') || allUserText.includes('10')) {
-    time = '22:00';
-    console.log('✅ Time: 10:00 PM');
-  }
-
-  return { date, time };
-}
-
-// ITALIAN DATE AND TIME EXTRACTION
-function extractDateTimeItalian(conversation) {
-  console.log('📅 Starting Italian date/time extraction...');
-  
-  const allUserText = conversation.filter(msg => msg.role === 'user')
-    .map(msg => msg.content).join(' ').toLowerCase();
-
-  let date = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString().split('T')[0]; // Default domani
-  let time = '22:00'; // Default 22:00
-
-  // ESTRAZIONE DATA
-  if (allUserText.includes('oggi')) {
-    const today = new Date();
-    date = today.toISOString().split('T')[0];
-    console.log(`✅ Data: Oggi → ${date}`);
-  } else if (allUserText.includes('domani')) {
-    const tomorrow = new Date(Date.now() + 24 * 60 * 60 * 1000);
-    date = tomorrow.toISOString().split('T')[0];
-    console.log(`✅ Data: Domani → ${date}`);
-  } else if (allUserText.includes('lunedì') || allUserText.includes('lunedi')) {
-    // Calcola prossimo lunedì
-    const today = new Date();
-    const daysUntilMonday = (1 - today.getDay() + 7) % 7 || 7;
-    const nextMonday = new Date(today);
-    nextMonday.setDate(today.getDate() + daysUntilMonday);
-    date = nextMonday.toISOString().split('T')[0];
-    console.log(`✅ Data: Prossimo lunedì → ${date}`);
-  }
-
-  // ESTRAZIONE ORARIO
-  if (allUserText.includes('sette') || allUserText.includes('7')) {
-    if (allUserText.includes('trenta') || allUserText.includes('mezza')) {
-      time = '19:30';
-      console.log('✅ Orario: 19:30');
-    } else {
-      time = '19:00';
-      console.log('✅ Orario: 19:00');
-    }
-  } else if (allUserText.includes('otto') || allUserText.includes('8')) {
-    if (allUserText.includes('trenta') || allUserText.includes('mezza')) {
-      time = '20:30';
-      console.log('✅ Orario: 20:30');
-    } else {
-      time = '20:00';
-      console.log('✅ Orario: 20:00');
-    }
-  } else if (allUserText.includes('nove') || allUserText.includes('9')) {
-    time = '21:00';
-    console.log('✅ Orario: 21:00');
-  } else if (allUserText.includes('dieci') || allUserText.includes('10')) {
-    time = '22:00';
-    console.log('✅ Orario: 22:00');
-  }
-
-  return { date, time };
-}
-
-// ENGLISH SPECIAL REQUESTS EXTRACTION
-function extractSpecialRequests(conversation) {
-  const allUserText = conversation.filter(msg => msg.role === 'user')
-    .map(msg => msg.content).join(' ').toLowerCase();
-
-  let specialRequests = 'No special requests';
-
-  if (allUserText.includes('dinner only') || allUserText.includes('only dinner')) {
-    specialRequests = 'Dinner only (no show)';
-    console.log('✅ Special request: Dinner only');
-  }
-
-  return specialRequests;
-}
-
-// ITALIAN SPECIAL REQUESTS EXTRACTION
-function extractSpecialRequestsItalian(conversation) {
-  const allUserText = conversation.filter(msg => msg.role === 'user')
-    .map(msg => msg.content).join(' ').toLowerCase();
-
-  let specialRequests = 'Nessuna richiesta speciale';
-
-  if (allUserText.includes('solo cena') || allUserText.includes('cena solamente')) {
-    specialRequests = 'Solo cena (no spettacolo)';
-    console.log('✅ Richiesta speciale: Solo cena');
-  }
-
-  return specialRequests;
-}
-
-// DETECT LANGUAGE AND USE APPROPRIATE EXTRACTION
-function extractReservationFromConversation(conversation) {
-  console.log('🔍 Starting EXTRACTION...');
-  
-  // Detect language from conversation
-  const allText = conversation.filter(msg => msg.role === 'user')
-    .map(msg => msg.content).join(' ').toLowerCase();
-  
-  const isItalian = allText.includes('ciao') || allText.includes('grazie') || allText.includes('perfetto') || 
-                   allText.includes('vorrei') || allText.includes('prenotare') || allText.includes('grazie');
-  
-  console.log(`🌍 Language detected: ${isItalian ? 'Italian' : 'English'}`);
+// ENGLISH - EXTRACT FROM AGENT CONFIRMATIONS
+function extractFromAgentConfirmations(conversation) {
+  console.log('🎯 Extracting from AGENT confirmations...');
   
   let reservation = {
     firstName: '',
@@ -568,55 +50,318 @@ function extractReservationFromConversation(conversation) {
     adults: 2,
     children: 0,
     phone: '',
-    specialRequests: isItalian ? 'Nessuna richiesta speciale' : 'No special requests'
+    specialRequests: 'No special requests'
   };
+
+  if (!conversation || !Array.isArray(conversation)) {
+    return reservation;
+  }
+
+  // Look for agent confirmation patterns
+  for (let i = 0; i < conversation.length; i++) {
+    const msg = conversation[i];
+    
+    if (msg.role === 'assistant' && msg.content) {
+      const content = msg.content;
+      
+      // NAME CONFIRMATION: "So I have Tony Mazarazzi"
+      const nameMatch = content.match(/so i have\s+([A-Z][a-z]+)\s+([A-Z][a-z]+)/i) || 
+                       content.match(/i have\s+([A-Z][a-z]+)\s+([A-Z][a-z]+)/i) ||
+                       content.match(/reservation for\s+([A-Z][a-z]+)\s+([A-Z][a-z]+)/i);
+      
+      if (nameMatch && nameMatch[1] && nameMatch[2]) {
+        reservation.firstName = nameMatch[1];
+        reservation.lastName = nameMatch[2];
+        console.log(`✅ Name from agent confirmation: ${reservation.firstName} ${reservation.lastName}`);
+      }
+      
+      // GUEST COUNT CONFIRMATION: "for 2 people", "for 2 guests"
+      const guestMatch = content.match(/for\s+(\d+)\s+(?:people|guests)/i) ||
+                        content.match(/reservation for\s+(\d+)/i) ||
+                        content.match(/(\d+)\s+(?:people|guests)/i);
+      
+      if (guestMatch && guestMatch[1]) {
+        reservation.guests = parseInt(guestMatch[1]);
+        reservation.adults = reservation.guests;
+        console.log(`✅ Guests from agent confirmation: ${reservation.guests}`);
+      }
+      
+      // DATE/TIME CONFIRMATION: "on Thursday at 9 PM", "for Thursday at 9 PM"
+      const dateTimeMatch = content.match(/(?:on|for)\s+(\w+)\s+(?:at|for)\s+(\d+)(?::(\d+))?\s*(AM|PM)?/i) ||
+                           content.match(/(\w+)\s+at\s+(\d+)(?::(\d+))?\s*(AM|PM)?/i);
+      
+      if (dateTimeMatch) {
+        // Extract and format time
+        let hours = parseInt(dateTimeMatch[2]);
+        const minutes = dateTimeMatch[3] || '00';
+        const period = dateTimeMatch[4] ? dateTimeMatch[4].toUpperCase() : 'PM';
+        
+        // Convert to 24-hour format
+        if (period === 'PM' && hours < 12) hours += 12;
+        if (period === 'AM' && hours === 12) hours = 0;
+        
+        reservation.time = `${hours.toString().padStart(2, '0')}:${minutes}`;
+        console.log(`✅ Time from agent confirmation: ${reservation.time}`);
+        
+        // Handle date
+        const dayMatch = dateTimeMatch[1].toLowerCase();
+        const today = new Date();
+        
+        if (dayMatch.includes('today')) {
+          reservation.date = today.toISOString().split('T')[0];
+        } else if (dayMatch.includes('tomorrow')) {
+          const tomorrow = new Date(today);
+          tomorrow.setDate(today.getDate() + 1);
+          reservation.date = tomorrow.toISOString().split('T')[0];
+        } else if (dayMatch.includes('thurs')) {
+          const daysUntilThursday = (4 - today.getDay() + 7) % 7 || 7;
+          const nextThursday = new Date(today);
+          nextThursday.setDate(today.getDate() + daysUntilThursday);
+          reservation.date = nextThursday.toISOString().split('T')[0];
+        } else if (dayMatch.includes('fri')) {
+          const daysUntilFriday = (5 - today.getDay() + 7) % 7 || 7;
+          const nextFriday = new Date(today);
+          nextFriday.setDate(today.getDate() + daysUntilFriday);
+          reservation.date = nextFriday.toISOString().split('T')[0];
+        } else if (dayMatch.includes('sat')) {
+          const daysUntilSaturday = (6 - today.getDay() + 7) % 7 || 7;
+          const nextSaturday = new Date(today);
+          nextSaturday.setDate(today.getDate() + daysUntilSaturday);
+          reservation.date = nextSaturday.toISOString().split('T')[0];
+        } else if (dayMatch.includes('sun')) {
+          const daysUntilSunday = (7 - today.getDay() + 7) % 7 || 7;
+          const nextSunday = new Date(today);
+          nextSunday.setDate(today.getDate() + daysUntilSunday);
+          reservation.date = nextSunday.toISOString().split('T')[0];
+        } else if (dayMatch.includes('mon')) {
+          const daysUntilMonday = (1 - today.getDay() + 7) % 7 || 7;
+          const nextMonday = new Date(today);
+          nextMonday.setDate(today.getDate() + daysUntilMonday);
+          reservation.date = nextMonday.toISOString().split('T')[0];
+        } else if (dayMatch.includes('tues')) {
+          const daysUntilTuesday = (2 - today.getDay() + 7) % 7 || 7;
+          const nextTuesday = new Date(today);
+          nextTuesday.setDate(today.getDate() + daysUntilTuesday);
+          reservation.date = nextTuesday.toISOString().split('T')[0];
+        } else if (dayMatch.includes('wed')) {
+          const daysUntilWednesday = (3 - today.getDay() + 7) % 7 || 7;
+          const nextWednesday = new Date(today);
+          nextWednesday.setDate(today.getDate() + daysUntilWednesday);
+          reservation.date = nextWednesday.toISOString().split('T')[0];
+        }
+        console.log(`✅ Date from agent confirmation: ${reservation.date}`);
+      }
+      
+      // PHONE CONFIRMATION: "phone number is", "contact number is"
+      const phoneMatch = content.match(/phone number is\s+([+\d\s\-\(\)]+)/i) ||
+                        content.match(/contact number is\s+([+\d\s\-\(\)]+)/i);
+      
+      if (phoneMatch && phoneMatch[1]) {
+        // Clean the phone number
+        const cleanPhone = phoneMatch[1].replace(/\D/g, '');
+        if (cleanPhone.length >= 10) {
+          reservation.phone = '+39' + cleanPhone.slice(-10);
+          console.log(`✅ Phone from agent confirmation: ${reservation.phone}`);
+        }
+      }
+      
+      // SPECIAL REQUESTS
+      if (content.includes('dinner only') || content.includes('only dinner')) {
+        reservation.specialRequests = 'Dinner only (no show)';
+        console.log('✅ Special request from agent: Dinner only');
+      }
+    }
+  }
+
+  return reservation;
+}
+
+// ITALIAN - EXTRACT FROM AGENT CONFIRMATIONS
+function extractFromAgentConfirmationsItalian(conversation) {
+  console.log('🎯 Estraendo dalle conferme dell AGENTE...');
   
+  let reservation = {
+    firstName: '',
+    lastName: '',
+    date: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+    time: '22:00',
+    guests: 2,
+    adults: 2,
+    children: 0,
+    phone: '',
+    specialRequests: 'Nessuna richiesta speciale'
+  };
+
+  if (!conversation || !Array.isArray(conversation)) {
+    return reservation;
+  }
+
+  // Cerca pattern di conferma dell'agente
+  for (let i = 0; i < conversation.length; i++) {
+    const msg = conversation[i];
+    
+    if (msg.role === 'assistant' && msg.content) {
+      const content = msg.content;
+      
+      // CONFERMA NOME: "Quindi ho Tony Mazarazzi"
+      const nameMatch = content.match(/quindi ho\s+([A-Z][a-z]+)\s+([A-Z][a-z]+)/i) || 
+                       content.match(/ho\s+([A-Z][a-z]+)\s+([A-Z][a-z]+)/i) ||
+                       content.match(/prenotazione per\s+([A-Z][a-z]+)\s+([A-Z][a-z]+)/i);
+      
+      if (nameMatch && nameMatch[1] && nameMatch[2]) {
+        reservation.firstName = nameMatch[1];
+        reservation.lastName = nameMatch[2];
+        console.log(`✅ Nome dalla conferma agente: ${reservation.firstName} ${reservation.lastName}`);
+      }
+      
+      // CONFERMA NUMERO OSPITI: "per 2 persone", "per 2 ospiti"
+      const guestMatch = content.match(/per\s+(\d+)\s+(?:persone|ospiti)/i) ||
+                        content.match(/prenotazione per\s+(\d+)/i) ||
+                        content.match(/(\d+)\s+(?:persone|ospiti)/i);
+      
+      if (guestMatch && guestMatch[1]) {
+        reservation.guests = parseInt(guestMatch[1]);
+        reservation.adults = reservation.guests;
+        console.log(`✅ Ospiti dalla conferma agente: ${reservation.guests}`);
+      }
+      
+      // CONFERMA DATA/ORA: "giovedì alle 21", "per giovedì alle 21"
+      const dateTimeMatch = content.match(/(?:per|il)\s+(\w+)\s+(?:alle|alle ore)\s+(\d+)(?::(\d+))?/i) ||
+                           content.match(/(\w+)\s+alle\s+(\d+)(?::(\d+))?/i);
+      
+      if (dateTimeMatch) {
+        let hours = parseInt(dateTimeMatch[2]);
+        const minutes = dateTimeMatch[3] || '00';
+        
+        // Assume evening hours if not specified
+        if (hours < 8) hours += 12;
+        
+        reservation.time = `${hours.toString().padStart(2, '0')}:${minutes}`;
+        console.log(`✅ Orario dalla conferma agente: ${reservation.time}`);
+        
+        // Gestione data
+        const dayMatch = dateTimeMatch[1].toLowerCase();
+        const today = new Date();
+        
+        if (dayMatch.includes('oggi')) {
+          reservation.date = today.toISOString().split('T')[0];
+        } else if (dayMatch.includes('domani')) {
+          const tomorrow = new Date(today);
+          tomorrow.setDate(today.getDate() + 1);
+          reservation.date = tomorrow.toISOString().split('T')[0];
+        } else if (dayMatch.includes('giov')) {
+          const daysUntilThursday = (4 - today.getDay() + 7) % 7 || 7;
+          const nextThursday = new Date(today);
+          nextThursday.setDate(today.getDate() + daysUntilThursday);
+          reservation.date = nextThursday.toISOString().split('T')[0];
+        } else if (dayMatch.includes('ven')) {
+          const daysUntilFriday = (5 - today.getDay() + 7) % 7 || 7;
+          const nextFriday = new Date(today);
+          nextFriday.setDate(today.getDate() + daysUntilFriday);
+          reservation.date = nextFriday.toISOString().split('T')[0];
+        } else if (dayMatch.includes('sab')) {
+          const daysUntilSaturday = (6 - today.getDay() + 7) % 7 || 7;
+          const nextSaturday = new Date(today);
+          nextSaturday.setDate(today.getDate() + daysUntilSaturday);
+          reservation.date = nextSaturday.toISOString().split('T')[0];
+        } else if (dayMatch.includes('dom')) {
+          const daysUntilSunday = (7 - today.getDay() + 7) % 7 || 7;
+          const nextSunday = new Date(today);
+          nextSunday.setDate(today.getDate() + daysUntilSunday);
+          reservation.date = nextSunday.toISOString().split('T')[0];
+        } else if (dayMatch.includes('lun')) {
+          const daysUntilMonday = (1 - today.getDay() + 7) % 7 || 7;
+          const nextMonday = new Date(today);
+          nextMonday.setDate(today.getDate() + daysUntilMonday);
+          reservation.date = nextMonday.toISOString().split('T')[0];
+        } else if (dayMatch.includes('mar')) {
+          const daysUntilTuesday = (2 - today.getDay() + 7) % 7 || 7;
+          const nextTuesday = new Date(today);
+          nextTuesday.setDate(today.getDate() + daysUntilTuesday);
+          reservation.date = nextTuesday.toISOString().split('T')[0];
+        } else if (dayMatch.includes('mer')) {
+          const daysUntilWednesday = (3 - today.getDay() + 7) % 7 || 7;
+          const nextWednesday = new Date(today);
+          nextWednesday.setDate(today.getDate() + daysUntilWednesday);
+          reservation.date = nextWednesday.toISOString().split('T')[0];
+        }
+        console.log(`✅ Data dalla conferma agente: ${reservation.date}`);
+      }
+      
+      // CONFERMA TELEFONO: "numero di telefono è", "telefono è"
+      const phoneMatch = content.match(/numero di telefono è\s+([+\d\s\-\(\)]+)/i) ||
+                        content.match(/telefono è\s+([+\d\s\-\(\)]+)/i);
+      
+      if (phoneMatch && phoneMatch[1]) {
+        const cleanPhone = phoneMatch[1].replace(/\D/g, '');
+        if (cleanPhone.length >= 10) {
+          reservation.phone = '+39' + cleanPhone.slice(-10);
+          console.log(`✅ Telefono dalla conferma agente: ${reservation.phone}`);
+        }
+      }
+      
+      // RICHIESTE SPECIALI
+      if (content.includes('solo cena') || content.includes('cena solamente')) {
+        reservation.specialRequests = 'Solo cena (no spettacolo)';
+        console.log('✅ Richiesta speciale dall agente: Solo cena');
+      }
+    }
+  }
+
+  return reservation;
+}
+
+// MAIN EXTRACTION FUNCTION - FOCUS ON AGENT CONFIRMATIONS
+function extractReservationFromConversation(conversation) {
+  console.log('🔍 Starting EXTRACTION from AGENT confirmations...');
+  
+  let defaultReservation = {
+    firstName: '',
+    lastName: '',
+    date: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+    time: '22:00',
+    guests: 2,
+    adults: 2,
+    children: 0,
+    phone: '',
+    specialRequests: 'No special requests'
+  };
+
   if (!conversation || !Array.isArray(conversation) || conversation.length === 0) {
     console.log('❌ No conversation data available');
-    return reservation;
+    return defaultReservation;
   }
   
   console.log(`📞 Processing ${conversation.length} conversation messages`);
   
-  // Use appropriate language functions
+  // Log the conversation for debugging
+  conversation.forEach((msg, index) => {
+    console.log(`${index}. ${msg.role.toUpperCase()}: ${msg.content}`);
+  });
+  
+  // Detect language from conversation content
+  const allText = conversation.map(msg => msg.content).join(' ').toLowerCase();
+  const isItalian = allText.includes('grazie') || allText.includes('perfetto') || 
+                   allText.includes('prego') || allText.includes('ciao') ||
+                   allText.includes('buongiorno') || allText.includes('buonasera');
+  
+  console.log(`🌍 Language detected: ${isItalian ? 'Italian' : 'English'}`);
+  
+  // Use agent confirmation extraction
+  let reservation;
   if (isItalian) {
-    const names = extractNamesFromConversationItalian(conversation);
-    reservation.firstName = names.firstName;
-    reservation.lastName = names.lastName;
-    
-    reservation.phone = extractPhoneNumberItalian(conversation);
-    
-    const guests = extractGuestInfoItalian(conversation);
-    reservation.guests = guests.totalGuests;
-    reservation.adults = guests.adults;
-    reservation.children = guests.children;
-    
-    const datetime = extractDateTimeItalian(conversation);
-    reservation.date = datetime.date;
-    reservation.time = datetime.time;
-    
-    reservation.specialRequests = extractSpecialRequestsItalian(conversation);
+    reservation = extractFromAgentConfirmationsItalian(conversation);
+    // Update default for Italian
+    defaultReservation.specialRequests = 'Nessuna richiesta speciale';
   } else {
-    const names = extractNamesFromConversation(conversation);
-    reservation.firstName = names.firstName;
-    reservation.lastName = names.lastName;
-    
-    reservation.phone = extractPhoneNumber(conversation);
-    
-    const guests = extractGuestInfo(conversation);
-    reservation.guests = guests.totalGuests;
-    reservation.adults = guests.adults;
-    reservation.children = guests.children;
-    
-    const datetime = extractDateTime(conversation);
-    reservation.date = datetime.date;
-    reservation.time = datetime.time;
-    
-    reservation.specialRequests = extractSpecialRequests(conversation);
+    reservation = extractFromAgentConfirmations(conversation);
   }
   
-  console.log('✅ FINAL Extraction result:', reservation);
-  return reservation;
+  // Merge with defaults to ensure all fields are populated
+  const finalReservation = { ...defaultReservation, ...reservation };
+  
+  console.log('✅ FINAL Extraction result from agent confirmations:', finalReservation);
+  return finalReservation;
 }
 
 // Express server routes
@@ -693,7 +438,7 @@ app.post('/api/reservations', async (req, res) => {
           "Total People": parseInt(guests),
           "Dinner Count": parseInt(adults),
           "Show-Only Count": 0,
-          "Kids Count": parseInt(children),
+          "Kids Count": parseInt(children) || 0,
           "Special Requests": specialRequests || '',
           "Reservation Status": "Pending",
           "Reservation Type": "Dinner + Show",
@@ -711,7 +456,7 @@ app.post('/api/reservations', async (req, res) => {
     console.log('Airtable Record ID:', record[0].id);
     
     res.json({
-      response: `Perfect! I've reserved ${guests} people (${adults} adults + ${children} children) for ${date} at ${time}. Your confirmation is ${reservationId}.`
+      response: `Perfect! I've reserved ${guests} people for ${date} at ${time}. Your confirmation is ${reservationId}.`
     });
     
   } catch (error) {
