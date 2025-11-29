@@ -69,7 +69,7 @@ function convertDayToDate(dayName) {
   return tomorrow.toISOString().split('T')[0];
 }
 
-// UPDATED: PARSES CURRENT AI OUTPUT FORMAT
+// FIXED: PROPER REGEX WITH LOOKAHEAD FOR KEY-VALUE PAIRS
 function extractStructuredData(conversation) {
   console.log('🔍 Looking for structured reservation data...');
   
@@ -110,28 +110,27 @@ function extractStructuredData(conversation) {
       const dataSection = dataMatch[1];
       console.log('📋 Data section found:', dataSection);
 
-      // Parse key-value pairs from the data section
-      const reservation = { ...defaultReservation };
-      
-      // Extract each field using flexible regex patterns
+      // FIXED: Use lookahead patterns to capture until next field
       const fieldPatterns = {
-        firstName: /First Name:\s*([^,\n]+)/i,
-        lastName: /Last Name:\s*([^,\n]+)/i,
-        phone: /Phone:\s*([^,\n]+)/i,
-        guests: /Guests:\s*([^,\n]+)/i,
-        adults: /Adults:\s*([^,\n]+)/i,
-        children: /Children:\s*([^,\n]+)/i,
-        date: /Date:\s*([^,\n]+)/i,
-        time: /Time:\s*([^,\n]+)/i,
-        specialRequests: /Special Requests:\s*([^,\n]+)/i,
-        newsletter: /Newsletter:\s*(yes|no)/i
+        firstName: /First Name:\s*([^]+?)(?=\s*Last Name:|$)/i,
+        lastName: /Last Name:\s*([^]+?)(?=\s*Phone:|$)/i,
+        phone: /Phone:\s*([^]+?)(?=\s*Guests:|$)/i,
+        guests: /Guests:\s*([^]+?)(?=\s*Adults:|$)/i,
+        adults: /Adults:\s*([^]+?)(?=\s*Children:|$)/i,
+        children: /Children:\s*([^]+?)(?=\s*Date:|$)/i,
+        date: /Date:\s*([^]+?)(?=\s*Time:|$)/i,
+        time: /Time:\s*([^]+?)(?=\s*Special Requests:|$)/i,
+        specialRequests: /Special Requests:\s*([^]+?)(?=\s*Newsletter:|$)/i,
+        newsletter: /Newsletter:\s*([^]+?)$/i
       };
+      
+      const reservation = { ...defaultReservation };
       
       Object.entries(fieldPatterns).forEach(([field, pattern]) => {
         const match = dataSection.match(pattern);
         if (match && match[1]) {
           const value = match[1].trim();
-          console.log(`🔍 ${field}: "${value}"`);
+          console.log(`✅ ${field}: "${value}"`);
           
           switch (field) {
             case 'firstName':
