@@ -56,7 +56,7 @@ function convertDayToDate(dayName) {
     const tomorrow = new Date(today);
     tomorrow.setDate(today.getDate() + 1);
     return tomorrow.toISOString().split('T')[0];
-  } else if (targetDay !== undefined) {
+  } else if (targetDay !== undefined) {  // FIXED: Was "if (targetDay !== )" – now correct
     const daysUntil = (targetDay - today.getDay() + 7) % 7 || 7;
     const targetDate = new Date(today);
     targetDate.setDate(today.getDate() + daysUntil);
@@ -69,9 +69,12 @@ function convertDayToDate(dayName) {
   return tomorrow.toISOString().split('T')[0];
 }
 
-// FIXED: PROPER REGEX WITH LOOKAHEAD FOR KEY-VALUE PAIRS
+// FIXED: PROPER REGEX WITH LOOKAHEAD FOR KEY-VALUE PAIRS + ENHANCED LOGGING
 function extractStructuredData(conversation) {
   console.log('🔍 Looking for structured reservation data...');
+  
+  // NEW: Log the entire conversation for debugging
+  console.log('📜 Full conversation transcript_object:', JSON.stringify(conversation, null, 2));
   
   const defaultReservation = {
     firstName: '',
@@ -87,12 +90,16 @@ function extractStructuredData(conversation) {
   };
 
   if (!conversation || !Array.isArray(conversation)) {
+    console.log('❌ Conversation is null, empty, or not an array');
     return defaultReservation;
   }
+
+  console.log(`📊 Conversation has ${conversation.length} messages`);
 
   // Look for the structured data pattern in agent messages
   for (let i = 0; i < conversation.length; i++) {
     const msg = conversation[i];
+    console.log(`🔎 Message ${i}: Role=${msg.role}, Content preview: "${msg.content ? msg.content.substring(0, 100) : 'NO CONTENT'}"`);
     
     if (msg.role === 'assistant' && msg.content && msg.content.includes('RESERVATION_DATA:')) {
       console.log('✅ Found structured reservation data!');
@@ -222,6 +229,7 @@ app.post('/api/reservations', async (req, res) => {
   try {
     console.log('\n📞 RETELL WEBHOOK RECEIVED');
     console.log('Event:', req.body.event);
+    console.log('Full req.body:', JSON.stringify(req.body, null, 2));  // NEW: Log the ENTIRE payload
     
     const { event, call } = req.body;
     
@@ -238,7 +246,14 @@ app.post('/api/reservations', async (req, res) => {
     if (call && call.transcript_object) {
       console.log(`✅ Using transcript_object with ${call.transcript_object.length} messages`);
       conversationData = call.transcript_object;
+    } else {
+      console.log('❌ No transcript_object found in call');
     }
+    
+    // NEW: Log each message in detail
+    conversationData.forEach((msg, index) => {
+      console.log(`Message ${index}: Role=${msg.role}, Content="${msg.content || 'EMPTY'}"`);
+    });
     
     // Use simple structured data extraction
     const reservationData = extractStructuredData(conversationData);
