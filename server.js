@@ -69,7 +69,7 @@ function convertDayToDate(dayName) {
   return tomorrow.toISOString().split('T')[0];
 }
 
-// SIMPLE LINE-BASED STRUCTURED DATA EXTRACTION
+// UPDATED: PARSES CURRENT AI OUTPUT FORMAT
 function extractStructuredData(conversation) {
   console.log('🔍 Looking for structured reservation data...');
   
@@ -94,43 +94,84 @@ function extractStructuredData(conversation) {
   for (let i = 0; i < conversation.length; i++) {
     const msg = conversation[i];
     
-    if (msg.role === 'assistant' && msg.content && msg.content.includes('RESERVATION_DATA_START')) {
+    if (msg.role === 'assistant' && msg.content && msg.content.includes('RESERVATION_DATA:')) {
       console.log('✅ Found structured reservation data!');
+      console.log('📝 Full assistant message:', msg.content);
       
-      // Extract the reservation data block
-      const reservationBlockMatch = msg.content.match(/RESERVATION_DATA_START\n([\s\S]*?)\nRESERVATION_DATA_END/);
-      if (!reservationBlockMatch) {
-        console.log('❌ Could not extract reservation block');
+      const content = msg.content;
+      
+      // Extract everything after RESERVATION_DATA:
+      const dataMatch = content.match(/RESERVATION_DATA:\s*(.*)/i);
+      if (!dataMatch) {
+        console.log('❌ Could not extract data section');
         return defaultReservation;
       }
       
-      const dataBlock = reservationBlockMatch[1];
-      console.log('📋 Data block found:', dataBlock);
+      const dataSection = dataMatch[1];
+      console.log('📋 Data section found:', dataSection);
+
+      // Parse key-value pairs from the data section
+      const reservation = { ...defaultReservation };
       
-      // Parse each line
-      const lines = dataBlock.split('\n').filter(line => line.trim() !== '');
-      console.log('📝 Parsed lines:', lines);
+      // Extract each field using flexible regex patterns
+      const fieldPatterns = {
+        firstName: /First Name:\s*([^,\n]+)/i,
+        lastName: /Last Name:\s*([^,\n]+)/i,
+        phone: /Phone:\s*([^,\n]+)/i,
+        guests: /Guests:\s*([^,\n]+)/i,
+        adults: /Adults:\s*([^,\n]+)/i,
+        children: /Children:\s*([^,\n]+)/i,
+        date: /Date:\s*([^,\n]+)/i,
+        time: /Time:\s*([^,\n]+)/i,
+        specialRequests: /Special Requests:\s*([^,\n]+)/i,
+        newsletter: /Newsletter:\s*(yes|no)/i
+      };
       
-      // We expect exactly 10 lines in the correct order
-      if (lines.length >= 10) {
-        const reservation = {
-          firstName: lines[0].trim(),
-          lastName: lines[1].trim(),
-          phone: lines[2].trim() ? '+39' + lines[2].trim().replace(/\D/g, '') : '',
-          guests: parseInt(lines[3].trim()) || 2,
-          adults: parseInt(lines[4].trim()) || 2,
-          children: parseInt(lines[5].trim()) || 0,
-          date: lines[6].trim(),
-          time: lines[7].trim(),
-          specialRequests: lines[8].trim() === 'None' ? 'No special requests' : lines[8].trim(),
-          newsletter: lines[9].trim().toLowerCase() === 'true'
-        };
-        
-        console.log('✅ Successfully parsed structured data:', reservation);
-        return reservation;
-      } else {
-        console.log('❌ Not enough lines in data block. Expected 10, got:', lines.length);
-      }
+      Object.entries(fieldPatterns).forEach(([field, pattern]) => {
+        const match = dataSection.match(pattern);
+        if (match && match[1]) {
+          const value = match[1].trim();
+          console.log(`🔍 ${field}: "${value}"`);
+          
+          switch (field) {
+            case 'firstName':
+              reservation.firstName = value;
+              break;
+            case 'lastName':
+              reservation.lastName = value;
+              break;
+            case 'phone':
+              reservation.phone = '+39' + value.replace(/\D/g, '');
+              break;
+            case 'guests':
+              reservation.guests = parseInt(value) || 2;
+              break;
+            case 'adults':
+              reservation.adults = parseInt(value) || reservation.guests;
+              break;
+            case 'children':
+              reservation.children = parseInt(value) || 0;
+              break;
+            case 'date':
+              reservation.date = convertDayToDate(value);
+              break;
+            case 'time':
+              reservation.time = value;
+              break;
+            case 'specialRequests':
+              reservation.specialRequests = value === 'None' ? 'No special requests' : value;
+              break;
+            case 'newsletter':
+              reservation.newsletter = value.toLowerCase() === 'yes';
+              break;
+          }
+        } else {
+          console.log(`❌ ${field}: NOT FOUND`);
+        }
+      });
+      
+      console.log('✅ Successfully parsed structured data:', reservation);
+      return reservation;
     }
   }
   
