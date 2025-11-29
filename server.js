@@ -56,198 +56,129 @@ function wordsToDigits(text) {
   return digits;
 }
 
-// CLEAN NAME EXTRACTION - Separates names from phone numbers
+// IMPROVED NAME EXTRACTION
 function extractNamesFromConversation(conversation) {
   console.log('🎯 Starting CLEAN name extraction...');
-  
   let firstName = '';
   let lastName = '';
-  
+
   const userMessages = conversation.filter(msg => msg.role === 'user').map(msg => msg.content);
   const allUserText = userMessages.join(' ');
-  
   console.log('🔍 Raw user text:', allUserText);
 
-  // STRATEGY 1: Look for explicit name declarations FIRST
+  // 1) explicit statements
   const explicitPatterns = [
-    // "My first name is Paul"
     /my first name is\s+([A-Z][a-z]+)/i,
-    // "First name is Paul"  
     /first name is\s+([A-Z][a-z]+)/i,
-    // "My name is Paul"
-    /my name is\s+([A-Z][a-z]+)/i,
-    // "I am Paul"
-    /i am\s+([A-Z][a-z]+)/i
+    /my name is\s+([A-Z][a-z]+)(?:\s+([A-Z][a-z]+))?/i,
+    /i am\s+([A-Z][a-z]+)(?:\s+([A-Z][a-z]+))?/i
   ];
-
-  for (const pattern of explicitPatterns) {
-    const match = allUserText.match(pattern);
-    if (match && match[1]) {
-      firstName = match[1];
-      console.log(`✅ First name from explicit pattern: ${firstName}`);
-      break;
+  for (const p of explicitPatterns) {
+    const m = allUserText.match(p);
+    if (m) {
+      firstName = m[1] || '';
+      lastName = m[2] || '';
+      console.log('✅ Name from explicit pattern:', firstName, lastName);
+      return { firstName, lastName };
     }
   }
 
-  // STRATEGY 2: Conversation context - look for responses to name questions
-  if (!firstName) {
-    for (let i = 0; i < conversation.length; i++) {
-      const msg = conversation[i];
-      
-      if (msg.role === 'assistant' && msg.content && 
-          (msg.content.toLowerCase().includes('first name') || 
-           msg.content.toLowerCase().includes('your name'))) {
-        
-        // Look at the NEXT user response only
-        const nextUserMsg = conversation[i + 1];
-        if (nextUserMsg && nextUserMsg.role === 'user' && nextUserMsg.content) {
-          const content = nextUserMsg.content.trim();
-          
-          // Extract just the first capitalized word (ignore phone numbers)
-          const nameMatch = content.match(/^([A-Z][a-z]{2,})[?!.]?$/);
-          if (nameMatch) {
-            const potentialName = nameMatch[1];
-            // Only filter out the most basic words
-            if (!['yes', 'no', 'ok', 'hello'].includes(potentialName.toLowerCase())) {
-              firstName = potentialName;
-              console.log(`✅ First name from conversation: ${firstName}`);
-              break;
-            }
-          }
-        }
-      }
-    }
+  // 2) Prefer explicit two-word "First Last"
+  const twoWordMatch = allUserText.match(/\b([A-Z][a-z]{2,})\s+([A-Z][a-z]{2,})\b/);
+  if (twoWordMatch) {
+    firstName = twoWordMatch[1];
+    lastName = twoWordMatch[2];
+    console.log('✅ Found two-word name:', firstName, lastName);
+    return { firstName, lastName };
   }
 
-  // STRATEGY 3: Look for last name in conversation context
-  for (let i = 0; i < conversation.length; i++) {
-    const msg = conversation[i];
-    
-    if (msg.role === 'assistant' && msg.content && 
-        msg.content.toLowerCase().includes('last name')) {
-      
-      // Look at the NEXT user response only
-      const nextUserMsg = conversation[i + 1];
-      if (nextUserMsg && nextUserMsg.role === 'user' && nextUserMsg.content && firstName) {
-        const content = nextUserMsg.content.trim();
-        
-        // Extract just the first capitalized word
-        const nameMatch = content.match(/^([A-Z][a-z]{2,})[?!.]?$/);
-        if (nameMatch) {
-          const potentialName = nameMatch[1];
-          if (!['yes', 'no', 'ok'].includes(potentialName.toLowerCase())) {
-            lastName = potentialName;
-            console.log(`✅ Last name from conversation: ${lastName}`);
-            break;
-          }
-        }
-      }
-    }
-  }
+  // 3) Single-word fallback but filter common sentence-start or filler tokens
+  const filtered = allUserText.replace(/\b(five|four|one|three|two|eight|nine|six|seven|zero)\b/gi, '');
+  const capitalizedWords = filtered.match(/\b[A-Z][a-z]{2,}\b/g) || [];
+  console.log('🔍 Capitalized words (no numbers):', capitalizedWords);
 
-  // STRATEGY 4: Fallback - find standalone capitalized words that are NOT in phone number context
-  if (!firstName || !lastName) {
-    // Remove phone number patterns first to avoid contamination
-    const textWithoutNumbers = allUserText.replace(/(?:five|four|one|three|two|eight|\d)/gi, '');
-    
-    const capitalizedWords = textWithoutNumbers.match(/\b[A-Z][a-z]{2,}\b/g) || [];
-    console.log('🔍 Capitalized words (no numbers):', capitalizedWords);
-    
-    // Filter out obvious non-names
-    const obviousNonNames = ['hello', 'yes', 'no', 'ok', 'thank', 'good', 'just', 'woah', 'not'];
-    const potentialNames = capitalizedWords.filter(word => 
-      !obviousNonNames.includes(word.toLowerCase())
-    );
-    
-    console.log('🔍 Potential names after filtering:', potentialNames);
-    
-    if (potentialNames.length >= 2 && !firstName && !lastName) {
-      // Take the first two distinct names
-      firstName = potentialNames[0];
-      for (let i = 1; i < potentialNames.length; i++) {
-        if (potentialNames[i] !== firstName) {
-          lastName = potentialNames[i];
-          break;
-        }
-      }
-      console.log(`✅ Names from fallback: ${firstName} ${lastName}`);
-    } else if (potentialNames.length >= 1 && !firstName) {
-      firstName = potentialNames[0];
-      console.log(`✅ First name from fallback: ${firstName}`);
+  const stopwords = new Set(['hello','yes','no','ok','thank','thanks','alright','make','this','that','only','just']);
+  const potentialNames = capitalizedWords.filter(w => !stopwords.has(w.toLowerCase()));
+  console.log('🔍 Potential names after filtering:', potentialNames);
+
+  if (potentialNames.length >= 2) {
+    firstName = potentialNames[0];
+    // pick next distinct that looks like a surname
+    for (let i = 1; i < potentialNames.length; i++) {
+      if (potentialNames[i] !== firstName) { lastName = potentialNames[i]; break; }
     }
+  } else if (potentialNames.length === 1) {
+    firstName = potentialNames[0];
   }
 
   console.log(`🎉 FINAL Names: "${firstName}" "${lastName}"`);
   return { firstName, lastName };
 }
 
-// ROBUST GUEST COUNTING
+// IMPROVED GUEST COUNTING
 function extractGuestInfo(conversation) {
   console.log('👥 Starting guest extraction...');
-  
   const allUserText = conversation.filter(msg => msg.role === 'user')
     .map(msg => msg.content).join(' ').toLowerCase();
-
   console.log('🔍 Guest extraction text:', allUserText);
 
-  let totalGuests = 2;
-  let adults = 2;
+  // safer default = 1 (assume solo unless stated)
+  let totalGuests = 1;
+  let adults = 1;
   let children = 0;
 
-  // PATTERN 1: "just me and my girlfriend" = 2 people
-  if (allUserText.includes('just me and my girlfriend') || allUserText.includes('me and my girlfriend')) {
-    totalGuests = 2;
-    adults = 2;
-    children = 0;
-    console.log(`✅ Couple pattern: 2 people (me + girlfriend)`);
+  // explicit phrases for solo
+  if (allUserText.includes('just me') ||
+      allUserText.includes('only me') ||
+      allUserText.includes('for myself') ||
+      allUserText.includes('myself') ||
+      allUserText.includes('alone')) {
+    totalGuests = 1; adults = 1; children = 0;
+    console.log('✅ Solo pattern matched');
+    return { totalGuests, adults, children };
   }
-  // PATTERN 2: "me and my wife" = 2 people
-  else if (allUserText.includes('me and my wife') || allUserText.includes('me and my husband')) {
-    totalGuests = 2;
-    adults = 2;
-    children = 0;
-    console.log(`✅ Couple pattern: 2 people`);
+
+  // couple patterns
+  if (allUserText.includes('just me and my girlfriend') || allUserText.includes('me and my girlfriend') ||
+      allUserText.includes('me and my wife') || allUserText.includes('me and my husband')) {
+    totalGuests = 2; adults = 2; children = 0;
+    console.log('✅ Couple pattern: 2 people');
+    return { totalGuests, adults, children };
   }
-  // PATTERN 3: "just me" = 1 person
-  else if (allUserText.includes('just me')) {
-    totalGuests = 1;
-    adults = 1;
-    children = 0;
-    console.log(`✅ Solo pattern: 1 person`);
-  }
-  // PATTERN 4: "me, my wife, and X children" = 2 + X people
-  else if (allUserText.match(/me,? my (?:wife|husband)(?:,? and)? my (\d+) (?:children|kids)/)) {
-    const match = allUserText.match(/me,? my (?:wife|husband)(?:,? and)? my (\d+) (?:children|kids)/);
+
+  // family with children: "me my wife and 2 children" etc.
+  let m;
+  if ((m = allUserText.match(/me,? my (?:wife|husband)(?:,? and)? (?:my )?(\d+)\s+(?:children|kids)/))) {
+    children = parseInt(m[1]) || 0;
     adults = 2;
-    children = parseInt(match[1]) || 0;
     totalGuests = adults + children;
-    console.log(`✅ Family pattern: ${adults} adults + ${children} children = ${totalGuests}`);
+    console.log(`✅ Family pattern: ${totalGuests}`);
+    return { totalGuests, adults, children };
   }
-  // PATTERN 5: Direct counts
-  else if (allUserText.match(/(\d+)\s+people/)) {
-    const peopleMatch = allUserText.match(/(\d+)\s+people/);
-    totalGuests = parseInt(peopleMatch[1]);
+
+  // explicit counts: "3 people" or "3 adults and 1 child"
+  if ((m = allUserText.match(/(\d+)\s+people/))) {
+    totalGuests = parseInt(m[1]);
     adults = totalGuests;
-    console.log(`✅ Total people: ${totalGuests}`);
+    console.log('✅ Total people pattern:', totalGuests);
+    return { totalGuests, adults, children };
   }
-  // PATTERN 6: Adults and children
-  else if (allUserText.match(/(\d+)\s+adults?\s+and\s+(\d+)\s+children?/)) {
-    const match = allUserText.match(/(\d+)\s+adults?\s+and\s+(\d+)\s+children?/);
-    adults = parseInt(match[1]);
-    children = parseInt(match[2]);
+  if ((m = allUserText.match(/(\d+)\s+adults?\s+and\s+(\d+)\s+children?/))) {
+    adults = parseInt(m[1]); children = parseInt(m[2]);
     totalGuests = adults + children;
-    console.log(`✅ Adults/children: ${adults} + ${children} = ${totalGuests}`);
+    console.log('✅ Adults/children pattern:', totalGuests);
+    return { totalGuests, adults, children };
   }
-  // PATTERN 7: Simple number detection as fallback
-  else {
-    const numbers = allUserText.match(/\d+/g) || [];
-    const possibleCounts = numbers.map(n => parseInt(n)).filter(n => n > 0 && n <= 20);
-    
-    if (possibleCounts.length > 0) {
-      totalGuests = Math.max(...possibleCounts);
-      adults = totalGuests;
-      console.log(`✅ Number fallback: ${totalGuests} guests`);
-    }
+
+  // fallback: look for spoken digit words "two", "three" etc.
+  const wordToNum = { zero:0, one:1, two:2, three:3, four:4, five:5, six:6, seven:7, eight:8, nine:9, ten:10 };
+  const words = allUserText.split(/\W+/);
+  const nums = words.map(w => wordToNum[w]).filter(n => typeof n === 'number' && n > 0);
+  if (nums.length) {
+    totalGuests = Math.max(...nums);
+    adults = totalGuests;
+    console.log('✅ Word-number fallback:', totalGuests);
+    return { totalGuests, adults, children };
   }
 
   console.log(`✅ FINAL: ${totalGuests} total (${adults} adults + ${children} children)`);
