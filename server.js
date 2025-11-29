@@ -69,7 +69,7 @@ function convertDayToDate(dayName) {
   return tomorrow.toISOString().split('T')[0];
 }
 
-// FIXED: PROPER REGEX WITH LOOKAHEAD FOR KEY-VALUE PAIRS + ROLE CORRECTION
+// FIXED: LINE-BASED PARSING FOR MULTI-LINE KEY-VALUE PAIRS + ROLE CORRECTION
 function extractStructuredData(conversation) {
   console.log('🔍 Looking for structured reservation data...');
   
@@ -96,47 +96,36 @@ function extractStructuredData(conversation) {
     
     if (msg.role === 'agent' && msg.content && msg.content.includes('RESERVATION_DATA:')) {  // FIXED: 'assistant' → 'agent'
       console.log('✅ Found structured reservation data!');
-      console.log('📝 Full assistant message:', msg.content);
+      console.log('📝 Full agent message:', msg.content);
       
       const content = msg.content;
       
-      // Extract everything after RESERVATION_DATA:
-      const dataMatch = content.match(/RESERVATION_DATA:\s*(.*)/i);
+      // Extract everything after RESERVATION_DATA: (with 's' flag for newlines)
+      const dataMatch = content.match(/RESERVATION_DATA:\s*(.*)/is);
       if (!dataMatch) {
         console.log('❌ Could not extract data section');
         return defaultReservation;
       }
       
-      const dataSection = dataMatch[1];
-      console.log('📋 Data section found:', dataSection);
-
-      // FIXED: Use lookahead patterns to capture until next field
-      const fieldPatterns = {
-        firstName: /First Name:\s*([^]+?)(?=\s*Last Name:|$)/i,
-        lastName: /Last Name:\s*([^]+?)(?=\s*Phone:|$)/i,
-        phone: /Phone:\s*([^]+?)(?=\s*Guests:|$)/i,
-        guests: /Guests:\s*([^]+?)(?=\s*Adults:|$)/i,
-        adults: /Adults:\s*([^]+?)(?=\s*Children:|$)/i,
-        children: /Children:\s*([^]+?)(?=\s*Date:|$)/i,
-        date: /Date:\s*([^]+?)(?=\s*Time:|$)/i,
-        time: /Time:\s*([^]+?)(?=\s*Special Requests:|$)/i,
-        specialRequests: /Special Requests:\s*([^]+?)(?=\s*Newsletter:|$)/i,
-        newsletter: /Newsletter:\s*([^]+?)$/i
-      };
+      const dataSection = dataMatch[1].trim();
+      console.log('📋 Data section found (first 200 chars):', dataSection.substring(0, 200));
       
+      // Parse line-by-line for key-value pairs
+      const lines = dataSection.split('\n').map(line => line.trim()).filter(line => line && line.includes(':'));
       const reservation = { ...defaultReservation };
       
-      Object.entries(fieldPatterns).forEach(([field, pattern]) => {
-        const match = dataSection.match(pattern);
-        if (match && match[1]) {
-          const value = match[1].trim();
-          console.log(`✅ ${field}: "${value}"`);
+      lines.forEach(line => {
+        const keyValueMatch = line.match(/^([^:]+):\s*(.+)$/);
+        if (keyValueMatch) {
+          const key = keyValueMatch[1].trim().toLowerCase().replace(/\s+/g, '');  // Normalize key
+          const value = keyValueMatch[2].trim();
+          console.log(`✅ Parsed: ${key} = "${value}"`);
           
-          switch (field) {
-            case 'firstName':
+          switch (key) {
+            case 'firstname':
               reservation.firstName = value;
               break;
-            case 'lastName':
+            case 'lastname':
               reservation.lastName = value;
               break;
             case 'phone':
@@ -157,7 +146,7 @@ function extractStructuredData(conversation) {
             case 'time':
               reservation.time = value;
               break;
-            case 'specialRequests':
+            case 'specialrequests':
               reservation.specialRequests = value === 'None' ? 'No special requests' : value;
               break;
             case 'newsletter':
@@ -165,7 +154,7 @@ function extractStructuredData(conversation) {
               break;
           }
         } else {
-          console.log(`❌ ${field}: NOT FOUND`);
+          console.log(`⚠️ Skipped invalid line: "${line}"`);
         }
       });
       
