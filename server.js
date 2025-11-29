@@ -56,7 +56,7 @@ function convertDayToDate(dayName) {
     const tomorrow = new Date(today);
     tomorrow.setDate(today.getDate() + 1);
     return tomorrow.toISOString().split('T')[0];
-  } else if (targetDay !== undefined) {  // FIXED: Was "if (targetDay !== )" – now correct
+  } else if (targetDay !== undefined) {
     const daysUntil = (targetDay - today.getDay() + 7) % 7 || 7;
     const targetDate = new Date(today);
     targetDate.setDate(today.getDate() + daysUntil);
@@ -69,12 +69,9 @@ function convertDayToDate(dayName) {
   return tomorrow.toISOString().split('T')[0];
 }
 
-// FIXED: PROPER REGEX WITH LOOKAHEAD FOR KEY-VALUE PAIRS + CORRECT ROLE CHECK
+// FIXED: PROPER REGEX WITH LOOKAHEAD FOR KEY-VALUE PAIRS + ROLE CORRECTION
 function extractStructuredData(conversation) {
   console.log('🔍 Looking for structured reservation data...');
-  
-  // NEW: Log the entire conversation for debugging
-  console.log('📜 Full conversation transcript_object:', JSON.stringify(conversation, null, 2));
   
   const defaultReservation = {
     firstName: '',
@@ -90,21 +87,16 @@ function extractStructuredData(conversation) {
   };
 
   if (!conversation || !Array.isArray(conversation)) {
-    console.log('❌ Conversation is null, empty, or not an array');
     return defaultReservation;
   }
-
-  console.log(`📊 Conversation has ${conversation.length} messages`);
 
   // Look for the structured data pattern in agent messages
   for (let i = 0; i < conversation.length; i++) {
     const msg = conversation[i];
-    console.log(`🔎 Message ${i}: Role=${msg.role}, Content preview: "${msg.content ? msg.content.substring(0, 100) : 'NO CONTENT'}"`);
     
-    // FIXED: Changed 'assistant' to 'agent' to match Retell's role naming
-    if (msg.role === 'agent' && msg.content && msg.content.includes('RESERVATION_DATA:')) {
+    if (msg.role === 'agent' && msg.content && msg.content.includes('RESERVATION_DATA:')) {  // FIXED: 'assistant' → 'agent'
       console.log('✅ Found structured reservation data!');
-      console.log('📝 Full agent message:', msg.content);
+      console.log('📝 Full assistant message:', msg.content);
       
       const content = msg.content;
       
@@ -183,13 +175,6 @@ function extractStructuredData(conversation) {
   }
   
   console.log('❌ No structured data found in conversation');
-  // Debug: Log all agent messages to see what we're working with
-  conversation.forEach((msg, index) => {
-    if (msg.role === 'agent') {
-      console.log(`Agent message ${index}:`, msg.content.substring(0, 200) + '...');
-    }
-  });
-  
   return defaultReservation;
 }
 
@@ -230,7 +215,6 @@ app.post('/api/reservations', async (req, res) => {
   try {
     console.log('\n📞 RETELL WEBHOOK RECEIVED');
     console.log('Event:', req.body.event);
-    console.log('Full req.body:', JSON.stringify(req.body, null, 2));  // NEW: Log the ENTIRE payload
     
     const { event, call } = req.body;
     
@@ -247,14 +231,7 @@ app.post('/api/reservations', async (req, res) => {
     if (call && call.transcript_object) {
       console.log(`✅ Using transcript_object with ${call.transcript_object.length} messages`);
       conversationData = call.transcript_object;
-    } else {
-      console.log('❌ No transcript_object found in call');
     }
-    
-    // NEW: Log each message in detail
-    conversationData.forEach((msg, index) => {
-      console.log(`Message ${index}: Role=${msg.role}, Content="${msg.content || 'EMPTY'}"`);
-    });
     
     // Use simple structured data extraction
     const reservationData = extractStructuredData(conversationData);
