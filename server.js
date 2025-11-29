@@ -69,9 +69,12 @@ function convertDayToDate(dayName) {
   return tomorrow.toISOString().split('T')[0];
 }
 
-// FIXED: LINE-BASED PARSING FOR MULTI-LINE KEY-VALUE PAIRS + ROLE CORRECTION
+// BACKTRACK: REGEX LOOKAHEAD + ROLE FIX + DETAILED LOGGING
 function extractStructuredData(conversation) {
   console.log('🔍 Looking for structured reservation data...');
+  
+  // NEW: Log the entire conversation for debugging
+  console.log('📜 Full conversation transcript_object:', JSON.stringify(conversation, null, 2));
   
   const defaultReservation = {
     firstName: '',
@@ -87,12 +90,16 @@ function extractStructuredData(conversation) {
   };
 
   if (!conversation || !Array.isArray(conversation)) {
+    console.log('❌ Conversation is null, empty, or not an array');
     return defaultReservation;
   }
+
+  console.log(`📊 Conversation has ${conversation.length} messages`);
 
   // Look for the structured data pattern in agent messages
   for (let i = 0; i < conversation.length; i++) {
     const msg = conversation[i];
+    console.log(`🔎 Message ${i}: Role=${msg.role}, Content preview: "${msg.content ? msg.content.substring(0, 100) : 'NO CONTENT'}"`);
     
     if (msg.role === 'agent' && msg.content && msg.content.includes('RESERVATION_DATA:')) {  // FIXED: 'assistant' → 'agent'
       console.log('✅ Found structured reservation data!');
@@ -100,32 +107,43 @@ function extractStructuredData(conversation) {
       
       const content = msg.content;
       
-      // Extract everything after RESERVATION_DATA: (with 's' flag for newlines)
-      const dataMatch = content.match(/RESERVATION_DATA:\s*(.*)/is);
+      // Extract everything after RESERVATION_DATA:
+      const dataMatch = content.match(/RESERVATION_DATA:\s*(.*)/i);
       if (!dataMatch) {
         console.log('❌ Could not extract data section');
         return defaultReservation;
       }
       
-      const dataSection = dataMatch[1].trim();
-      console.log('📋 Data section found (first 200 chars):', dataSection.substring(0, 200));
+      const dataSection = dataMatch[1];
+      console.log('📋 Data section found:', dataSection);
+
+      // FIXED: Use lookahead patterns to capture until next field
+      const fieldPatterns = {
+        firstName: /First Name:\s*([^]+?)(?=\s*Last Name:|$)/i,
+        lastName: /Last Name:\s*([^]+?)(?=\s*Phone:|$)/i,
+        phone: /Phone:\s*([^]+?)(?=\s*Guests:|$)/i,
+        guests: /Guests:\s*([^]+?)(?=\s*Adults:|$)/i,
+        adults: /Adults:\s*([^]+?)(?=\s*Children:|$)/i,
+        children: /Children:\s*([^]+?)(?=\s*Date:|$)/i,
+        date: /Date:\s*([^]+?)(?=\s*Time:|$)/i,
+        time: /Time:\s*([^]+?)(?=\s*Special Requests:|$)/i,
+        specialRequests: /Special Requests:\s*([^]+?)(?=\s*Newsletter:|$)/i,
+        newsletter: /Newsletter:\s*([^]+?)$/i
+      };
       
-      // Parse line-by-line for key-value pairs
-      const lines = dataSection.split('\n').map(line => line.trim()).filter(line => line && line.includes(':'));
       const reservation = { ...defaultReservation };
       
-      lines.forEach(line => {
-        const keyValueMatch = line.match(/^([^:]+):\s*(.+)$/);
-        if (keyValueMatch) {
-          const key = keyValueMatch[1].trim().toLowerCase().replace(/\s+/g, '');  // Normalize key
-          const value = keyValueMatch[2].trim();
-          console.log(`✅ Parsed: ${key} = "${value}"`);
+      Object.entries(fieldPatterns).forEach(([field, pattern]) => {
+        const match = dataSection.match(pattern);
+        if (match && match[1]) {
+          const value = match[1].trim();
+          console.log(`✅ ${field}: "${value}"`);
           
-          switch (key) {
-            case 'firstname':
+          switch (field) {
+            case 'firstName':
               reservation.firstName = value;
               break;
-            case 'lastname':
+            case 'lastName':
               reservation.lastName = value;
               break;
             case 'phone':
@@ -146,7 +164,7 @@ function extractStructuredData(conversation) {
             case 'time':
               reservation.time = value;
               break;
-            case 'specialrequests':
+            case 'specialRequests':
               reservation.specialRequests = value === 'None' ? 'No special requests' : value;
               break;
             case 'newsletter':
@@ -154,7 +172,7 @@ function extractStructuredData(conversation) {
               break;
           }
         } else {
-          console.log(`⚠️ Skipped invalid line: "${line}"`);
+          console.log(`❌ ${field}: NOT FOUND`);
         }
       });
       
@@ -164,6 +182,13 @@ function extractStructuredData(conversation) {
   }
   
   console.log('❌ No structured data found in conversation');
+  // Debug: Log all agent messages to see what we're working with
+  conversation.forEach((msg, index) => {
+    if (msg.role === 'agent') {
+      console.log(`Agent message ${index}:`, msg.content.substring(0, 200) + '...');
+    }
+  });
+  
   return defaultReservation;
 }
 
@@ -277,3 +302,5 @@ app.post('/api/reservations', async (req, res) => {
 app.listen(PORT, () => {
   console.log(`🎵 Jazzamore server running on port ${PORT}`);
 });
+
+
