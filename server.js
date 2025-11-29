@@ -69,7 +69,7 @@ function convertDayToDate(dayName) {
   return tomorrow.toISOString().split('T')[0];
 }
 
-// FIXED: PROPER REGEX WITH LOOKAHEAD FOR KEY-VALUE PAIRS + ENHANCED LOGGING
+// FIXED: PROPER REGEX WITH LOOKAHEAD FOR KEY-VALUE PAIRS + CORRECT ROLE CHECK
 function extractStructuredData(conversation) {
   console.log('🔍 Looking for structured reservation data...');
   
@@ -101,9 +101,10 @@ function extractStructuredData(conversation) {
     const msg = conversation[i];
     console.log(`🔎 Message ${i}: Role=${msg.role}, Content preview: "${msg.content ? msg.content.substring(0, 100) : 'NO CONTENT'}"`);
     
-    if (msg.role === 'assistant' && msg.content && msg.content.includes('RESERVATION_DATA:')) {
+    // FIXED: Changed 'assistant' to 'agent' to match Retell's role naming
+    if (msg.role === 'agent' && msg.content && msg.content.includes('RESERVATION_DATA:')) {
       console.log('✅ Found structured reservation data!');
-      console.log('📝 Full assistant message:', msg.content);
+      console.log('📝 Full agent message:', msg.content);
       
       const content = msg.content;
       
@@ -182,10 +183,10 @@ function extractStructuredData(conversation) {
   }
   
   console.log('❌ No structured data found in conversation');
-  // Debug: Log all assistant messages to see what we're working with
+  // Debug: Log all agent messages to see what we're working with
   conversation.forEach((msg, index) => {
-    if (msg.role === 'assistant') {
-      console.log(`Assistant message ${index}:`, msg.content.substring(0, 200) + '...');
+    if (msg.role === 'agent') {
+      console.log(`Agent message ${index}:`, msg.content.substring(0, 200) + '...');
     }
   });
   
