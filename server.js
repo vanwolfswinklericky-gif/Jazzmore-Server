@@ -16,6 +16,22 @@ const airtable = new Airtable({
 
 const base = airtable.base(process.env.AIRTABLE_BASE_ID);
 
+// ===== TIME AWARENESS FUNCTIONS =====
+function getItalianTimeWithTimezone() {
+    const now = new Date();
+    const romeTime = new Date(now.toLocaleString("en-US", {timeZone: "Europe/Rome"}));
+    const currentHour = romeTime.getHours();
+    
+    console.log(`🇮🇹 Italian time: ${romeTime.toISOString()}, Hour: ${currentHour}`);
+    
+    if (currentHour >= 5 && currentHour < 12) return "Buongiorno";
+    else if (currentHour >= 12 && currentHour < 13) return "Buon pranzo";
+    else if (currentHour >= 13 && currentHour < 18) return "Buon pomeriggio";
+    else if (currentHour >= 18 && currentHour < 22) return "Buonasera";
+    else return "Buonanotte";
+}
+// ===== END TIME AWARENESS =====
+
 // Generate unique reservation ID
 function generateReservationId() {
   const timestamp = Date.now().toString(36);
@@ -578,7 +594,8 @@ function crossValidateFields(finalData, sources) {
   }
 }
 
-// Express server routes
+// ===== EXPRESS ROUTES =====
+
 app.get('/', (req, res) => {
   res.json({ 
     message: '🎵 Jazzamore Server is running!',
@@ -591,6 +608,21 @@ app.get('/health', (req, res) => {
     status: 'healthy', 
     timestamp: new Date().toISOString()
   });
+});
+
+// ===== TIME TEST ENDPOINT =====
+app.get('/api/time-test', (req, res) => {
+    const serverTime = new Date();
+    const italianTime = new Date(serverTime.toLocaleString("en-US", {timeZone: "Europe/Rome"}));
+    const greeting = getItalianTimeWithTimezone();
+    
+    res.json({
+        server_time: serverTime.toISOString(),
+        italian_time: italianTime.toISOString(),
+        italian_hour: italianTime.getHours(),
+        current_greeting: greeting,
+        message: `If you called now, I would say: "${greeting}"`
+    });
 });
 
 app.get('/api/reservations', async (req, res) => {
@@ -623,6 +655,10 @@ app.post('/api/reservations', async (req, res) => {
     }
     
     console.log('🎯 Processing call_analyzed event...');
+    
+    // ===== ADD TIME AWARENESS HERE =====
+    const italianGreeting = getItalianTimeWithTimezone();
+    console.log(`🇮🇹 Current Italian greeting: ${italianGreeting}`);
     
     const reservationId = generateReservationId();
     console.log(`🎫 Generated Reservation ID: ${reservationId}`);
@@ -673,14 +709,29 @@ app.post('/api/reservations', async (req, res) => {
     console.log('Newsletter:', newsletter);
     console.log('Airtable Record ID:', record[0].id);
     
+    // ===== TIME-AWARE RESPONSE =====
+    const greeting = getItalianTimeWithTimezone();
+    let timeAwareResponse;
+    
+    if (greeting === "Buongiorno") {
+        timeAwareResponse = `Perfetto! ${greeting}! Ho prenotato per ${guests} persone il ${date} alle ${time}. La tua conferma è ${reservationId}. Buona giornata!`;
+    } else if (greeting === "Buon pomeriggio") {
+        timeAwareResponse = `Perfetto! ${greeting}! Ho prenotato per ${guests} persone il ${date} alle ${time}. La tua conferma è ${reservationId}. Buon proseguimento!`;
+    } else if (greeting === "Buonasera") {
+        timeAwareResponse = `Perfetto! ${greeting}! Ho prenotato per ${guests} persone il ${date} alle ${time}. La tua conferma è ${reservationId}. Buona serata!`;
+    } else {
+        timeAwareResponse = `Perfetto! ${greeting}! Ho prenotato per ${guests} persone il ${date} alle ${time}. La tua conferma è ${reservationId}. Buona notte!`;
+    }
+    
     res.json({
-      response: `Perfect! I've reserved ${guests} people for ${date} at ${time}. Your confirmation is ${reservationId}.`
+        response: timeAwareResponse
     });
     
   } catch (error) {
     console.error('❌ Error:', error.message);
+    const greeting = getItalianTimeWithTimezone();
     res.json({
-      response: "Thank you for your call! We've received your reservation request."
+        response: `${greeting}! Grazie per la tua chiamata! Abbiamo ricevuto la tua richiesta di prenotazione.`
     });
   }
 });
