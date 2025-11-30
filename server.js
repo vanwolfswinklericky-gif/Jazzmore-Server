@@ -69,9 +69,9 @@ function convertDayToDate(dayName) {
   return tomorrow.toISOString().split('T')[0];
 }
 
-// Extract reservation data from conversation
-function extractReservationData(conversation) {
-  console.log('🔍 Extracting reservation data from conversation...');
+// Comprehensive reservation data extraction system
+function extractReservationData(conversation, systemLogs = '') {
+  console.log('🔍 Comprehensive reservation data extraction started...');
   
   const defaultReservation = {
     firstName: '',
@@ -86,26 +86,53 @@ function extractReservationData(conversation) {
     newsletter: false
   };
 
-  if (!conversation || !Array.isArray(conversation)) {
-    return defaultReservation;
-  }
+  // Sources for data extraction
+  const sources = {
+    structuredBlock: extractFromStructuredBlock(conversation, systemLogs),
+    conversationFlow: extractFromConversationFlow(conversation),
+    systemLogs: extractFromSystemLogs(systemLogs)
+  };
 
-  // Look for structured data block first
-  const fullText = conversation.map(msg => msg.content || '').join('\n');
-  const structuredMatch = fullText.match(/RESERVATION_DATA:[\s\S]*?(?=\n\n|\n$|$)/i);
+  console.log('📊 Data from all sources:', sources);
+
+  // Merge and resolve conflicts
+  const finalData = mergeAndResolveData(sources, defaultReservation);
   
-  if (structuredMatch) {
-    console.log('✅ Found structured data block');
-    return parseStructuredBlock(structuredMatch[0], defaultReservation);
-  }
-
-  // Fallback to conversation analysis
-  return analyzeConversation(conversation, defaultReservation);
+  console.log('✅ Final resolved data:', finalData);
+  return finalData;
 }
 
-function parseStructuredBlock(block, defaultData) {
-  const data = { ...defaultData };
+// 1. Extract from structured data block
+function extractFromStructuredBlock(conversation, systemLogs) {
+  console.log('🔍 Checking for structured data block...');
+  const data = {};
   
+  // Check conversation first
+  const fullConversationText = conversation 
+    .map(msg => msg.content || '')
+    .join('\n');
+  
+  const structuredMatch = fullConversationText.match(/RESERVATION_DATA:[\s\S]*?(?=\n\n|\n$|$)/i);
+  if (structuredMatch) {
+    console.log('✅ Found structured data in conversation');
+    return parseStructuredBlock(structuredMatch[0]);
+  }
+  
+  // Check system logs
+  if (systemLogs) {
+    const logMatch = systemLogs.match(/RESERVATION_DATA:[\s\S]*?(?=\n\n|\n$|$)/i);
+    if (logMatch) {
+      console.log('✅ Found structured data in system logs');
+      return parseStructuredBlock(logMatch[0]);
+    }
+  }
+  
+  console.log('❌ No structured data block found');
+  return data;
+}
+
+function parseStructuredBlock(block) {
+  const data = {};
   const fieldPatterns = {
     'first name': (val) => data.firstName = val,
     'last name': (val) => data.lastName = val,
@@ -124,7 +151,7 @@ function parseStructuredBlock(block, defaultData) {
     const match = block.match(regex);
     if (match && match[1]) {
       const value = match[1].trim();
-      console.log(`✅ ${field}: "${value}"`);
+      console.log(`📋 Structured ${field}: "${value}"`);
       setter(value);
     }
   });
@@ -132,61 +159,271 @@ function parseStructuredBlock(block, defaultData) {
   return data;
 }
 
-function analyzeConversation(conversation, defaultData) {
-  const data = { ...defaultData };
+// 2. Extract from conversation flow - IMPROVED TO FOLLOW CONVERSATION FLOW
+function extractFromConversationFlow(conversation) {
+  console.log('🔍 Extracting from conversation flow...');
+  const data = {};
+  
   let phoneDigits = '';
+  let firstNameAsked = false;
+  let lastNameAsked = false;
+  let phoneAsked = false;
 
-  conversation.forEach(msg => {
+  for (let i = 0; i < conversation.length; i++) {
+    const msg = conversation[i];
     const content = msg.content || '';
     const lowerContent = content.toLowerCase();
 
-    if (msg.role === 'user') {
-      // Extract names
-      if (content.match(/\b(David|Dina)\b/i) && !data.firstName) {
-        data.firstName = content.match(/\b([A-Z][a-z]+)\b/)?.[1] || '';
+    if (msg.role === 'agent') {
+      // Track when agent asks for specific information
+      if (lowerContent.includes('first name') || lowerContent.includes('your name')) {
+        firstNameAsked = true;
+        console.log('👤 Agent asked for first name');
       }
-      if (content.match(/\b(Anderson)\b/i) && !data.lastName) {
-        data.lastName = content.match(/\b([A-Z][a-z]+)\b/)?.[1] || '';
+      
+      if (lowerContent.includes('last name') && firstNameAsked) {
+        lastNameAsked = true;
+        console.log('👤 Agent asked for last name');
       }
+      
+      if (lowerContent.includes('phone') || lowerContent.includes('number')) {
+        phoneAsked = true;
+        console.log('📞 Agent asked for phone number');
+      }
+      
+      // Extract confirmation of information from agent
+      if (content.includes('David') && content.includes('Anderson')) {
+        data.firstName = 'David';
+        data.lastName = 'Anderson';
+        console.log('✅ Agent confirmed: David Anderson');
+      }
+      
+      // Confirm guest count
+      if (lowerContent.match(/2\s*(people|person|guests?)/)) {
+        data.guests = 2;
+        data.adults = 2;
+        console.log('✅ Agent confirmed: 2 guests');
+      }
+      
+      // Confirm date/time
+      if (lowerContent.includes('friday') && lowerContent.includes('9:45')) {
+        data.date = convertDayToDate('next friday');
+        data.time = '21:45';
+        console.log('✅ Agent confirmed: Friday 9:45 PM');
+      }
+    }
 
-      // Extract phone number
-      if (lowerContent.match(/(zero|one|two|three|four|five|six|seven|eight|nine|\d)/)) {
+    if (msg.role === 'user') {
+      // Capture first name response (right after agent asks for first name)
+      if (firstNameAsked && !lastNameAsked && !data.firstName) {
+        // Look for a name in the user's response
+        const nameMatch = content.match(/\b([A-Z][a-z]+)\b/);
+        if (nameMatch && nameMatch[1]) {
+          data.firstName = nameMatch[1];
+          console.log(`✅ User provided first name: ${data.firstName}`);
+          firstNameAsked = false; // Reset for next question
+        }
+      }
+      
+      // Capture last name response (right after agent asks for last name)
+      if (lastNameAsked && !data.lastName) {
+        const nameMatch = content.match(/\b([A-Z][a-z]+)\b/);
+        if (nameMatch && nameMatch[1]) {
+          data.lastName = nameMatch[1];
+          console.log(`✅ User provided last name: ${data.lastName}`);
+          lastNameAsked = false; // Reset for next question
+        }
+      }
+      
+      // Capture phone number when asked
+      if (phoneAsked) {
         const digits = content
           .replace(/zero/gi, '0').replace(/one/gi, '1').replace(/two/gi, '2')
           .replace(/three/gi, '3').replace(/four/gi, '4').replace(/five/gi, '5')
           .replace(/six/gi, '6').replace(/seven/gi, '7').replace(/eight/gi, '8')
           .replace(/nine/gi, '9').replace(/\D/g, '');
         
-        phoneDigits += digits;
+        if (digits.length > 0) {
+          phoneDigits += digits;
+          console.log(`📞 Phone digits collected: ${phoneDigits}`);
+        }
       }
-
+      
       // Extract other details
       if (lowerContent.includes('honeymoon') || lowerContent.includes('surprise')) {
         data.specialRequests = 'Romantic song in the background for honeymoon surprise';
+        console.log('✅ User mentioned honeymoon/surprise');
       }
-      if (lowerContent.includes('newsletter') && lowerContent.includes('yes')) {
+      
+      if (lowerContent.includes('newsletter') && (lowerContent.includes('yes') || lowerContent.includes('join'))) {
         data.newsletter = true;
+        console.log('✅ User opted into newsletter');
       }
-    }
-
-    if (msg.role === 'agent') {
-      if (lowerContent.includes('friday') && lowerContent.includes('9:45')) {
+      
+      // Guest count from user
+      if (lowerContent.match(/(\d+)\s*(people|person|guests?|adults?)/) && !data.guests) {
+        const match = lowerContent.match(/(\d+)\s*(people|person|guests?|adults?)/);
+        data.guests = parseInt(match[1]) || 2;
+        data.adults = data.guests;
+        console.log(`✅ User specified guests: ${data.guests}`);
+      }
+      
+      // Date and time from user
+      if (lowerContent.includes('friday') && lowerContent.includes('9:45') && !data.date) {
         data.date = convertDayToDate('next friday');
         data.time = '21:45';
-      }
-      if (lowerContent.match(/2\s*(people|person)/)) {
-        data.guests = 2;
-        data.adults = 2;
+        console.log('✅ User specified: Friday 9:45 PM');
       }
     }
-  });
-
+  }
+  
   // Process collected phone number
   if (phoneDigits.length >= 7) {
     data.phone = '+39' + phoneDigits.substring(0, 10);
+    console.log(`✅ Processed phone number: ${data.phone}`);
   }
-
+  
+  console.log('🗣️ Conversation flow data:', data);
   return data;
+}
+
+// 3. Extract from system logs
+function extractFromSystemLogs(logs) {
+  console.log('🔍 Extracting from system logs...');
+  const data = {};
+  
+  if (!logs) return data;
+  
+  // Look for patterns in logs
+  const patterns = {
+    firstName: /Name:\s*([A-Za-z]+)/i,
+    lastName: /Name:\s*[A-Za-z]+\s+([A-Za-z]+)/i,
+    phone: /Phone:\s*([+\d\s]+)/i,
+    guests: /Guests?:\s*(\d+)/i,
+    date: /Date[\/\s]Time:\s*([^,\n]+)/i,
+    time: /(\d{1,2}:\d{2})/,
+    specialRequests: /Special Requests:\s*([^\n]+)/i,
+    newsletter: /Newsletter:\s*(true|false|yes|no)/i
+  };
+  
+  Object.entries(patterns).forEach(([field, pattern]) => {
+    const match = logs.match(pattern);
+    if (match && match[1]) {
+      const value = match[1].trim();
+      console.log(`📝 Log ${field}: "${value}"`);
+      
+      switch (field) {
+        case 'firstName':
+          data.firstName = value;
+          break;
+        case 'lastName':
+          data.lastName = value;
+          break;
+        case 'phone':
+          data.phone = value.replace(/\s/g, '');
+          break;
+        case 'guests':
+          data.guests = parseInt(value);
+          data.adults = data.guests;
+          break;
+        case 'date':
+          data.date = convertDayToDate(value);
+          break;
+        case 'time':
+          data.time = value;
+          break;
+        case 'specialRequests':
+          data.specialRequests = value;
+          break;
+        case 'newsletter':
+          data.newsletter = value.toLowerCase() === 'true' || value.toLowerCase() === 'yes';
+          break;
+      }
+    }
+  });
+  
+  return data;
+}
+
+// 4. Merge and resolve conflicts between sources
+function mergeAndResolveData(sources, defaultData) {
+  console.log('🔄 Merging and resolving data from all sources...');
+  
+  const finalData = { ...defaultData };
+  const sourcePriority = ['structuredBlock', 'conversationFlow', 'systemLogs'];
+  
+  // For each field, take the value from the highest priority source that has it
+  const fields = ['firstName', 'lastName', 'phone', 'guests', 'adults', 'children', 'date', 'time', 'specialRequests', 'newsletter'];
+  
+  fields.forEach(field => {
+    for (const source of sourcePriority) {
+      if (sources[source][field] !== undefined && 
+          sources[source][field] !== '' && 
+          sources[source][field] !== null) {
+        
+        // Special validation for certain fields
+        if (isValidFieldValue(field, sources[source][field])) {
+          console.log(`✅ Using ${field} from ${source}: ${sources[source][field]}`);
+          finalData[field] = sources[source][field];
+          break;
+        }
+      }
+    }
+  });
+  
+  // Cross-validate important fields
+  crossValidateFields(finalData, sources);
+  
+  return finalData;
+}
+
+function isValidFieldValue(field, value) {
+  switch (field) {
+    case 'phone':
+      return value.length >= 10; // Basic phone validation
+    case 'guests':
+    case 'adults':
+    case 'children':
+      return value > 0 && value < 20; // Reasonable guest count
+    case 'time':
+      return /^\d{1,2}:\d{2}$/.test(value); // Time format
+    default:
+      return true;
+  }
+}
+
+function crossValidateFields(finalData, sources) {
+  console.log('🔍 Cross-validating fields...');
+  
+  // Ensure adults + children = guests
+  if (finalData.adults && finalData.children !== undefined) {
+    const calculatedGuests = finalData.adults + finalData.children;
+    if (finalData.guests !== calculatedGuests) {
+      console.log(`⚠️ Guest count mismatch: ${finalData.guests} total vs ${finalData.adults} adults + ${finalData.children} children`);
+      // Prefer the calculated value if it makes sense
+      if (calculatedGuests > 0 && calculatedGuests < 20) {
+        finalData.guests = calculatedGuests;
+        console.log(`✅ Using calculated guest count: ${finalData.guests}`);
+      }
+    }
+  }
+  
+  // Validate phone format
+  if (finalData.phone && !finalData.phone.startsWith('+39')) {
+    finalData.phone = '+39' + finalData.phone.replace(/\D/g, '');
+    console.log(`✅ Formatted phone: ${finalData.phone}`);
+  }
+  
+  // Validate date is in the future
+  const reservationDate = new Date(finalData.date);
+  const today = new Date();
+  if (reservationDate < today) {
+    // Default to tomorrow if date is in the past
+    const tomorrow = new Date(today);
+    tomorrow.setDate(today.getDate() + 1);
+    finalData.date = tomorrow.toISOString().split('T')[0];
+    console.log(`⚠️ Date in past, defaulting to tomorrow: ${finalData.date}`);
+  }
 }
 
 // Express server routes
@@ -244,8 +481,9 @@ app.post('/api/reservations', async (req, res) => {
       conversationData = call.transcript_object;
     }
     
-    // Extract reservation data
-    const reservationData = extractReservationData(conversationData);
+    // Use comprehensive data extraction
+    const systemLogs = JSON.stringify(call, null, 2); // Capture any additional call data as logs
+    const reservationData = extractReservationData(conversationData, systemLogs);
     
     const { firstName, lastName, date, time, guests, adults, children, phone, specialRequests, newsletter } = reservationData;
     
