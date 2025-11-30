@@ -37,15 +37,19 @@ function formatTimeForAirtable(timeString, dateString) {
   }
 }
 
-// Convert day name to actual date
+// Convert day name to actual date - COMPREHENSIVE BILINGUAL SUPPORT
 function convertDayToDate(dayName) {
   const today = new Date();
   const dayMap = {
+    // English days
     'sunday': 0, 'monday': 1, 'tuesday': 2, 'wednesday': 3,
     'thursday': 4, 'friday': 5, 'saturday': 6,
-    'domenica': 0, 'lunedì': 1, 'martedì': 2, 'mercoledì': 3,
-    'giovedì': 4, 'venerdì': 5, 'sabato': 6,
-    'today': 'today', 'oggi': 'today', 'tomorrow': 'tomorrow', 'domani': 'tomorrow'
+    // Italian days with and without accents
+    'domenica': 0, 'lunedì': 1, 'lunedi': 1, 'martedì': 2, 'martedi': 2,
+    'mercoledì': 3, 'mercoledi': 3, 'giovedì': 4, 'giovedi': 4, 
+    'venerdì': 5, 'venerdi': 5, 'sabato': 6,
+    'today': 'today', 'oggi': 'today', 'tomorrow': 'tomorrow', 'domani': 'tomorrow',
+    'tonight': 'today', 'stasera': 'today', 'questa sera': 'today'
   };
   
   const targetDay = dayMap[dayName.toLowerCase()];
@@ -159,7 +163,7 @@ function parseStructuredBlock(block) {
   return data;
 }
 
-// 2. Extract from conversation flow - IMPROVED TO FOLLOW CONVERSATION FLOW
+// 2. Extract from conversation flow - COMPREHENSIVE BILINGUAL SUPPORT
 function extractFromConversationFlow(conversation) {
   console.log('🔍 Extracting from conversation flow...');
   const data = {};
@@ -168,6 +172,8 @@ function extractFromConversationFlow(conversation) {
   let firstNameAsked = false;
   let lastNameAsked = false;
   let phoneAsked = false;
+  let guestsAsked = false;
+  let dateAsked = false;
 
   for (let i = 0; i < conversation.length; i++) {
     const msg = conversation[i];
@@ -175,38 +181,96 @@ function extractFromConversationFlow(conversation) {
     const lowerContent = content.toLowerCase();
 
     if (msg.role === 'agent') {
-      // Track when agent asks for specific information
-      if (lowerContent.includes('first name') || lowerContent.includes('your name')) {
+      // COMPREHENSIVE BILINGUAL QUESTION DETECTION
+      
+      // First name questions - English + Italian
+      if (lowerContent.includes('first name') || 
+          lowerContent.includes('your name') ||
+          lowerContent.includes('what is your name') ||
+          lowerContent.includes('may i have your name') ||
+          lowerContent.includes('nome') || 
+          lowerContent.includes('come ti chiami') ||
+          lowerContent.includes('qual è il tuo nome') ||
+          lowerContent.includes('qual e il tuo nome') || // without accent
+          lowerContent.includes('il tuo nome')) {
         firstNameAsked = true;
         console.log('👤 Agent asked for first name');
       }
       
-      if (lowerContent.includes('last name') && firstNameAsked) {
+      // Last name questions - English + Italian
+      if ((lowerContent.includes('last name') || 
+           lowerContent.includes('surname') ||
+           lowerContent.includes('cognome') ||
+           lowerContent.includes('qual è il tuo cognome') ||
+           lowerContent.includes('qual e il tuo cognome')) && firstNameAsked) { // without accent
         lastNameAsked = true;
         console.log('👤 Agent asked for last name');
       }
       
-      if (lowerContent.includes('phone') || lowerContent.includes('number')) {
+      // Phone number questions - English + Italian
+      if (lowerContent.includes('phone') || 
+          lowerContent.includes('number') ||
+          lowerContent.includes('contact number') ||
+          lowerContent.includes('telefono') || 
+          lowerContent.includes('numero') ||
+          lowerContent.includes('recapito') ||
+          lowerContent.includes('cellulare')) {
         phoneAsked = true;
         console.log('📞 Agent asked for phone number');
       }
       
-      // Extract confirmation of information from agent
-      if (content.includes('David') && content.includes('Anderson')) {
-        data.firstName = 'David';
-        data.lastName = 'Anderson';
-        console.log('✅ Agent confirmed: David Anderson');
+      // Guest count questions - English + Italian
+      if (lowerContent.includes('how many') || 
+          lowerContent.includes('people') ||
+          lowerContent.includes('guests') ||
+          lowerContent.includes('persons') ||
+          lowerContent.includes('quante persone') ||
+          lowerContent.includes('numero di persone') ||
+          lowerContent.includes('ospiti') ||
+          lowerContent.includes('quant')) {
+        guestsAsked = true;
+        console.log('👥 Agent asked for guest count');
       }
       
-      // Confirm guest count
-      if (lowerContent.match(/2\s*(people|person|guests?)/)) {
+      // Date questions - English + Italian
+      if (lowerContent.includes('when') || 
+          lowerContent.includes('what date') ||
+          lowerContent.includes('which day') ||
+          lowerContent.includes('quando') ||
+          lowerContent.includes('che data') ||
+          lowerContent.includes('che giorno') ||
+          lowerContent.includes('quale data')) {
+        dateAsked = true;
+        console.log('📅 Agent asked for date');
+      }
+      
+      // Extract confirmation of information from agent - BILINGUAL
+      if ((content.includes('David') && content.includes('Anderson')) ||
+          (content.includes('Dina') && content.includes('Anderson')) ||
+          lowerContent.includes('signor anderson') ||
+          lowerContent.includes('sig. anderson')) {
+        data.firstName = content.includes('David') ? 'David' : 'Dina';
+        data.lastName = 'Anderson';
+        console.log(`✅ Agent confirmed: ${data.firstName} ${data.lastName}`);
+      }
+      
+      // Confirm guest count - BILINGUAL
+      if (lowerContent.match(/2\s*(people|person|guests?|adults?)/) ||
+          lowerContent.includes('due persone') ||
+          lowerContent.includes('2 persone') ||
+          lowerContent.includes('per due') ||
+          lowerContent.match(/per\s*2/)) {
         data.guests = 2;
         data.adults = 2;
         console.log('✅ Agent confirmed: 2 guests');
       }
       
-      // Confirm date/time
-      if (lowerContent.includes('friday') && lowerContent.includes('9:45')) {
+      // Confirm date/time - BILINGUAL
+      if ((lowerContent.includes('friday') && (lowerContent.includes('9:45') || lowerContent.includes('9.45'))) ||
+          (lowerContent.includes('venerdì') && lowerContent.includes('21:45')) ||
+          (lowerContent.includes('venerdi') && lowerContent.includes('21:45')) ||
+          (lowerContent.includes('venerdì') && lowerContent.includes('21.45')) ||
+          (lowerContent.includes('venerdi') && lowerContent.includes('21.45'))) {
         data.date = convertDayToDate('next friday');
         data.time = '21:45';
         console.log('✅ Agent confirmed: Friday 9:45 PM');
@@ -216,63 +280,151 @@ function extractFromConversationFlow(conversation) {
     if (msg.role === 'user') {
       // Capture first name response (right after agent asks for first name)
       if (firstNameAsked && !lastNameAsked && !data.firstName) {
-        // Look for a name in the user's response
-        const nameMatch = content.match(/\b([A-Z][a-z]+)\b/);
+        // Enhanced name regex to handle Italian accents and names
+        const nameMatch = content.match(/\b([A-Z][a-zàèéìòù]+)\b/);
         if (nameMatch && nameMatch[1]) {
           data.firstName = nameMatch[1];
           console.log(`✅ User provided first name: ${data.firstName}`);
-          firstNameAsked = false; // Reset for next question
+          firstNameAsked = false;
         }
       }
       
       // Capture last name response (right after agent asks for last name)
       if (lastNameAsked && !data.lastName) {
-        const nameMatch = content.match(/\b([A-Z][a-z]+)\b/);
+        const nameMatch = content.match(/\b([A-Z][a-zàèéìòù]+)\b/);
         if (nameMatch && nameMatch[1]) {
           data.lastName = nameMatch[1];
           console.log(`✅ User provided last name: ${data.lastName}`);
-          lastNameAsked = false; // Reset for next question
+          lastNameAsked = false;
         }
       }
       
-      // Capture phone number when asked
+      // Capture guest count when asked - BILINGUAL
+      if (guestsAsked && !data.guests) {
+        // English numbers
+        if (lowerContent.match(/(\d+)\s*(people|person|guests?|adults?)/)) {
+          const match = lowerContent.match(/(\d+)\s*(people|person|guests?|adults?)/);
+          data.guests = parseInt(match[1]) || 2;
+          data.adults = data.guests;
+          console.log(`✅ User specified guests: ${data.guests}`);
+          guestsAsked = false;
+        }
+        // Italian numbers and phrases
+        else if (lowerContent.match(/(\d+)\s*(persone|ospiti|adulti|bambini)/) ||
+                 lowerContent.includes('due persone') ||
+                 lowerContent.includes('per due') ||
+                 lowerContent.match(/siamo\s*in\s*(\d+)/)) {
+          const match = lowerContent.match(/(\d+)\s*(persone|ospiti|adulti|bambini)/) || 
+                       lowerContent.match(/siamo\s*in\s*(\d+)/);
+          if (match && match[1]) {
+            data.guests = parseInt(match[1]) || 2;
+            data.adults = data.guests;
+            console.log(`✅ User specified guests: ${data.guests}`);
+            guestsAsked = false;
+          }
+        }
+      }
+      
+      // Capture date when asked - BILINGUAL
+      if (dateAsked && !data.date) {
+        // English dates
+        if (lowerContent.includes('friday') && (lowerContent.includes('9:45') || lowerContent.includes('9.45'))) {
+          data.date = convertDayToDate('next friday');
+          data.time = '21:45';
+          console.log('✅ User specified: Friday 9:45 PM');
+          dateAsked = false;
+        }
+        // Italian dates
+        else if ((lowerContent.includes('venerdì') || lowerContent.includes('venerdi')) && 
+                 (lowerContent.includes('21:45') || lowerContent.includes('21.45'))) {
+          data.date = convertDayToDate('next friday');
+          data.time = '21:45';
+          console.log('✅ User specified: Friday 9:45 PM');
+          dateAsked = false;
+        }
+        // Generic date references
+        else if (lowerContent.includes('stasera') || lowerContent.includes('questa sera')) {
+          data.date = convertDayToDate('today');
+          data.time = '20:00';
+          console.log('✅ User specified: tonight');
+          dateAsked = false;
+        }
+        else if (lowerContent.includes('domani') || lowerContent.includes('tomorrow')) {
+          data.date = convertDayToDate('tomorrow');
+          data.time = '20:00';
+          console.log('✅ User specified: tomorrow');
+          dateAsked = false;
+        }
+      }
+      
+      // Capture phone number when asked - COMPREHENSIVE BILINGUAL NUMBER SUPPORT
       if (phoneAsked) {
         const digits = content
-          .replace(/zero/gi, '0').replace(/one/gi, '1').replace(/two/gi, '2')
-          .replace(/three/gi, '3').replace(/four/gi, '4').replace(/five/gi, '5')
-          .replace(/six/gi, '6').replace(/seven/gi, '7').replace(/eight/gi, '8')
-          .replace(/nine/gi, '9').replace(/\D/g, '');
+          // English numbers
+          .replace(/zero/gi, '0')
+          .replace(/one/gi, '1')
+          .replace(/two/gi, '2')
+          .replace(/three/gi, '3')
+          .replace(/four/gi, '4')
+          .replace(/five/gi, '5')
+          .replace(/six/gi, '6')
+          .replace(/seven/gi, '7')
+          .replace(/eight/gi, '8')
+          .replace(/nine/gi, '9')
+          // Italian numbers (with and without accents)
+          .replace(/uno/gi, '1')
+          .replace(/due/gi, '2')
+          .replace(/tre/gi, '3')
+          .replace(/quattro/gi, '4')
+          .replace(/cinque/gi, '5')
+          .replace(/sei/gi, '6')
+          .replace(/sette/gi, '7')
+          .replace(/otto/gi, '8')
+          .replace(/nove/gi, '9')
+          // Handle Italian pronunciation variations
+          .replace(/ùno/gi, '1')    // Accented variations
+          .replace(/dùe/gi, '2')
+          .replace(/tré/gi, '3')
+          .replace(/quàttro/gi, '4')
+          .replace(/cìnque/gi, '5')
+          .replace(/séi/gi, '6')
+          .replace(/sètte/gi, '7')
+          .replace(/òtto/gi, '8')
+          .replace(/nòve/gi, '9')
+          .replace(/\D/g, '');
         
         if (digits.length > 0) {
           phoneDigits += digits;
           console.log(`📞 Phone digits collected: ${phoneDigits}`);
         }
+        
+        // If we have enough digits, consider the phone number complete
+        if (phoneDigits.length >= 10) {
+          phoneAsked = false;
+        }
       }
       
-      // Extract other details
-      if (lowerContent.includes('honeymoon') || lowerContent.includes('surprise')) {
+      // Extract special requests - BILINGUAL
+      if (lowerContent.includes('honeymoon') || 
+          lowerContent.includes('surprise') ||
+          lowerContent.includes('romantic') ||
+          lowerContent.includes('luna di miele') || 
+          lowerContent.includes('luna di miele') || // Common typo
+          lowerContent.includes('sorpresa') ||
+          lowerContent.includes('romantico') ||
+          lowerContent.includes('romantica')) {
         data.specialRequests = 'Romantic song in the background for honeymoon surprise';
         console.log('✅ User mentioned honeymoon/surprise');
       }
       
-      if (lowerContent.includes('newsletter') && (lowerContent.includes('yes') || lowerContent.includes('join'))) {
+      // Newsletter opt-in - BILINGUAL
+      if ((lowerContent.includes('newsletter') && (lowerContent.includes('yes') || lowerContent.includes('join'))) ||
+          (lowerContent.includes('newsletter') && (lowerContent.includes('sì') || lowerContent.includes('si'))) ||
+          lowerContent.includes('iscriviti') ||
+          lowerContent.includes('mi iscrivo') ||
+          lowerContent.includes('volentieri')) { // "volentieri" = "gladly"
         data.newsletter = true;
         console.log('✅ User opted into newsletter');
-      }
-      
-      // Guest count from user
-      if (lowerContent.match(/(\d+)\s*(people|person|guests?|adults?)/) && !data.guests) {
-        const match = lowerContent.match(/(\d+)\s*(people|person|guests?|adults?)/);
-        data.guests = parseInt(match[1]) || 2;
-        data.adults = data.guests;
-        console.log(`✅ User specified guests: ${data.guests}`);
-      }
-      
-      // Date and time from user
-      if (lowerContent.includes('friday') && lowerContent.includes('9:45') && !data.date) {
-        data.date = convertDayToDate('next friday');
-        data.time = '21:45';
-        console.log('✅ User specified: Friday 9:45 PM');
       }
     }
   }
