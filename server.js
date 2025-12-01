@@ -643,6 +643,7 @@ app.get('/api/reservations', async (req, res) => {
   }
 });
 
+// ===== MAIN WEBHOOK ENDPOINT =====
 app.post('/api/reservations', async (req, res) => {
   try {
     console.log('\n📞 RETELL WEBHOOK RECEIVED');
@@ -656,27 +657,111 @@ app.post('/api/reservations', async (req, res) => {
     
     console.log('🎯 Processing call_analyzed event...');
     
-    // ===== ADD TIME AWARENESS HERE =====
-    const italianGreeting = getItalianTimeWithTimezone();
-    console.log(`🇮🇹 Current Italian greeting: ${italianGreeting}`);
+    // ===== DIAGNOSTIC LOGGING =====
+    console.log('🔍 Searching for Post-Call Analysis data structure...');
+    console.log('Full webhook payload:', JSON.stringify(req.body, null, 2));
     
-    const reservationId = generateReservationId();
-    console.log(`🎫 Generated Reservation ID: ${reservationId}`);
+    // Check common locations for Post-Call Analysis
+    let postCallData = null;
+    let dataSource = 'unknown';
     
-    let conversationData = [];
-    if (call && call.transcript_object) {
-      console.log(`✅ Using transcript_object with ${call.transcript_object.length} messages`);
-      conversationData = call.transcript_object;
+    // Try different possible paths
+    if (call?.post_call_analysis?.reservation_details) {
+        postCallData = call.post_call_analysis.reservation_details;
+        dataSource = 'post_call_analysis.reservation_details';
+        console.log('✅ Found at: call.post_call_analysis.reservation_details');
+    } else if (call?.analysis?.reservation_details) {
+        postCallData = call.analysis.reservation_details;
+        dataSource = 'analysis.reservation_details';
+        console.log('✅ Found at: call.analysis.reservation_details');
+    } else if (call?.call_analysis?.reservation_details) {
+        postCallData = call.call_analysis.reservation_details;
+        dataSource = 'call_analysis.reservation_details';
+        console.log('✅ Found at: call.call_analysis.reservation_details');
+    } else if (call?.properties?.reservation_details) {
+        postCallData = call.properties.reservation_details;
+        dataSource = 'properties.reservation_details';
+        console.log('✅ Found at: call.properties.reservation_details');
+    } else {
+        console.log('❌ No Post-Call Analysis data found in common locations');
     }
     
-    // Use comprehensive data extraction
-    const systemLogs = JSON.stringify(call, null, 2); // Capture any additional call data as logs
-    const reservationData = extractReservationData(conversationData, systemLogs);
+    // ===== POST-CALL ANALYSIS EXTRACTION =====
+    const italianGreeting = getItalianTimeWithTimezone();
+    const reservationId = generateReservationId();
+    
+    let reservationData = {};
+    
+    if (postCallData) {
+        console.log('✅ Using structured data from Post-Call Analysis');
+        console.log('Post-Call Data:', JSON.stringify(postCallData, null, 2));
+        
+        // Map JSON fields to your reservationData object
+        reservationData = {
+          firstName: postCallData.first_name || '',
+          lastName: postCallData.last_name || '',
+          phone: postCallData.phone || '',
+          guests: parseInt(postCallData.guests) || 2,
+          adults: parseInt(postCallData.adults) || (parseInt(postCallData.guests) || 2),
+          children: parseInt(postCallData.children) || 0,
+          date: postCallData.date ? convertDayToDate(postCallData.date) : new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+          time: postCallData.time || '22:00',
+          specialRequests: postCallData.special_requests || postCallData.specialRequests || 'No special requests',
+          newsletter: postCallData.newsletter === 'yes' || postCallData.newsletter_opt_in === 'yes' || false
+        };
+        
+    } else if (call?.transcript_object) {
+        // Fallback to your old extraction method
+        console.log('⚠️ No Post-Call Analysis found, falling back to transcript extraction.');
+        dataSource = 'transcript_fallback';
+        const systemLogs = JSON.stringify(call, null, 2);
+        reservationData = extractReservationData(call.transcript_object, systemLogs);
+    } else {
+        // Default empty reservation
+        console.log('⚠️ No data sources available, using defaults.');
+        dataSource = 'default';
+        reservationData = {
+          firstName: '',
+          lastName: '',
+          date: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+          time: '22:00',
+          guests: 2,
+          adults: 2,
+          children: 0,
+          phone: '',
+          specialRequests: 'No special requests',
+          newsletter: false
+        };
+    }
+    
+    console.log(`📊 Data source: ${dataSource}`);
+    console.log('📋 Reservation data:', reservationData);
     
     const { firstName, lastName, date, time, guests, adults, children, phone, specialRequests, newsletter } = reservationData;
     
-    const arrivalTimeISO = formatTimeForAirtable(time, date);
+    // ===== DATA VALIDATION =====
+    // Ensure phone has +39 prefix if it contains digits
+    let formattedPhone = phone;
+    if (phone && phone.replace(/\D/g, '').length >= 10) {
+        const digits = phone.replace(/\D/g, '');
+        formattedPhone = digits.startsWith('39') ? `+${digits}` : `+39${digits.substring(0, 10)}`;
+        console.log(`✅ Formatted phone: ${formattedPhone}`);
+    }
     
+    // Validate date is in the future
+    let validatedDate = date;
+    const reservationDate = new Date(date);
+    const today = new Date();
+    if (reservationDate < today) {
+        const tomorrow = new Date(today);
+        tomorrow.setDate(today.getDate() + 1);
+        validatedDate = tomorrow.toISOString().split('T')[0];
+        console.log(`⚠️ Date in past, adjusted to: ${validatedDate}`);
+    }
+    
+    const arrivalTimeISO = formatTimeForAirtable(time, validatedDate);
+    
+    // ===== SAVE TO AIRTABLE =====
     console.log('💾 Saving to Airtable...');
     const record = await base('Reservations').create([
       {
@@ -684,17 +769,18 @@ app.post('/api/reservations', async (req, res) => {
           "Reservation ID": reservationId,
           "First Name": firstName,
           "Last Name": lastName || '',
-          "Phone Number": phone || '',
-          "Reservation Date": date,
+          "Phone Number": formattedPhone || '',
+          "Reservation Date": validatedDate,
           "Arrival Time": arrivalTimeISO,
-          "Total People": parseInt(guests),
-          "Dinner Count": parseInt(adults),
+          "Total People": parseInt(guests) || 2,
+          "Dinner Count": parseInt(adults) || 2,
           "Show-Only Count": 0,
           "Kids Count": parseInt(children) || 0,
           "Special Requests": specialRequests || '',
           "Reservation Status": "Pending",
           "Reservation Type": "Dinner + Show",
-          "Newsletter Opt-In": newsletter || false
+          "Newsletter Opt-In": newsletter || false,
+          "Data Source": dataSource
         }
       }
     ]);
@@ -702,9 +788,9 @@ app.post('/api/reservations', async (req, res) => {
     console.log('🎉 RESERVATION SAVED!');
     console.log('Reservation ID:', reservationId);
     console.log('Name:', `${firstName} ${lastName}`.trim());
-    console.log('Date/Time:', date, time);
+    console.log('Date/Time:', validatedDate, time);
     console.log('Guests:', guests, `(${adults} adults + ${children} children)`);
-    console.log('Phone:', phone || 'Not provided');
+    console.log('Phone:', formattedPhone || 'Not provided');
     console.log('Special Requests:', specialRequests);
     console.log('Newsletter:', newsletter);
     console.log('Airtable Record ID:', record[0].id);
@@ -714,13 +800,13 @@ app.post('/api/reservations', async (req, res) => {
     let timeAwareResponse;
     
     if (greeting === "Buongiorno") {
-        timeAwareResponse = `Perfetto! ${greeting}! Ho prenotato per ${guests} persone il ${date} alle ${time}. La tua conferma è ${reservationId}. Buona giornata!`;
+        timeAwareResponse = `Perfetto! ${greeting}! Ho prenotato per ${guests} persone il ${validatedDate} alle ${time}. La tua conferma è ${reservationId}. Buona giornata!`;
     } else if (greeting === "Buon pomeriggio") {
-        timeAwareResponse = `Perfetto! ${greeting}! Ho prenotato per ${guests} persone il ${date} alle ${time}. La tua conferma è ${reservationId}. Buon proseguimento!`;
+        timeAwareResponse = `Perfetto! ${greeting}! Ho prenotato per ${guests} persone il ${validatedDate} alle ${time}. La tua conferma è ${reservationId}. Buon proseguimento!`;
     } else if (greeting === "Buonasera") {
-        timeAwareResponse = `Perfetto! ${greeting}! Ho prenotato per ${guests} persone il ${date} alle ${time}. La tua conferma è ${reservationId}. Buona serata!`;
+        timeAwareResponse = `Perfetto! ${greeting}! Ho prenotato per ${guests} persone il ${validatedDate} alle ${time}. La tua conferma è ${reservationId}. Buona serata!`;
     } else {
-        timeAwareResponse = `Perfetto! ${greeting}! Ho prenotato per ${guests} persone il ${date} alle ${time}. La tua conferma è ${reservationId}. Buona notte!`;
+        timeAwareResponse = `Perfetto! ${greeting}! Ho prenotato per ${guests} persone il ${validatedDate} alle ${time}. La tua conferma è ${reservationId}. Buona notte!`;
     }
     
     res.json({
@@ -729,6 +815,7 @@ app.post('/api/reservations', async (req, res) => {
     
   } catch (error) {
     console.error('❌ Error:', error.message);
+    console.error('❌ Error stack:', error.stack);
     const greeting = getItalianTimeWithTimezone();
     res.json({
         response: `${greeting}! Grazie per la tua chiamata! Abbiamo ricevuto la tua richiesta di prenotazione.`
