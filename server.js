@@ -659,29 +659,30 @@ app.post('/api/reservations', async (req, res) => {
     
     // ===== DIAGNOSTIC LOGGING =====
     console.log('🔍 Searching for Post-Call Analysis data structure...');
-    console.log('Full webhook payload:', JSON.stringify(req.body, null, 2));
     
     // Check common locations for Post-Call Analysis
     let postCallData = null;
-    let dataSource = 'unknown';
     
-    // Try different possible paths
-    if (call?.post_call_analysis?.reservation_details) {
+    // Try different possible paths - FIXED: The data is in call.call_analysis.custom_analysis_data.reservation_details
+    if (call?.call_analysis?.custom_analysis_data?.reservation_details) {
+        // Parse the JSON string from the reservation_details field
+        const reservationDetailsStr = call.call_analysis.custom_analysis_data.reservation_details;
+        try {
+            postCallData = JSON.parse(reservationDetailsStr);
+            console.log('✅ Found and parsed reservation_details from call_analysis.custom_analysis_data');
+            console.log('Post-Call Data:', postCallData);
+        } catch (error) {
+            console.log('❌ Error parsing reservation_details JSON:', error.message);
+        }
+    } else if (call?.post_call_analysis?.reservation_details) {
         postCallData = call.post_call_analysis.reservation_details;
-        dataSource = 'post_call_analysis.reservation_details';
-        console.log('✅ Found at: call.post_call_analysis.reservation_details');
+        console.log('✅ Found at: post_call_analysis.reservation_details');
     } else if (call?.analysis?.reservation_details) {
         postCallData = call.analysis.reservation_details;
-        dataSource = 'analysis.reservation_details';
-        console.log('✅ Found at: call.analysis.reservation_details');
+        console.log('✅ Found at: analysis.reservation_details');
     } else if (call?.call_analysis?.reservation_details) {
         postCallData = call.call_analysis.reservation_details;
-        dataSource = 'call_analysis.reservation_details';
-        console.log('✅ Found at: call.call_analysis.reservation_details');
-    } else if (call?.properties?.reservation_details) {
-        postCallData = call.properties.reservation_details;
-        dataSource = 'properties.reservation_details';
-        console.log('✅ Found at: call.properties.reservation_details');
+        console.log('✅ Found at: call_analysis.reservation_details');
     } else {
         console.log('❌ No Post-Call Analysis data found in common locations');
     }
@@ -698,8 +699,8 @@ app.post('/api/reservations', async (req, res) => {
         
         // Map JSON fields to your reservationData object
         reservationData = {
-          firstName: postCallData.first_name || '',
-          lastName: postCallData.last_name || '',
+          firstName: postCallData.first_name || postCallData.firstName || '',
+          lastName: postCallData.last_name || postCallData.lastName || '',
           phone: postCallData.phone || '',
           guests: parseInt(postCallData.guests) || 2,
           adults: parseInt(postCallData.adults) || (parseInt(postCallData.guests) || 2),
@@ -707,19 +708,19 @@ app.post('/api/reservations', async (req, res) => {
           date: postCallData.date ? convertDayToDate(postCallData.date) : new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString().split('T')[0],
           time: postCallData.time || '22:00',
           specialRequests: postCallData.special_requests || postCallData.specialRequests || 'No special requests',
-          newsletter: postCallData.newsletter === 'yes' || postCallData.newsletter_opt_in === 'yes' || false
+          newsletter: postCallData.newsletter === 'yes' || postCallData.newsletter_opt_in === 'yes' || postCallData.newsletter === true || false
         };
+        
+        console.log('📋 Extracted from Post-Call Analysis:', reservationData);
         
     } else if (call?.transcript_object) {
         // Fallback to your old extraction method
         console.log('⚠️ No Post-Call Analysis found, falling back to transcript extraction.');
-        dataSource = 'transcript_fallback';
         const systemLogs = JSON.stringify(call, null, 2);
         reservationData = extractReservationData(call.transcript_object, systemLogs);
     } else {
         // Default empty reservation
         console.log('⚠️ No data sources available, using defaults.');
-        dataSource = 'default';
         reservationData = {
           firstName: '',
           lastName: '',
@@ -734,8 +735,7 @@ app.post('/api/reservations', async (req, res) => {
         };
     }
     
-    console.log(`📊 Data source: ${dataSource}`);
-    console.log('📋 Reservation data:', reservationData);
+    console.log('📋 Final reservation data:', reservationData);
     
     const { firstName, lastName, date, time, guests, adults, children, phone, specialRequests, newsletter } = reservationData;
     
@@ -779,15 +779,15 @@ app.post('/api/reservations', async (req, res) => {
           "Special Requests": specialRequests || '',
           "Reservation Status": "Pending",
           "Reservation Type": "Dinner + Show",
-          "Newsletter Opt-In": newsletter || false,
-          "Data Source": dataSource
+          "Newsletter Opt-In": newsletter || false
+          // REMOVED: "Data Source": dataSource - This field doesn't exist in your Airtable
         }
       }
     ]);
     
     console.log('🎉 RESERVATION SAVED!');
     console.log('Reservation ID:', reservationId);
-    console.log('Name:', `${firstName} ${lastName}`.trim());
+    console.log('Name:', `${firstName} ${lastName}`.trim() || 'Not provided');
     console.log('Date/Time:', validatedDate, time);
     console.log('Guests:', guests, `(${adults} adults + ${children} children)`);
     console.log('Phone:', formattedPhone || 'Not provided');
