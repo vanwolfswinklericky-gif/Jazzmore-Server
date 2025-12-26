@@ -10,14 +10,14 @@ const PORT = process.env.PORT || 3000;
 app.use(cors());
 app.use(express.json());
 
-// Initialize Airtable (YOUR EXISTING CODE - UNCHANGED)
+// Initialize Airtable
 const airtable = new Airtable({
   apiKey: process.env.AIRTABLE_TOKEN
 });
 
 const base = airtable.base(process.env.AIRTABLE_BASE_ID);
 
-// ===== TIME AWARENESS FUNCTIONS (YOUR EXISTING CODE - UNCHANGED) =====
+// ===== TIME AWARENESS FUNCTIONS =====
 function getItalianTimeWithTimezone() {
     const now = new Date();
     const romeTime = new Date(now.toLocaleString("en-US", {timeZone: "Europe/Rome"}));
@@ -31,16 +31,15 @@ function getItalianTimeWithTimezone() {
     else if (currentHour >= 18 && currentHour < 22) return "Buonasera";
     else return "Buonanotte";
 }
-// ===== END TIME AWARENESS =====
 
-// Generate unique reservation ID (YOUR EXISTING CODE - UNCHANGED)
+// Generate unique reservation ID
 function generateReservationId() {
   const timestamp = Date.now().toString(36);
   const random = Math.random().toString(36).substr(2, 5);
   return `JAZ-${timestamp}-${random}`.toUpperCase();
 }
 
-// Convert time string to Airtable date format (YOUR EXISTING CODE - UNCHANGED)
+// Convert time string to Airtable date format
 function formatTimeForAirtable(timeString, dateString) {
   try {
     const [hours, minutes] = timeString.split(':');
@@ -54,7 +53,7 @@ function formatTimeForAirtable(timeString, dateString) {
   }
 }
 
-// Convert day name to actual date - COMPREHENSIVE BILINGUAL SUPPORT (YOUR EXISTING CODE - UNCHANGED)
+// Convert day name to actual date - COMPREHENSIVE BILINGUAL SUPPORT
 function convertDayToDate(dayName) {
   const today = new Date();
   const dayMap = {
@@ -90,8 +89,147 @@ function convertDayToDate(dayName) {
   return tomorrow.toISOString().split('T')[0];
 }
 
-// ===== YOUR EXISTING RESERVATION EXTRACTION CODE (100% UNCHANGED) =====
-// Comprehensive reservation data extraction system
+// ===== RESERVATION INTENT DETECTION =====
+function detectReservationIntent(conversationText, transcript = []) {
+  console.log('🔍 Detecting reservation intent...');
+  
+  const lowerText = conversationText.toLowerCase();
+  
+  // MULTILINGUAL RESERVATION KEYWORDS
+  const reservationKeywords = [
+    // English keywords
+    'reservation', 'reserve', 'book', 'booking', 'make a reservation',
+    'table for', 'reserve a table', 'book a table', 'make a booking',
+    'dinner reservation', 'reserve seats', 'book seats', 'make reservation',
+    'reserve for', 'book for', 'I want to reserve', 'I want to book',
+    'I would like to reserve', 'I would like to book', 'can i reserve',
+    'can i book', 'could i reserve', 'could i book',
+    'make a table reservation', 'table booking', 'seat reservation',
+    
+    // Italian keywords (with and without accents)
+    'prenotazione', 'prenotare', 'prenota', 'prenotiamo', 'prenotato',
+    'prenotati', 'vorrei prenotare', 'desidero prenotare', 'posso prenotare',
+    'faccio una prenotazione', 'fare una prenotazione', 'per prenotare',
+    'prenotare un tavolo', 'prenotazione tavolo', 'tavolo per',
+    'riservare', 'riservazione', 'riserva', 'vorrei riservare',
+    'posto a sedere', 'posti a sedere', 'sedie', 'tavoli',
+    'voglio prenotare', 'devo prenotare', 'ho bisogno di prenotare',
+    'mi piacerebbe prenotare', 'avrei bisogno di prenotare',
+    'vorrei riservare un tavolo', 'riservazione tavolo',
+    
+    // Common reservation-related phrases
+    'for dinner', 'per cena', 'for lunch', 'per pranzo',
+    'for tonight', 'per stasera', 'for tomorrow', 'per domani'
+  ];
+  
+  // Check for keywords in conversation
+  let foundKeywords = [];
+  for (const keyword of reservationKeywords) {
+    if (lowerText.includes(keyword.toLowerCase())) {
+      foundKeywords.push(keyword);
+    }
+  }
+  
+  if (foundKeywords.length > 0) {
+    console.log(`✅ Found reservation keywords: ${foundKeywords.join(', ')}`);
+    return { wantsReservation: true, reason: `Keywords: ${foundKeywords.join(', ')}` };
+  }
+  
+  // Check for patterns indicating reservation intent
+  const patterns = [
+    // English patterns
+    /(for|per)\s+(\d+)\s+(people|persons|guests|persone|ospiti)/i,
+    /(\d+)\s+(people|persons|guests|persone|ospiti)\s+(for|per)/i,
+    /(table|tavolo)\s+(for|per)\s+(\d+)/i,
+    /(i'd like|i would like|i want|vorrei|desidero)\s+(to\s+)?(reserve|book|prenotare)/i,
+    /(can|could|may|posso|potrei)\s+(i|we|io|noi)\s+(reserve|book|prenotare)/i,
+    
+    // Italian patterns
+    /(un|due|tre|quattro|cinque|sei|sette|otto|nove|dieci)\s+(persone|ospiti)/i,
+    /(per|a)\s+(nome|nome e cognome)/i,
+    /(numero|telefono|cellulare)\s+(di|da)/i,
+    /(che\s+ora|a\s+che\s+ora|what time)/i,
+    /(che\s+giorno|che\s+data|what date)/i
+  ];
+  
+  for (const pattern of patterns) {
+    const match = lowerText.match(pattern);
+    if (match) {
+      console.log(`✅ Found reservation pattern: ${pattern.source} → "${match[0]}"`);
+      return { wantsReservation: true, reason: `Pattern: ${match[0]}` };
+    }
+  }
+  
+  // Check if agent asked reservation-related questions
+  const agentMessages = transcript
+    .filter(msg => msg.role === 'agent')
+    .map(msg => msg.content || '')
+    .join(' ')
+    .toLowerCase();
+  
+  const agentQuestions = [
+    // English questions
+    'how many', 'what date', 'what time', 'phone number',
+    'name', 'last name', 'first name', 'special requests',
+    'guests', 'people', 'persons', 'reservation',
+    
+    // Italian questions
+    'quante persone', 'che data', 'che ora', 'numero di telefono',
+    'nome', 'cognome', 'nome e cognome', 'richieste speciali',
+    'ospiti', 'persone', 'prenotazione', 'fino a che ora'
+  ];
+  
+  let agentQuestionCount = 0;
+  for (const question of agentQuestions) {
+    if (agentMessages.includes(question)) {
+      agentQuestionCount++;
+    }
+  }
+  
+  // If agent asked multiple reservation-related questions
+  if (agentQuestionCount >= 2) {
+    console.log(`✅ Agent asked ${agentQuestionCount} reservation-related questions`);
+    return { wantsReservation: true, reason: `Agent questions: ${agentQuestionCount}` };
+  }
+  
+  // Check for user providing reservation details without explicit keyword
+  const userDetails = transcript
+    .filter(msg => msg.role === 'user')
+    .map(msg => msg.content || '');
+  
+  const detailIndicators = [
+    // Time indicators
+    /\b(\d{1,2}[:.]\d{2})\b/,
+    /\b(\d{1,2})\s*(am|pm|di mattina|di pomeriggio|di sera)\b/i,
+    // Date indicators
+    /\b(oggi|domani|lunedì|lunedi|martedì|martedi|mercoledì|mercoledi|giovedì|giovedi|venerdì|venerdi|sabato|domenica)\b/i,
+    // Number indicators
+    /\b(\d+)\s*(persone|ospiti|adulti|bambini)\b/i,
+    // Phone indicators
+    /\b(\d{3}[-.\s]?\d{3}[-.\s]?\d{4})\b/,
+    /\b(\d{2}\s?\d{4}\s?\d{4})\b/
+  ];
+  
+  let detailCount = 0;
+  for (const detail of userDetails) {
+    for (const indicator of detailIndicators) {
+      if (indicator.test(detail)) {
+        detailCount++;
+        break;
+      }
+    }
+  }
+  
+  if (detailCount >= 2) {
+    console.log(`✅ User provided ${detailCount} reservation details`);
+    return { wantsReservation: true, reason: `User details: ${detailCount}` };
+  }
+  
+  console.log('❌ No clear reservation intent detected');
+  return { wantsReservation: false, reason: 'No indicators found' };
+}
+
+// ===== YOUR EXISTING RESERVATION EXTRACTION CODE =====
 function extractReservationData(conversation, systemLogs = '') {
   console.log('🔍 Comprehensive reservation data extraction started...');
   
@@ -124,12 +262,10 @@ function extractReservationData(conversation, systemLogs = '') {
   return finalData;
 }
 
-// 1. Extract from structured data block
 function extractFromStructuredBlock(conversation, systemLogs) {
   console.log('🔍 Checking for structured data block...');
   const data = {};
   
-  // Check conversation first
   const fullConversationText = conversation 
     .map(msg => msg.content || '')
     .join('\n');
@@ -140,7 +276,6 @@ function extractFromStructuredBlock(conversation, systemLogs) {
     return parseStructuredBlock(structuredMatch[0]);
   }
   
-  // Check system logs
   if (systemLogs) {
     const logMatch = systemLogs.match(/RESERVATION_DATA:[\s\S]*?(?=\n\n|\n$|$)/i);
     if (logMatch) {
@@ -181,7 +316,6 @@ function parseStructuredBlock(block) {
   return data;
 }
 
-// 2. Extract from conversation flow - COMPREHENSIVE BILINGUAL SUPPORT
 function extractFromConversationFlow(conversation) {
   console.log('🔍 Extracting from conversation flow...');
   const data = {};
@@ -199,8 +333,6 @@ function extractFromConversationFlow(conversation) {
     const lowerContent = content.toLowerCase();
 
     if (msg.role === 'agent') {
-      // COMPREHENSIVE BILINGUAL QUESTION DETECTION
-      
       // First name questions - English + Italian
       if (lowerContent.includes('first name') || 
           lowerContent.includes('your name') ||
@@ -209,7 +341,7 @@ function extractFromConversationFlow(conversation) {
           lowerContent.includes('nome') || 
           lowerContent.includes('come ti chiami') ||
           lowerContent.includes('qual è il tuo nome') ||
-          lowerContent.includes('qual e il tuo nome') || // without accent
+          lowerContent.includes('qual e il tuo nome') ||
           lowerContent.includes('il tuo nome')) {
         firstNameAsked = true;
         console.log('👤 Agent asked for first name');
@@ -220,7 +352,7 @@ function extractFromConversationFlow(conversation) {
            lowerContent.includes('surname') ||
            lowerContent.includes('cognome') ||
            lowerContent.includes('qual è il tuo cognome') ||
-           lowerContent.includes('qual e il tuo cognome')) && firstNameAsked) { // without accent
+           lowerContent.includes('qual e il tuo cognome'))) {
         lastNameAsked = true;
         console.log('👤 Agent asked for last name');
       }
@@ -262,7 +394,7 @@ function extractFromConversationFlow(conversation) {
         console.log('📅 Agent asked for date');
       }
       
-      // Extract confirmation of information from agent - BILINGUAL
+      // Extract confirmation of information from agent
       if ((content.includes('David') && content.includes('Anderson')) ||
           (content.includes('Dina') && content.includes('Anderson')) ||
           lowerContent.includes('signor anderson') ||
@@ -272,7 +404,7 @@ function extractFromConversationFlow(conversation) {
         console.log(`✅ Agent confirmed: ${data.firstName} ${data.lastName}`);
       }
       
-      // Confirm guest count - BILINGUAL
+      // Confirm guest count
       if (lowerContent.match(/2\s*(people|person|guests?|adults?)/) ||
           lowerContent.includes('due persone') ||
           lowerContent.includes('2 persone') ||
@@ -283,12 +415,10 @@ function extractFromConversationFlow(conversation) {
         console.log('✅ Agent confirmed: 2 guests');
       }
       
-      // Confirm date/time - BILINGUAL
+      // Confirm date/time
       if ((lowerContent.includes('friday') && (lowerContent.includes('9:45') || lowerContent.includes('9.45'))) ||
           (lowerContent.includes('venerdì') && lowerContent.includes('21:45')) ||
-          (lowerContent.includes('venerdi') && lowerContent.includes('21:45')) ||
-          (lowerContent.includes('venerdì') && lowerContent.includes('21.45')) ||
-          (lowerContent.includes('venerdi') && lowerContent.includes('21.45'))) {
+          (lowerContent.includes('venerdi') && lowerContent.includes('21:45'))) {
         data.date = convertDayToDate('next friday');
         data.time = '21:45';
         console.log('✅ Agent confirmed: Friday 9:45 PM');
@@ -296,9 +426,8 @@ function extractFromConversationFlow(conversation) {
     }
 
     if (msg.role === 'user') {
-      // Capture first name response (right after agent asks for first name)
+      // Capture first name response
       if (firstNameAsked && !lastNameAsked && !data.firstName) {
-        // Enhanced name regex to handle Italian accents and names
         const nameMatch = content.match(/\b([A-Z][a-zàèéìòù]+)\b/);
         if (nameMatch && nameMatch[1]) {
           data.firstName = nameMatch[1];
@@ -307,7 +436,7 @@ function extractFromConversationFlow(conversation) {
         }
       }
       
-      // Capture last name response (right after agent asks for last name)
+      // Capture last name response
       if (lastNameAsked && !data.lastName) {
         const nameMatch = content.match(/\b([A-Z][a-zàèéìòù]+)\b/);
         if (nameMatch && nameMatch[1]) {
@@ -317,9 +446,8 @@ function extractFromConversationFlow(conversation) {
         }
       }
       
-      // Capture guest count when asked - BILINGUAL
+      // Capture guest count
       if (guestsAsked && !data.guests) {
-        // English numbers
         if (lowerContent.match(/(\d+)\s*(people|person|guests?|adults?)/)) {
           const match = lowerContent.match(/(\d+)\s*(people|person|guests?|adults?)/);
           data.guests = parseInt(match[1]) || 2;
@@ -327,13 +455,10 @@ function extractFromConversationFlow(conversation) {
           console.log(`✅ User specified guests: ${data.guests}`);
           guestsAsked = false;
         }
-        // Italian numbers and phrases
         else if (lowerContent.match(/(\d+)\s*(persone|ospiti|adulti|bambini)/) ||
                  lowerContent.includes('due persone') ||
-                 lowerContent.includes('per due') ||
-                 lowerContent.match(/siamo\s*in\s*(\d+)/)) {
-          const match = lowerContent.match(/(\d+)\s*(persone|ospiti|adulti|bambini)/) || 
-                       lowerContent.match(/siamo\s*in\s*(\d+)/);
+                 lowerContent.includes('per due')) {
+          const match = lowerContent.match(/(\d+)\s*(persone|ospiti|adulti|bambini)/);
           if (match && match[1]) {
             data.guests = parseInt(match[1]) || 2;
             data.adults = data.guests;
@@ -343,16 +468,14 @@ function extractFromConversationFlow(conversation) {
         }
       }
       
-      // Capture date when asked - BILINGUAL
+      // Capture date
       if (dateAsked && !data.date) {
-        // English dates
         if (lowerContent.includes('friday') && (lowerContent.includes('9:45') || lowerContent.includes('9.45'))) {
           data.date = convertDayToDate('next friday');
           data.time = '21:45';
           console.log('✅ User specified: Friday 9:45 PM');
           dateAsked = false;
         }
-        // Italian dates
         else if ((lowerContent.includes('venerdì') || lowerContent.includes('venerdi')) && 
                  (lowerContent.includes('21:45') || lowerContent.includes('21.45'))) {
           data.date = convertDayToDate('next friday');
@@ -360,7 +483,6 @@ function extractFromConversationFlow(conversation) {
           console.log('✅ User specified: Friday 9:45 PM');
           dateAsked = false;
         }
-        // Generic date references
         else if (lowerContent.includes('stasera') || lowerContent.includes('questa sera')) {
           data.date = convertDayToDate('today');
           data.time = '20:00';
@@ -375,10 +497,9 @@ function extractFromConversationFlow(conversation) {
         }
       }
       
-      // Capture phone number when asked - COMPREHENSIVE BILINGUAL NUMBER SUPPORT
+      // Capture phone number
       if (phoneAsked) {
         const digits = content
-          // English numbers
           .replace(/zero/gi, '0')
           .replace(/one/gi, '1')
           .replace(/two/gi, '2')
@@ -389,7 +510,6 @@ function extractFromConversationFlow(conversation) {
           .replace(/seven/gi, '7')
           .replace(/eight/gi, '8')
           .replace(/nine/gi, '9')
-          // Italian numbers (with and without accents)
           .replace(/uno/gi, '1')
           .replace(/due/gi, '2')
           .replace(/tre/gi, '3')
@@ -399,16 +519,6 @@ function extractFromConversationFlow(conversation) {
           .replace(/sette/gi, '7')
           .replace(/otto/gi, '8')
           .replace(/nove/gi, '9')
-          // Handle Italian pronunciation variations
-          .replace(/ùno/gi, '1')    // Accented variations
-          .replace(/dùe/gi, '2')
-          .replace(/tré/gi, '3')
-          .replace(/quàttro/gi, '4')
-          .replace(/cìnque/gi, '5')
-          .replace(/séi/gi, '6')
-          .replace(/sètte/gi, '7')
-          .replace(/òtto/gi, '8')
-          .replace(/nòve/gi, '9')
           .replace(/\D/g, '');
         
         if (digits.length > 0) {
@@ -416,18 +526,17 @@ function extractFromConversationFlow(conversation) {
           console.log(`📞 Phone digits collected: ${phoneDigits}`);
         }
         
-        // If we have enough digits, consider the phone number complete
         if (phoneDigits.length >= 10) {
           phoneAsked = false;
         }
       }
       
-      // Extract special requests - BILINGUAL
+      // Extract special requests
       if (lowerContent.includes('honeymoon') || 
           lowerContent.includes('surprise') ||
           lowerContent.includes('romantic') ||
           lowerContent.includes('luna di miele') || 
-          lowerContent.includes('luna di miele') || // Common typo
+          lowerContent.includes('luna di miele') ||
           lowerContent.includes('sorpresa') ||
           lowerContent.includes('romantico') ||
           lowerContent.includes('romantica')) {
@@ -435,19 +544,18 @@ function extractFromConversationFlow(conversation) {
         console.log('✅ User mentioned honeymoon/surprise');
       }
       
-      // Newsletter opt-in - BILINGUAL
+      // Newsletter opt-in
       if ((lowerContent.includes('newsletter') && (lowerContent.includes('yes') || lowerContent.includes('join'))) ||
           (lowerContent.includes('newsletter') && (lowerContent.includes('sì') || lowerContent.includes('si'))) ||
           lowerContent.includes('iscriviti') ||
           lowerContent.includes('mi iscrivo') ||
-          lowerContent.includes('volentieri')) { // "volentieri" = "gladly"
+          lowerContent.includes('volentieri')) {
         data.newsletter = true;
         console.log('✅ User opted into newsletter');
       }
     }
   }
   
-  // Process collected phone number
   if (phoneDigits.length >= 7) {
     data.phone = '+39' + phoneDigits.substring(0, 10);
     console.log(`✅ Processed phone number: ${data.phone}`);
@@ -457,14 +565,12 @@ function extractFromConversationFlow(conversation) {
   return data;
 }
 
-// 3. Extract from system logs
 function extractFromSystemLogs(logs) {
   console.log('🔍 Extracting from system logs...');
   const data = {};
   
   if (!logs) return data;
   
-  // Look for patterns in logs
   const patterns = {
     firstName: /Name:\s*([A-Za-z]+)/i,
     lastName: /Name:\s*[A-Za-z]+\s+([A-Za-z]+)/i,
@@ -515,14 +621,12 @@ function extractFromSystemLogs(logs) {
   return data;
 }
 
-// 4. Merge and resolve conflicts between sources
 function mergeAndResolveData(sources, defaultData) {
   console.log('🔄 Merging and resolving data from all sources...');
   
   const finalData = { ...defaultData };
   const sourcePriority = ['structuredBlock', 'conversationFlow', 'systemLogs'];
   
-  // For each field, take the value from the highest priority source that has it
   const fields = ['firstName', 'lastName', 'phone', 'guests', 'adults', 'children', 'date', 'time', 'specialRequests', 'newsletter'];
   
   fields.forEach(field => {
@@ -531,7 +635,6 @@ function mergeAndResolveData(sources, defaultData) {
           sources[source][field] !== '' && 
           sources[source][field] !== null) {
         
-        // Special validation for certain fields
         if (isValidFieldValue(field, sources[source][field])) {
           console.log(`✅ Using ${field} from ${source}: ${sources[source][field]}`);
           finalData[field] = sources[source][field];
@@ -541,7 +644,6 @@ function mergeAndResolveData(sources, defaultData) {
     }
   });
   
-  // Cross-validate important fields
   crossValidateFields(finalData, sources);
   
   return finalData;
@@ -550,13 +652,13 @@ function mergeAndResolveData(sources, defaultData) {
 function isValidFieldValue(field, value) {
   switch (field) {
     case 'phone':
-      return value.length >= 10; // Basic phone validation
+      return value.length >= 10;
     case 'guests':
     case 'adults':
     case 'children':
-      return value > 0 && value < 20; // Reasonable guest count
+      return value > 0 && value < 20;
     case 'time':
-      return /^\d{1,2}:\d{2}$/.test(value); // Time format
+      return /^\d{1,2}:\d{2}$/.test(value);
     default:
       return true;
   }
@@ -565,12 +667,10 @@ function isValidFieldValue(field, value) {
 function crossValidateFields(finalData, sources) {
   console.log('🔍 Cross-validating fields...');
   
-  // Ensure adults + children = guests
   if (finalData.adults && finalData.children !== undefined) {
     const calculatedGuests = finalData.adults + finalData.children;
     if (finalData.guests !== calculatedGuests) {
       console.log(`⚠️ Guest count mismatch: ${finalData.guests} total vs ${finalData.adults} adults + ${finalData.children} children`);
-      // Prefer the calculated value if it makes sense
       if (calculatedGuests > 0 && calculatedGuests < 20) {
         finalData.guests = calculatedGuests;
         console.log(`✅ Using calculated guest count: ${finalData.guests}`);
@@ -578,29 +678,25 @@ function crossValidateFields(finalData, sources) {
     }
   }
   
-  // Validate phone format
   if (finalData.phone && !finalData.phone.startsWith('+39')) {
     finalData.phone = '+39' + finalData.phone.replace(/\D/g, '');
     console.log(`✅ Formatted phone: ${finalData.phone}`);
   }
   
-  // Validate date is in the future
   const reservationDate = new Date(finalData.date);
   const today = new Date();
   if (reservationDate < today) {
-    // Default to tomorrow if date is in the past
     const tomorrow = new Date(today);
     tomorrow.setDate(today.getDate() + 1);
     finalData.date = tomorrow.toISOString().split('T')[0];
     console.log(`⚠️ Date in past, defaulting to tomorrow: ${finalData.date}`);
   }
 }
-// ===== END YOUR EXISTING RESERVATION EXTRACTION CODE =====
+// ===== END RESERVATION EXTRACTION CODE =====
 
-// ===== GOOGLE CALENDAR INTEGRATION (NEW ADDITION - DOESN'T AFFECT YOUR CODE) =====
+// ===== GOOGLE CALENDAR INTEGRATION =====
 const SCOPES = ['https://www.googleapis.com/auth/calendar.readonly'];
 
-// Your exact service account credentials
 const serviceAccount = {
   "type": "service_account",
   "project_id": "retell-calendar-478918",
@@ -615,7 +711,6 @@ const serviceAccount = {
   "universe_domain": "googleapis.com"
 };
 
-// Function to get authenticated Google Calendar client
 async function getCalendarClient() {
   try {
     console.log('🔑 Initializing Google Calendar client...');
@@ -639,7 +734,6 @@ async function getCalendarClient() {
   }
 }
 
-// Function to analyze event availability and sold-out status
 function analyzeEventAvailability(event) {
   const {
     id,
@@ -654,7 +748,6 @@ function analyzeEventAvailability(event) {
     location
   } = event;
 
-  // Initialize availability object
   const availability = {
     eventId: id,
     title: summary || 'Untitled Event',
@@ -671,17 +764,14 @@ function analyzeEventAvailability(event) {
     rawEvent: event
   };
 
-  // METHOD 1: Check custom properties (extendedProperties.private)
   if (extendedProperties?.private) {
     const privateProps = extendedProperties.private;
     
-    // Check for explicit soldOut flag
     if (privateProps.soldOut === 'true' || privateProps.soldOut === true) {
       availability.isSoldOut = true;
       availability.soldOutReason = 'Marked as sold out in event properties';
     }
     
-    // Check capacity numbers
     if (privateProps.maxCapacity) {
       availability.totalCapacity = parseInt(privateProps.maxCapacity);
     }
@@ -690,7 +780,6 @@ function analyzeEventAvailability(event) {
       availability.currentAttendees = parseInt(privateProps.currentAttendees);
     }
     
-    // Calculate available spots if we have both numbers
     if (availability.totalCapacity !== null && availability.currentAttendees !== null) {
       availability.availableSpots = Math.max(0, availability.totalCapacity - availability.currentAttendees);
       if (availability.availableSpots <= 0) {
@@ -699,19 +788,16 @@ function analyzeEventAvailability(event) {
       }
     }
     
-    // Check for waiting list
     if (privateProps.waitingList === 'true' || privateProps.waitingList === true) {
       availability.waitingList = true;
     }
   }
 
-  // METHOD 2: Check if attendees are omitted (indicates too many to list)
   if (attendeesOmitted === true) {
     availability.isSoldOut = true;
     availability.soldOutReason = 'Attendees omitted (likely at capacity)';
   }
 
-  // METHOD 3: Analyze description for keywords
   if (description) {
     const soldOutKeywords = [
       'sold out', 'sold-out', 'fully booked',
@@ -731,25 +817,21 @@ function analyzeEventAvailability(event) {
     }
   }
 
-  // METHOD 4: Count actual attendees
   if (attendees && Array.isArray(attendees)) {
     const confirmedAttendees = attendees.filter(attendee => 
       attendee.responseStatus === 'accepted'
     ).length;
     
-    // Update current attendees count if we found confirmed attendees
     if (confirmedAttendees > 0) {
       availability.currentAttendees = confirmedAttendees;
     }
     
-    // If we have a known capacity from before, check against it
     if (availability.totalCapacity && confirmedAttendees >= availability.totalCapacity) {
       availability.isSoldOut = true;
       availability.soldOutReason = `Attendee count reached capacity: ${confirmedAttendees}/${availability.totalCapacity}`;
     }
   }
 
-  // METHOD 5: Check event status
   if (status === 'cancelled') {
     availability.isSoldOut = true;
     availability.soldOutReason = 'Event cancelled';
@@ -758,7 +840,6 @@ function analyzeEventAvailability(event) {
   return availability;
 }
 
-// Function to get events from Google Calendar with sold-out detection
 async function getCalendarEventsWithAvailability(calendarId = null, timeMin = null, timeMax = null) {
   try {
     const calendar = await getCalendarClient();
@@ -766,10 +847,8 @@ async function getCalendarEventsWithAvailability(calendarId = null, timeMin = nu
       throw new Error('Could not authenticate with Google Calendar');
     }
 
-    // Use calendar ID from environment or default to 'primary'
     const targetCalendarId = calendarId || process.env.GOOGLE_CALENDAR_ID || 'primary';
 
-    // Default to next 7 days if no time range specified
     const now = new Date();
     const defaultTimeMin = timeMin || now.toISOString();
     const defaultTimeMax = timeMax || new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000).toISOString();
@@ -787,7 +866,6 @@ async function getCalendarEventsWithAvailability(calendarId = null, timeMin = nu
 
     const events = response.data.items || [];
     
-    // Analyze each event for availability
     const analyzedEvents = events.map(event => {
       return analyzeEventAvailability(event);
     });
@@ -801,7 +879,6 @@ async function getCalendarEventsWithAvailability(calendarId = null, timeMin = nu
   }
 }
 
-// Function to search events by date
 async function searchEventsByDate(dateString, calendarId = null) {
   try {
     const date = new Date(dateString);
@@ -810,7 +887,6 @@ async function searchEventsByDate(dateString, calendarId = null) {
     
     const events = await getCalendarEventsWithAvailability(calendarId, startOfDay, endOfDay);
     
-    // Format events for display
     const formattedEvents = events.map(event => {
       const time = event.startTime ? new Date(event.startTime).toLocaleTimeString('it-IT', {
         hour: '2-digit',
@@ -841,31 +917,26 @@ async function searchEventsByDate(dateString, calendarId = null) {
   }
 }
 
-// Function to check calendar for conflicts with reservation time
 async function checkCalendarForConflicts(date, time, calendarId = null) {
   try {
     const targetDate = new Date(date);
     const [hours, minutes] = time.split(':').map(Number);
     targetDate.setHours(hours, minutes, 0, 0);
     
-    // Check for events at the same time
     const events = await getCalendarEventsWithAvailability(
       calendarId,
-      new Date(targetDate.getTime() - 2 * 60 * 60 * 1000).toISOString(), // 2 hours before
-      new Date(targetDate.getTime() + 4 * 60 * 60 * 1000).toISOString()  // 4 hours after
+      new Date(targetDate.getTime() - 2 * 60 * 60 * 1000).toISOString(),
+      new Date(targetDate.getTime() + 4 * 60 * 60 * 1000).toISOString()
     );
     
-    // Find events that might conflict
     const conflictingEvents = events.filter(event => {
       if (event.isSoldOut) {
-        return false; // Already sold out, no conflict for new reservation
+        return false;
       }
       
-      // Check if this event is at a similar time
       const eventStart = new Date(event.startTime);
       const timeDiff = Math.abs(eventStart.getTime() - targetDate.getTime());
       
-      // Events within 3 hours are considered conflicting
       return timeDiff < 3 * 60 * 60 * 1000;
     });
     
@@ -910,7 +981,6 @@ app.get('/health', (req, res) => {
   });
 });
 
-// ===== TIME TEST ENDPOINT (YOUR EXISTING CODE - UNCHANGED) =====
 app.get('/api/time-test', (req, res) => {
     const serverTime = new Date();
     const italianTime = new Date(serverTime.toLocaleString("en-US", {timeZone: "Europe/Rome"}));
@@ -925,9 +995,8 @@ app.get('/api/time-test', (req, res) => {
     });
 });
 
-// ===== GOOGLE CALENDAR ENDPOINTS (NEW - DOESN'T AFFECT YOUR CODE) =====
+// ===== GOOGLE CALENDAR ENDPOINTS =====
 
-// Test endpoint to verify Google Calendar connection
 app.get('/api/calendar/test', async (req, res) => {
   try {
     console.log('🔧 Testing Google Calendar connection...');
@@ -940,7 +1009,6 @@ app.get('/api/calendar/test', async (req, res) => {
       });
     }
     
-    // Try to list calendars to verify connection
     const response = await calendar.calendarList.list();
     const calendars = response.data.items.map(cal => ({
       id: cal.id,
@@ -949,7 +1017,6 @@ app.get('/api/calendar/test', async (req, res) => {
       accessRole: cal.accessRole
     }));
     
-    // Find the calendar we have access to
     const targetCalendarId = process.env.GOOGLE_CALENDAR_ID || 'primary';
     const targetCalendar = calendars.find(cal => cal.id === targetCalendarId);
     
@@ -974,7 +1041,6 @@ app.get('/api/calendar/test', async (req, res) => {
   }
 });
 
-// Get events with availability for a specific date
 app.get('/api/calendar/events', async (req, res) => {
   try {
     const { date, calendarId } = req.query;
@@ -1002,7 +1068,6 @@ app.get('/api/calendar/events', async (req, res) => {
   }
 });
 
-// Simple endpoint for your Retell agent to check availability
 app.get('/api/calendar/check-availability', async (req, res) => {
   try {
     const { date, time } = req.query;
@@ -1053,29 +1118,8 @@ app.get('/api/calendar/check-availability', async (req, res) => {
     });
   }
 });
-// ===== END GOOGLE CALENDAR ENDPOINTS =====
 
-// ===== YOUR EXISTING RESERVATION ENDPOINTS (100% UNCHANGED) =====
-
-app.get('/api/reservations', async (req, res) => {
-  try {
-    const records = await base('Reservations').select().firstPage();
-    const reservations = records.map(record => ({
-      id: record.id,
-      ...record.fields
-    }));
-
-    return res.json({
-      success: true,
-      count: reservations.length,
-      reservations: reservations
-    });
-  } catch (error) {
-    res.status(500).json({ error: error.message });
-  }
-});
-
-// ===== MAIN WEBHOOK ENDPOINT (YOUR EXISTING CODE - 100% UNCHANGED) =====
+// ===== MAIN WEBHOOK ENDPOINT (MODIFIED WITH RESERVATION DETECTION) =====
 app.post('/api/reservations', async (req, res) => {
   try {
     console.log('\n📞 RETELL WEBHOOK RECEIVED');
@@ -1089,15 +1133,38 @@ app.post('/api/reservations', async (req, res) => {
     
     console.log('🎯 Processing call_analyzed event...');
     
+    // ===== RESERVATION INTENT DETECTION =====
+    const conversationText = call?.transcript_object
+      ?.map(msg => msg.content || '')
+      .join(' ')
+      .toLowerCase() || '';
+    
+    const intentResult = detectReservationIntent(conversationText, call?.transcript_object || []);
+    
+    // If caller doesn't want to make a reservation, return early
+    if (!intentResult.wantsReservation) {
+      console.log('❌ No reservation intent detected. NOT saving to Airtable.');
+      console.log('📝 Conversation was about:', conversationText.substring(0, 200) + '...');
+      console.log('🔍 Detection result:', intentResult);
+      
+      const greeting = getItalianTimeWithTimezone();
+      return res.json({
+        response: `${greeting}! Grazie per aver chiamato il Jazzamore. Se hai bisogno di fare una prenotazione, siamo a tua disposizione. Arrivederci!`,
+        saveToAirtable: false,
+        reason: 'No reservation intent detected',
+        detectionDetails: intentResult
+      });
+    }
+    
+    console.log('✅ Reservation intent detected. Proceeding with data extraction...');
+    console.log('🔍 Detection reason:', intentResult.reason);
+    
     // ===== DIAGNOSTIC LOGGING =====
     console.log('🔍 Searching for Post-Call Analysis data structure...');
     
-    // Check common locations for Post-Call Analysis
     let postCallData = null;
     
-    // Try different possible paths - FIXED: The data is in call.call_analysis.custom_analysis_data.reservation_details
     if (call?.call_analysis?.custom_analysis_data?.reservation_details) {
-        // Parse the JSON string from the reservation_details field
         const reservationDetailsStr = call.call_analysis.custom_analysis_data.reservation_details;
         try {
             postCallData = JSON.parse(reservationDetailsStr);
@@ -1129,7 +1196,6 @@ app.post('/api/reservations', async (req, res) => {
         console.log('✅ Using structured data from Post-Call Analysis');
         console.log('Post-Call Data:', JSON.stringify(postCallData, null, 2));
         
-        // Map JSON fields to your reservationData object
         reservationData = {
           firstName: postCallData.first_name || postCallData.firstName || '',
           lastName: postCallData.last_name || postCallData.lastName || '',
@@ -1146,12 +1212,10 @@ app.post('/api/reservations', async (req, res) => {
         console.log('📋 Extracted from Post-Call Analysis:', reservationData);
         
     } else if (call?.transcript_object) {
-        // Fallback to your old extraction method
         console.log('⚠️ No Post-Call Analysis found, falling back to transcript extraction.');
         const systemLogs = JSON.stringify(call, null, 2);
         reservationData = extractReservationData(call.transcript_object, systemLogs);
     } else {
-        // Default empty reservation
         console.log('⚠️ No data sources available, using defaults.');
         reservationData = {
           firstName: '',
@@ -1172,7 +1236,6 @@ app.post('/api/reservations', async (req, res) => {
     const { firstName, lastName, date, time, guests, adults, children, phone, specialRequests, newsletter } = reservationData;
     
     // ===== DATA VALIDATION =====
-    // Ensure phone has +39 prefix if it contains digits
     let formattedPhone = phone;
     if (phone && phone.replace(/\D/g, '').length >= 10) {
         const digits = phone.replace(/\D/g, '');
@@ -1180,7 +1243,6 @@ app.post('/api/reservations', async (req, res) => {
         console.log(`✅ Formatted phone: ${formattedPhone}`);
     }
     
-    // Validate date is in the future
     let validatedDate = date;
     const reservationDate = new Date(date);
     const today = new Date();
@@ -1193,7 +1255,8 @@ app.post('/api/reservations', async (req, res) => {
     
     const arrivalTimeISO = formatTimeForAirtable(time, validatedDate);
     
-    // ===== OPTIONAL: CALENDAR AVAILABILITY CHECK (COMMENTED OUT - UNCOMMENT WHEN READY) =====
+    // ===== OPTIONAL: CALENDAR AVAILABILITY CHECK =====
+    // Uncomment when ready to use Google Calendar integration
     /*
     console.log('📅 Checking calendar availability...');
     const calendarCheck = await checkCalendarForConflicts(validatedDate, time);
@@ -1201,7 +1264,6 @@ app.post('/api/reservations', async (req, res) => {
     if (calendarCheck.hasConflicts) {
       console.log('⚠️ Calendar conflicts detected:', calendarCheck.conflictingEvents.length);
       
-      // Check if any conflicting events are sold out
       const soldOutConflicts = calendarCheck.conflictingEvents.filter(event => event.isSoldOut);
       
       if (soldOutConflicts.length > 0) {
@@ -1209,7 +1271,6 @@ app.post('/api/reservations', async (req, res) => {
       } else {
         console.log('⚠️ Conflicts with available events, adding note to reservation');
         
-        // Add conflict information to special requests
         const conflictNote = `Calendar Note: Potential conflict with ${
           calendarCheck.conflictingEvents.length
         } event(s) around same time. Please verify availability.`;
@@ -1246,7 +1307,7 @@ app.post('/api/reservations', async (req, res) => {
       }
     ]);
     
-    console.log('🎉 RESERVATION SAVED!');
+    console.log('🎉 RESERVATION SAVED TO AIRTABLE!');
     console.log('Reservation ID:', reservationId);
     console.log('Name:', `${firstName} ${lastName}`.trim() || 'Not provided');
     console.log('Date/Time:', validatedDate, time);
@@ -1271,7 +1332,11 @@ app.post('/api/reservations', async (req, res) => {
     }
     
     res.json({
-        response: timeAwareResponse
+        response: timeAwareResponse,
+        saveToAirtable: true,
+        reservationId: reservationId,
+        intentDetected: true,
+        detectionDetails: intentResult
     });
     
   } catch (error) {
@@ -1279,7 +1344,9 @@ app.post('/api/reservations', async (req, res) => {
     console.error('❌ Error stack:', error.stack);
     const greeting = getItalianTimeWithTimezone();
     res.json({
-        response: `${greeting}! Grazie per la tua chiamata! Abbiamo ricevuto la tua richiesta di prenotazione.`
+        response: `${greeting}! Grazie per la tua chiamata! Abbiamo riscontrato un problema. Ti preghiamo di riprovare più tardi.`,
+        saveToAirtable: false,
+        error: error.message
     });
   }
 });
@@ -1290,4 +1357,5 @@ app.listen(PORT, () => {
   console.log(`🔑 Google Calendar service account: ${serviceAccount.client_email}`);
   console.log(`📅 Test Google Calendar: http://localhost:${PORT}/api/calendar/test`);
   console.log(`📞 Your Airtable webhook: http://localhost:${PORT}/api/reservations`);
+  console.log(`🔍 Reservation detection: ACTIVE (Multilingual: English/Italian)`);
 });
