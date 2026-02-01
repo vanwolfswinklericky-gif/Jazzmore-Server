@@ -1119,6 +1119,198 @@ app.get('/api/calendar/check-availability', async (req, res) => {
   }
 });
 
+// ===== CALENDAR ENDPOINTS FOR AI AGENT =====
+
+// Get events for a specific date (AI agent will call this)
+app.get('/api/calendar/date', async (req, res) => {
+  try {
+    const { date } = req.query;
+    
+    if (!date) {
+      return res.status(400).json({
+        success: false,
+        error: 'Missing date parameter',
+        message: 'Please provide a date (YYYY-MM-DD)'
+      });
+    }
+    
+    console.log(`📅 AI Agent requested events for date: ${date}`);
+    
+    const events = await searchEventsByDate(date);
+    
+    // Format response for AI agent
+    const formattedEvents = events.map(event => ({
+      date: event.date,
+      time: event.time,
+      title: event.title,
+      location: event.location,
+      available: event.available,
+      reason: event.reason,
+      capacity: event.capacity,
+      availableSpots: event.availableSpots,
+      hasWaitingList: event.hasWaitingList,
+      description: event.description
+    }));
+    
+    res.json({
+      success: true,
+      date: date,
+      eventCount: events.length,
+      events: formattedEvents,
+      summary: `Found ${events.length} event(s) for ${date}. ${formattedEvents.filter(e => e.available).length} available.`
+    });
+    
+  } catch (error) {
+    console.error('Error in calendar/date endpoint:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to fetch calendar events',
+      message: error.message
+    });
+  }
+});
+
+// Check availability for specific date and time
+app.get('/api/calendar/availability', async (req, res) => {
+  try {
+    const { date, time } = req.query;
+    
+    if (!date || !time) {
+      return res.status(400).json({
+        success: false,
+        error: 'Missing parameters',
+        message: 'Please provide both date (YYYY-MM-DD) and time (HH:MM)'
+      });
+    }
+    
+    console.log(`📅 AI Agent checking availability for ${date} at ${time}`);
+    
+    const checkResult = await checkCalendarForConflicts(date, time);
+    
+    // Simplified response for AI agent
+    const available = !checkResult.hasConflicts || 
+                     checkResult.conflictingEvents.every(event => event.isSoldOut);
+    
+    let message;
+    if (available) {
+      message = `✅ Time slot ${time} on ${date} is available.`;
+    } else {
+      const conflictingAvailable = checkResult.conflictingEvents.filter(e => !e.isSoldOut).length;
+      message = `⚠️ There ${conflictingAvailable === 1 ? 'is' : 'are'} ${conflictingAvailable} conflicting event${conflictingAvailable !== 1 ? 's' : ''} around ${time} on ${date}.`;
+    }
+    
+    res.json({
+      success: true,
+      date: date,
+      time: time,
+      available: available,
+      hasConflicts: checkResult.hasConflicts,
+      conflictingEventsCount: checkResult.conflictingEvents.length,
+      availableConflicts: checkResult.conflictingEvents.filter(e => !e.isSoldOut).length,
+      soldOutConflicts: checkResult.conflictingEvents.filter(e => e.isSoldOut).length,
+      message: message,
+      details: available ? 'This time slot appears to be free for reservations.' : 'Some events may conflict with this reservation.'
+    });
+    
+  } catch (error) {
+    console.error('Error in calendar/availability endpoint:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to check availability',
+      message: error.message
+    });
+  }
+});
+
+// Get upcoming events (next 7 days)
+app.get('/api/calendar/upcoming', async (req, res) => {
+  try {
+    const { days = 7 } = req.query;
+    
+    console.log(`📅 AI Agent requested upcoming events for next ${days} days`);
+    
+    const now = new Date();
+    const timeMax = new Date(now.getTime() + parseInt(days) * 24 * 60 * 60 * 1000).toISOString();
+    
+    const events = await getCalendarEventsWithAvailability(null, now.toISOString(), timeMax);
+    
+    // Group events by date for easier consumption
+    const eventsByDate = {};
+    events.forEach(event => {
+      const eventDate = event.startTime ? 
+        new Date(event.startTime).toISOString().split('T')[0] : 
+        'unknown';
+      
+      if (!eventsByDate[eventDate]) {
+        eventsByDate[eventDate] = [];
+      }
+      
+      eventsByDate[eventDate].push({
+        title: event.title,
+        time: event.startTime ? new Date(event.startTime).toLocaleTimeString('it-IT', {
+          hour: '2-digit',
+          minute: '2-digit'
+        }) : 'All day',
+        available: !event.isSoldOut,
+        soldOutReason: event.isSoldOut ? event.soldOutReason : null,
+        location: event.location,
+        description: event.description.substring(0, 200) + (event.description.length > 200 ? '...' : '')
+      });
+    });
+    
+    res.json({
+      success: true,
+      days: parseInt(days),
+      totalEvents: events.length,
+      eventsByDate: eventsByDate,
+      summary: `Found ${events.length} event(s) in the next ${days} days.`
+    });
+    
+  } catch (error) {
+    console.error('Error in calendar/upcoming endpoint:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to fetch upcoming events',
+      message: error.message
+    });
+  }
+});
+
+// Simple calendar status check
+app.get('/api/calendar/status', async (req, res) => {
+  try {
+    const calendar = await getCalendarClient();
+    
+    if (!calendar) {
+      return res.json({
+        success: false,
+        connected: false,
+        message: 'Not connected to Google Calendar'
+      });
+    }
+    
+    // Try to list calendars to verify connection
+    const response = await calendar.calendarList.list({ maxResults: 1 });
+    
+    res.json({
+      success: true,
+      connected: true,
+      serviceAccount: serviceAccount.client_email,
+      calendarCount: response.data.items?.length || 0,
+      message: 'Google Calendar is connected and accessible'
+    });
+    
+  } catch (error) {
+    console.error('Calendar status check error:', error);
+    res.json({
+      success: false,
+      connected: false,
+      error: error.message,
+      message: 'Google Calendar connection failed'
+    });
+  }
+});
+
 // ===== MAIN WEBHOOK ENDPOINT (MODIFIED WITH RESERVATION DETECTION) =====
 app.post('/api/reservations', async (req, res) => {
   try {
@@ -1356,6 +1548,8 @@ app.listen(PORT, () => {
   console.log(`🎵 Jazzamore server running on port ${PORT}`);
   console.log(`🔑 Google Calendar service account: ${serviceAccount.client_email}`);
   console.log(`📅 Test Google Calendar: http://localhost:${PORT}/api/calendar/test`);
+  console.log(`📅 Calendar date endpoint: http://localhost:${PORT}/api/calendar/date?date=2024-12-25`);
+  console.log(`📅 Calendar availability: http://localhost:${PORT}/api/calendar/availability?date=2024-12-25&time=20:00`);
   console.log(`📞 Your Airtable webhook: http://localhost:${PORT}/api/reservations`);
   console.log(`🔍 Reservation detection: ACTIVE (Multilingual: English/Italian)`);
 });
