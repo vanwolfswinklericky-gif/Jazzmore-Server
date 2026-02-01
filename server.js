@@ -701,7 +701,34 @@ const serviceAccount = {
   "type": "service_account",
   "project_id": "retell-calendar-478918",
   "private_key_id": "575dd8d838e4cb4744b1be7658632c4d1a77c9b3",
-  "private_key": "-----BEGIN PRIVATE KEY-----\nMIIEvQIBADANBgkqhkiG9w0BAQEFAASCBKcwggSjAgEAAoIBAQCviCO52/9zQRGs\nfPHk09Dw57OrrlS+uFu+KDTLrifRtTJkFWLVqryxyL24PDezg9yKb3H5NJnqulhJ\nikAJNXvYVvUazbXRklUmsj0os+dbQRWoSxaQ6Wsk5jn2ZFLu/xTLTOKHOLEpvKLb\nVDhxy5Mc/pPLcv6GJ2ueZmpcPanKDu8ZaMyASk4RAjnN9z48FWNOkDmCe11N9BFW\nS+056bYu/aVA84M8/aTlZlrAYtbTK0a8RBft1wB9GAWrYjqmWcWoja9u/knFepjh\ndQ6q1quDPytNgO/TiTxdXx7i7U0iINO8UhOnor5H3HfWGaQRJE83xR0dmdG6nJHS\nsMaHTtBzAgMBAAECggEATVfSThnG1DTuoa8oMqi2Xv/pJhOZmbPIEODMapbhSsDp\nZDocI4OowzlthxlZfcrzSThT4vevfkL/ld/J2YTsfeXK+DV+EMrGpFdTJXUn0wi5\njz8OwWloYYjkL1IDTPWuZuoIwoZTYc2RgMz6VgHaX6M44iNYTSpffBsqcFxnTPVO\nLjSmhv8ugKF5O4pdxQH+jp0Mmdyt9NqZY60TsV4k/usP4/fsXo698M4f+A3zJrPh\nRv9cbI6tsqSA5yhlVnh9HSRGJI5JIgJ1T+8mk41L1tVQR5WZ/chdzmGX+HlBJ0JE\ndVsA7sY+DEhjE3WlqMKbuWrOKR/Jujtc5QDJ4x6akQKBgQDl6T2xUZ1J4uBVe/qN\nu9LbTQjWH4q97QuallBlkDZpeyj5Cuy9fgbiNNgmqg01YnqaJbGEAYvWOELxzKps\nWV+kVDO+2HGN2KG8isNTJyf+AvNF3EWnHg9mJ80WJ/oOqKCdL7x5Nng9d7B/pfht\neb3eAMGnKUbAsEAnHB6n3kIUCQKBgQDDczegThsC2iKMkpCMlbc6QwK4A6wR11MF\ncQiuvtzvqWnkqg5AbVCGZIbtWa8dLv1t2/RpCLJfESxQqV1Zl3kHuKPGga1jJ8uc\n/lAoX2X0AT0//gMFO4g4QGi12VsTkAPB2ecHCKBOK6pduzEHFo9eVzdO4JUIotdn\nB+cewjj3mwKBgCfZQE8ehTOMNjO61FeCiW5nMLPkLajzkAJQMUkZMMUhip13rka9\ntDW60QgKi1WIZxWWmOj3V6RehgPg5Fz5NKGH0pwuaagbNxU1u9sKu1zEaCPgpNXt\nWN/s4BgJ/8ZQpd34qyMbNMX6m8XUH3XiFu2GlgoCFnhJVCUzM4EG/c75AoGAPvxi\ncMa67bBece7JpoSZB62Qsrx8N0Os/ZPvuGDJ0nJGLeqfrSONT8IVuWethzodccnw\neejTks91+IicDMNDvblDDjW8KrgoZe+O5XPY50l+86BoWMdWnsoi9HeXYjaG/3G5\nggrFnmtz+8DXi/E5Qq3YpRK69I2F3S4uzTrKIQECgYEA07YrWl25pMnmqbOTs71n\nGjvZ8l9ppsYoMC/sZtHGMZh8xNRpvpWwSAWqx1DsneWd+AFbiNbsuyRWmOcdxK9F\nIUV+T87VcivbjDAbmJSStz3lKekhhpEMLKCgSPnPWyWh5v2zrCVXPnYEcAainv1o\nkXYTOnHJ9j8PZf/SpARPVUs=\n-----END PRIVATE KEY-----\n",
+  "private_key": `-----BEGIN PRIVATE KEY-----
+MIIEvQIBADANBgkqhkiG9w0BAQEFAASCBKcwggSjAgEAAoIBAQCviCO52/9zQRGs
+fPHk09Dw57OrrlS+uFu+KDTLrifRtTJkFWLVqryxyL24PDezg9yKb3H5NJnqulhJ
+ikAJNXvYVvUazbXRklUmsj0os+dbQRWoSxaQ6Wsk5jn2ZFLu/xTLTOKHOLEpvKLb
+VDhxy5Mc/pPLcv6GJ2ueZmpcPanKDu8ZaMyASk4RAjnN9z48FWNOkDmCe11N9BFW
+S+056bYu/aVA84M8/aTlZlrAYtbTK0a8RBft1wB9GAWrYjqmWcWoja9u/knFepjh
+dQ6q1quDPytNgO/TiTxdXx7i7U0iINO8UhOnor5H3HfWGaQRJE83xR0dmdG6nJHS
+sMaHTtBzAgMBAAECggEATVfSThnG1DTuoa8oMqi2Xv/pJhOZmbPIEODMapbhSsDp
+ZDocI4OowzlthxlZfcrzSThT4vevfkL/ld/J2YTsfeXK+DV+EMrGpFdTJXUn0wi5
+jz8OwWloYYjkL1IDTPWuZuoIwoZTYc2RgMz6VgHaX6M44iNYTSpffBsqcFxnTPVO
+LjSmhv8ugKF5O4pdxQH+jp0Mmdyt9NqZY60TsV4k/usP4/fsXo698M4f+A3zJrPh
+Rv9cbI6tsqSA5yhlVnh9HSRGJI5JIgJ1T+8mk41L1tVQR5WZ/chdzmGX+HlBJ0JE
+dVsA7sY+DEhjE3WlqMKbuWrOKR/Jujtc5QDJ4x6akQKBgQDl6T2xUZ1J4uBVe/qN
+u9LbTQjWH4q97QuallBlkDZpeyj5Cuy9fgbiNNgmqg01YnqaJbGEAYvWOELxzKps
+WV+kVDO+2HGN2KG8isNTJyf+AvNF3EWnHg9mJ80WJ/oOqKCdL7x5Nng9d7B/pfht
+eb3eAMGnKUbAsEAnHB6n3kIUCQKBgQDDczegThsC2iKMkpCMlbc6QwK4A6wR11MF
+cQiuvtzvqWnkqg5AbVCGZIbtWa8dLv1t2/RpCLJfESxQqV1Zl3kHuKPGga1jJ8uc
+/lAoX2X0AT0//gMFO4g4QGi12VsTkAPB2ecHCKBOK6pduzEHFo9eVzdO4JUIotdn
+B+cewjj3mwKBgCfZQE8ehTOMNjO61FeCiW5nMLPkLajzkAJQMUkZMMUhip13rka9
+tDW60QgKi1WIZxWWmOj3V6RehgPg5Fz5NKGH0pwuaagbNxU1u9sKu1zEaCPgpNXt
+WN/s4BgJ/8ZQpd34qyMbNMX6m8XUH3XiFu2GlgoCFnhJVCUzM4EG/c75AoGAPvxi
+cMa67bBece7JpoSZB62Qsrx8N0Os/ZPvuGDJ0nJGLeqfrSONT8IVuWethzodccnw
+nejTks91+IicDMNDvblDDjW8KrgoZe+O5XPY50l+86BoWMdWnsoi9HeXYjaG/3G5
+ggrFnmtz+8DXi/E5Qq3YpRK69I2F3S4uzTrKIQECgYEA07YrWl25pMnmqbOTs71n
+GjvZ8l9ppsYoMC/sZtHGMZh8xNRpvpWwSAWqx1DsneWd+AFbiNbsuyRWmOcdxK9F
+IUV+T87VcivbjDAbmJSStz3lKekhhpEMLKCgSPnPWyWh5v2zrCVXPnYEcAainv1o
+kXYTOnHJ9j8PZf/SpARPVUs=
+-----END PRIVATE KEY-----`,
   "client_email": "retell-ai-calendar@retell-calendar-478918.iam.gserviceaccount.com",
   "client_id": "107319862827925724291",
   "auth_uri": "https://accounts.google.com/o/oauth2/auth",
@@ -1553,3 +1580,4 @@ app.listen(PORT, () => {
   console.log(`📞 Your Airtable webhook: http://localhost:${PORT}/api/reservations`);
   console.log(`🔍 Reservation detection: ACTIVE (Multilingual: English/Italian)`);
 });
+
