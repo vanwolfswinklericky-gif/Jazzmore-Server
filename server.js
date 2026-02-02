@@ -92,8 +92,8 @@ function convertDayToDate(dayName) {
 // Helper function to parse relative dates
 function parseRelativeDate(dateString) {
   const today = new Date();
-  const currentYear = today.getFullYear(); // This will be 2026
-  const currentMonth = today.getMonth() + 1; // JavaScript months are 0-indexed
+  const currentYear = today.getFullYear();
+  const currentMonth = today.getMonth() + 1;
   const currentDay = today.getDate();
   
   console.log(`📅 [DEBUG] Today: ${today.toISOString()}`);
@@ -984,7 +984,7 @@ async function getCalendarEventsWithAvailability(calendarId = null, timeMin = nu
 
 // Mock data function (temporary until Google Calendar is fixed)
 function getMockEventsForDate(dateString) {
-  console.log(`🎭 Using mock data for ${dateString}`);
+  console.log(`🎭 [MOCK DATA] Looking up events for: ${dateString}`);
   
   const date = new Date(dateString);
   const year = date.getFullYear();
@@ -995,9 +995,37 @@ function getMockEventsForDate(dateString) {
   // Mock events for specific dates from your images
   const mockEvents = {
     // 2026 dates (current year)
-    '2026-02-04': [
+    '2026-01-31': [
       {
-        date: formattedDate,
+        date: '31/01/2026',
+        time: '20:00',
+        title: 'Fabio Nobile Quartet featuring Joyce Elaine Yuille',
+        location: 'Jazzamore',
+        available: true,
+        reason: 'Available',
+        capacity: '15/50',
+        availableSpots: 35,
+        hasWaitingList: false,
+        description: 'CENA-CONCERTO @ Jazzamore. Un progetto dal forte impatto live, dove energia, groove e personalità sono protagonisti assoluti. Un sound caldo e vibrante che fonde soul, funk e soul-jazz. A completare il progetto, la voce carismatica e intensa di Joyce Elaine Yuille.'
+      }
+    ],
+    '2026-02-01': [
+      {
+        date: '01/02/2026',
+        time: '20:00',
+        title: 'Weekend Jazz Opening',
+        location: 'Jazzamore',
+        available: true,
+        reason: 'Available',
+        capacity: '25/50',
+        availableSpots: 25,
+        hasWaitingList: false,
+        description: 'Apertura del weekend con musica jazz dal vivo.'
+      }
+    ],
+    '2026-02-02': [
+      {
+        date: '02/02/2026',
         time: '20:00',
         title: 'Live Jazz Session',
         location: 'Jazzamore',
@@ -1007,6 +1035,118 @@ function getMockEventsForDate(dateString) {
         availableSpots: 25,
         hasWaitingList: false,
         description: 'Serata jazz con musica dal vivo in atmosfera intima.'
+      }
+    ],
+    '2026-02-03': [
+      {
+        date: '03/02/2026',
+        time: '20:00',
+        title: 'Sunday Apericena & Live Music',
+        location: 'Jazzamore',
+        available: true,
+        reason: 'Available',
+        capacity: '30/60',
+        availableSpots: 30,
+        hasWaitingList: false,
+        description: 'Aperitivo domenicale con musica dal vivo e menu aperitivo.'
+      }
+    ],
+    '2026-02-04': [
+      {
+        date: '04/02/2026',
+        time: '20:00',
+        title: 'Live Jazz Session',
+        location: 'Jazzamore',
+        available: true,
+        reason: 'Available',
+        capacity: '20/45',
+        availableSpots: 25,
+        hasWaitingList: false,
+        description: 'Serata jazz con musica dal vivo in atmosfera intima.'
+      }
+    ],
+    '2026-02-05': [
+      {
+        date: '05/02/2026',
+        time: '20:00',
+        title: 'Weekday Jazz Night',
+        location: 'Jazzamore',
+        available: true,
+        reason: 'Available',
+        capacity: '15/40',
+        availableSpots: 25,
+        hasWaitingList: false,
+        description: 'Musica jazz dal vivo in settimana.'
+      }
+    ],
+    '2026-02-06': [
+      {
+        date: '06/02/2026',
+        time: '20:00',
+        title: 'Midweek Jazz Session',
+        location: 'Jazzamore',
+        available: true,
+        reason: 'Available',
+        capacity: '18/42',
+        availableSpots: 24,
+        hasWaitingList: false,
+        description: 'Serata jazz di metà settimana.'
+      }
+    ],
+    '2026-02-07': [
+      {
+        date: '07/02/2026',
+        time: '20:00',
+        title: 'Thursday Jazz Live',
+        location: 'Jazzamore',
+        available: true,
+        reason: 'Available',
+        capacity: '22/48',
+        availableSpots: 26,
+        hasWaitingList: false,
+        description: 'Giovedì con musica jazz dal vivo.'
+      }
+    ],
+    '2026-02-08': [
+      {
+        date: '08/02/2026',
+        time: '20:00',
+        title: 'Friday Night Jazz',
+        location: 'Jazzamore',
+        available: true,
+        reason: 'Available',
+        capacity: '30/60',
+        availableSpots: 30,
+        hasWaitingList: false,
+        description: 'Venerdì sera con il meglio del jazz dal vivo.'
+      }
+    ],
+    '2026-02-09': [
+      {
+        date: '09/02/2026',
+        time: '20:00',
+        title: 'Saturday Special Concert',
+        location: 'Jazzamore',
+        available: true,
+        reason: 'Available',
+        capacity: '35/65',
+        availableSpots: 30,
+        hasWaitingList: false,
+        description: 'Sabato speciale con ospiti musicali.'
+      }
+    ],
+    '2026-02-10': [
+      {
+        date: '10/02/2026',
+        time: '18:00',
+        title: 'Sunday Apericena & DJ Set',
+        location: 'Jazzamore',
+        available: true,
+        reason: 'Available',
+        capacity: '40/70',
+        availableSpots: 30,
+        hasWaitingList: false,
+        description: 'Aperitivo e apericena domenicale con DJ set.'
       }
     ],
     '2026-02-14': [
@@ -1066,26 +1206,12 @@ function getMockEventsForDate(dateString) {
       }
     ],
     
-    // 2026 dates (from your images)
-    '2026-01-31': [
+    // Also keep 2024 dates for backward compatibility
+    '2024-02-04': [
       {
-        date: '31/01/2026',
+        date: '04/02/2024',
         time: '20:00',
-        title: 'Fabio Nobile Quartet featuring Joyce Elaine Yuille',
-        location: 'Jazzamore',
-        available: true,
-        reason: 'Available',
-        capacity: '15/50',
-        availableSpots: 35,
-        hasWaitingList: false,
-        description: 'CENA-CONCERTO @ Jazzamore. Un progetto dal forte impatto live, dove energia, groove e personalità sono protagonisti assoluti. Un sound caldo e vibrante che fonde soul, funk e soul-jazz. A completare il progetto, la voce carismatica e intensa di Joyce Elaine Yuille.'
-      }
-    ],
-    '2026-02-04': [
-      {
-        date: '04/02/2026',
-        time: '20:00',
-        title: 'Live Jazz Session',
+        title: 'Live Jazz Session (2024)',
         location: 'Jazzamore',
         available: true,
         reason: 'Available',
@@ -1094,74 +1220,38 @@ function getMockEventsForDate(dateString) {
         hasWaitingList: false,
         description: 'Serata jazz con musica dal vivo in atmosfera intima.'
       }
-    ],
-    '2026-02-14': [
-      {
-        date: '14/02/2026',
-        time: '20:00',
-        title: 'San Valentino Special - Cena Romantica',
-        location: 'Jazzamore',
-        available: true,
-        reason: 'Available',
-        capacity: '10/40',
-        availableSpots: 30,
-        hasWaitingList: false,
-        description: 'Cena romantica di San Valentino con musica jazz dal vivo. Menu speciale a lume di candela.'
-      }
-    ],
-    '2026-02-17': [
-      {
-        date: '17/02/2026',
-        time: '20:00',
-        title: 'Swing Night',
-        location: 'Jazzamore',
-        available: true,
-        reason: 'Available',
-        capacity: '30/60',
-        availableSpots: 30,
-        hasWaitingList: false,
-        description: 'Serata swing con lezioni di ballo e musica dal vivo.'
-      }
-    ],
-    '2026-02-20': [
-      {
-        date: '20/02/2026',
-        time: '20:00',
-        title: 'Saraghina Live',
-        location: 'Jazzamore',
-        available: true,
-        reason: 'Available',
-        capacity: '25/55',
-        availableSpots: 30,
-        hasWaitingList: false,
-        description: 'Serata con la band Saraghina. Musica italiana e internazionale.'
-      }
-    ],
-    '2026-02-21': [
-      {
-        date: '21/02/2026',
-        time: '20:00',
-        title: 'Concerto Country Night',
-        location: 'Jazzamore',
-        available: true,
-        reason: 'Available',
-        capacity: '20/60',
-        availableSpots: 40,
-        hasWaitingList: false,
-        description: 'Serata country con band locale e menu a tema americano.'
-      }
     ]
   };
   
   const key = `${year}-${month.toString().padStart(2, '0')}-${day.toString().padStart(2, '0')}`;
   
+  console.log(`🔍 [MOCK DATA] Looking for key: "${key}"`);
+  
   if (mockEvents[key]) {
-    console.log(`✅ Found ${mockEvents[key].length} mock event(s) for ${key}`);
+    console.log(`✅ [MOCK DATA] Found ${mockEvents[key].length} event(s) for ${key}`);
     return mockEvents[key];
+  }
+  
+  // Also try alternative formats
+  const altKey1 = `${year}-${month}-${day}`; // 2026-2-4
+  const altKey2 = `${year}/${month.toString().padStart(2, '0')}/${day.toString().padStart(2, '0')}`; // 2026/02/04
+  
+  console.log(`🔍 [MOCK DATA] Trying alternative keys: "${altKey1}", "${altKey2}"`);
+  
+  if (mockEvents[altKey1]) {
+    console.log(`✅ [MOCK DATA] Found events with alt key: ${altKey1}`);
+    return mockEvents[altKey1];
+  }
+  
+  if (mockEvents[altKey2]) {
+    console.log(`✅ [MOCK DATA] Found events with alt key: ${altKey2}`);
+    return mockEvents[altKey2];
   }
   
   // Generic events based on day of week
   const dayOfWeek = date.getDay(); // 0 = Sunday, 1 = Monday, etc.
+  
+  console.log(`📅 [MOCK DATA] No specific events for ${key}, checking day of week: ${dayOfWeek}`);
   
   switch(dayOfWeek) {
     case 5: // Friday
@@ -1224,56 +1314,20 @@ function getMockEventsForDate(dateString) {
       }
   }
   
-  console.log(`ℹ️ No mock events for ${key}`);
+  console.log(`ℹ️ [MOCK DATA] No mock events for ${key}`);
   return [];
 }
 
 async function searchEventsByDate(dateString, calendarId = null) {
-  console.log(`📅 Searching events for: ${dateString}`);
+  console.log(`📅 [SEARCH] Searching events for: "${dateString}"`);
   
   // TEMPORARY: Always return mock data while fixing Google Calendar
-  console.log('🎭 Using mock data (Google Calendar auth in progress)');
-  return getMockEventsForDate(dateString);
+  console.log('🎭 [SEARCH] Using mock data (Google Calendar auth in progress)');
   
-  // UNCOMMENT BELOW WHEN GOOGLE CALENDAR IS WORKING:
-  /*
-  try {
-    const date = new Date(dateString);
-    const startOfDay = new Date(date.setHours(0, 0, 0, 0)).toISOString();
-    const endOfDay = new Date(date.setHours(23, 59, 59, 999)).toISOString();
-    
-    const events = await getCalendarEventsWithAvailability(calendarId, startOfDay, endOfDay);
-    
-    const formattedEvents = events.map(event => {
-      const time = event.startTime ? new Date(event.startTime).toLocaleTimeString('it-IT', {
-        hour: '2-digit',
-        minute: '2-digit'
-      }) : 'All day';
-      
-      const dateStr = event.startTime ? new Date(event.startTime).toLocaleDateString('it-IT') : dateString;
-      
-      return {
-        date: dateStr,
-        time: time,
-        title: event.title,
-        location: event.location,
-        available: !event.isSoldOut,
-        reason: event.isSoldOut ? event.soldOutReason : 'Available',
-        capacity: event.totalCapacity ? `${event.currentAttendees}/${event.totalCapacity}` : 'Unknown',
-        availableSpots: event.availableSpots,
-        hasWaitingList: event.waitingList,
-        description: event.description
-      };
-    });
-    
-    return formattedEvents;
-    
-  } catch (error) {
-    console.error('❌ Error searching events by date:', error.message);
-    console.log('⚠️ Using mock data due to error');
-    return getMockEventsForDate(dateString);
-  }
-  */
+  const mockEvents = getMockEventsForDate(dateString);
+  console.log(`📅 [SEARCH] Returning ${mockEvents.length} mock events for ${dateString}`);
+  
+  return mockEvents;
 }
 
 async function checkCalendarForConflicts(date, time, calendarId = null) {
@@ -1479,7 +1533,15 @@ app.get('/api/calendar/date', async (req, res) => {
   try {
     let { date } = req.query;
     
+    console.log('\n' + '='.repeat(80));
+    console.log('📅 [CALENDAR API CALLED] By AI Agent');
+    console.log('='.repeat(80));
+    console.log(`📅 Requested date: "${date}"`);
+    console.log(`📅 Request time: ${new Date().toISOString()}`);
+    console.log(`📅 Query params:`, req.query);
+    
     if (!date) {
+      console.log('❌ ERROR: No date parameter provided');
       return res.status(400).json({
         success: false,
         error: 'Missing date parameter',
@@ -1487,17 +1549,32 @@ app.get('/api/calendar/date', async (req, res) => {
       });
     }
     
-    console.log(`📅 AI Agent requested events for date: "${date}"`);
-    
     // Check if it's a relative date
     let parsedDate = date;
     if (!date.match(/^\d{4}-\d{2}-\d{2}$/)) {
       // It's not in YYYY-MM-DD format, try to parse it
+      console.log(`📅 This is a relative date, parsing...`);
       parsedDate = parseRelativeDate(date);
-      console.log(`📅 Parsed relative date "${date}" → "${parsedDate}"`);
+      console.log(`📅 Parsed "${date}" → "${parsedDate}"`);
+    } else {
+      console.log(`📅 This is already in YYYY-MM-DD format`);
     }
     
+    console.log(`📅 Final date for lookup: "${parsedDate}"`);
+    
     const events = await searchEventsByDate(parsedDate);
+    
+    console.log(`📅 Found ${events.length} event(s) for ${parsedDate}`);
+    
+    if (events.length > 0) {
+      console.log(`📅 Events found:`);
+      events.forEach((event, i) => {
+        console.log(`  ${i + 1}. ${event.title} at ${event.time}`);
+      });
+    } else {
+      console.log(`⚠️ NO EVENTS FOUND for ${parsedDate}`);
+      console.log(`⚠️ Check mock data for key: "${parsedDate}"`);
+    }
     
     // Format response for AI agent
     const formattedEvents = events.map(event => ({
@@ -1513,15 +1590,25 @@ app.get('/api/calendar/date', async (req, res) => {
       description: event.description
     }));
     
-    res.json({
+    const response = {
       success: true,
       originalDate: date,
       parsedDate: parsedDate,
       eventCount: events.length,
       events: formattedEvents,
-      summary: `Found ${events.length} event(s) for ${parsedDate}. ${formattedEvents.filter(e => e.available).length} available.`,
+      summary: events.length > 0 
+        ? `Found ${events.length} event(s) for ${parsedDate}. ${formattedEvents.filter(e => e.available).length} available.`
+        : `No events found for ${parsedDate}.`,
       note: 'Using mock calendar data'
-    });
+    };
+    
+    console.log(`📅 Sending response:`);
+    console.log(`  - Success: ${response.success}`);
+    console.log(`  - Event count: ${response.eventCount}`);
+    console.log(`  - Summary: "${response.summary}"`);
+    console.log('='.repeat(80) + '\n');
+    
+    res.json(response);
     
   } catch (error) {
     console.error('Error in calendar/date endpoint:', error);
@@ -1642,276 +1729,4 @@ app.get('/api/calendar/debug', async (req, res) => {
     } catch (error) {
       return res.json({
         success: false,
-        message: 'Failed to list calendars',
-        error: error.message,
-        serviceAccount: serviceAccount.client_email,
-        recommendation: 'Service account may not have calendar access',
-        note: 'Using mock data'
-      });
-    }
-    
-    res.json({
-      success: true,
-      serviceAccount: serviceAccount.client_email,
-      availableCalendars: calendarList.map(c => ({
-        id: c.id,
-        summary: c.summary,
-        primary: c.primary
-      })),
-      calendarsFound: calendarList.length,
-      message: 'Google Calendar API is accessible',
-      note: 'Calendar endpoints are using mock data for now'
-    });
-    
-  } catch (error) {
-    console.error('Debug error:', error);
-    res.status(500).json({
-      success: false,
-      error: error.message,
-      note: 'Using mock calendar data'
-    });
-  }
-});
-
-// Test relative date parsing
-app.get('/api/calendar/test-parse', (req, res) => {
-  const { date } = req.query;
-  
-  if (!date) {
-    return res.status(400).json({
-      error: 'Missing date parameter',
-      message: 'Provide a date like "the fourth", "february fourth", "tomorrow", etc.'
-    });
-  }
-  
-  const parsed = parseRelativeDate(date);
-  const events = getMockEventsForDate(parsed);
-  
-  res.json({
-    original: date,
-    parsed: parsed,
-    eventsFound: events.length,
-    events: events,
-    note: 'Testing relative date parsing'
-  });
-});
-
-// ===== MAIN WEBHOOK ENDPOINT (MODIFIED WITH RESERVATION DETECTION) =====
-app.post('/api/reservations', async (req, res) => {
-  try {
-    console.log('\n📞 RETELL WEBHOOK RECEIVED');
-    console.log('Event:', req.body.event);
-    
-    const { event, call } = req.body;
-    
-    if (event !== 'call_analyzed') {
-      return res.json({ status: 'received', event: event });
-    }
-    
-    console.log('🎯 Processing call_analyzed event...');
-    
-    // ===== RESERVATION INTENT DETECTION =====
-    const conversationText = call?.transcript_object
-      ?.map(msg => msg.content || '')
-      .join(' ')
-      .toLowerCase() || '';
-    
-    const intentResult = detectReservationIntent(conversationText, call?.transcript_object || []);
-    
-    // If caller doesn't want to make a reservation, return early
-    if (!intentResult.wantsReservation) {
-      console.log('❌ No reservation intent detected. NOT saving to Airtable.');
-      console.log('📝 Conversation was about:', conversationText.substring(0, 200) + '...');
-      console.log('🔍 Detection result:', intentResult);
-      
-      const greeting = getItalianTimeWithTimezone();
-      return res.json({
-        response: `${greeting}! Grazie per aver chiamato il Jazzamore. Se hai bisogno di fare una prenotazione, siamo a tua disposizione. Arrivederci!`,
-        saveToAirtable: false,
-        reason: 'No reservation intent detected',
-        detectionDetails: intentResult
-      });
-    }
-    
-    console.log('✅ Reservation intent detected. Proceeding with data extraction...');
-    console.log('🔍 Detection reason:', intentResult.reason);
-    
-    // ===== DIAGNOSTIC LOGGING =====
-    console.log('🔍 Searching for Post-Call Analysis data structure...');
-    
-    let postCallData = null;
-    
-    if (call?.call_analysis?.custom_analysis_data?.reservation_details) {
-        const reservationDetailsStr = call.call_analysis.custom_analysis_data.reservation_details;
-        try {
-            postCallData = JSON.parse(reservationDetailsStr);
-            console.log('✅ Found and parsed reservation_details from call_analysis.custom_analysis_data');
-            console.log('Post-Call Data:', postCallData);
-        } catch (error) {
-            console.log('❌ Error parsing reservation_details JSON:', error.message);
-        }
-    } else if (call?.post_call_analysis?.reservation_details) {
-        postCallData = call.post_call_analysis.reservation_details;
-        console.log('✅ Found at: post_call_analysis.reservation_details');
-    } else if (call?.analysis?.reservation_details) {
-        postCallData = call.analysis.reservation_details;
-        console.log('✅ Found at: analysis.reservation_details');
-    } else if (call?.call_analysis?.reservation_details) {
-        postCallData = call.call_analysis.reservation_details;
-        console.log('✅ Found at: call_analysis.reservation_details');
-    } else {
-        console.log('❌ No Post-Call Analysis data found in common locations');
-    }
-    
-    // ===== POST-CALL ANALYSIS EXTRACTION =====
-    const italianGreeting = getItalianTimeWithTimezone();
-    const reservationId = generateReservationId();
-    
-    let reservationData = {};
-    
-    if (postCallData) {
-        console.log('✅ Using structured data from Post-Call Analysis');
-        console.log('Post-Call Data:', JSON.stringify(postCallData, null, 2));
-        
-        reservationData = {
-          firstName: postCallData.first_name || postCallData.firstName || '',
-          lastName: postCallData.last_name || postCallData.lastName || '',
-          phone: postCallData.phone || '',
-          guests: parseInt(postCallData.guests) || 2,
-          adults: parseInt(postCallData.adults) || (parseInt(postCallData.guests) || 2),
-          children: parseInt(postCallData.children) || 0,
-          date: postCallData.date ? convertDayToDate(postCallData.date) : new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString().split('T')[0],
-          time: postCallData.time || '22:00',
-          specialRequests: postCallData.special_requests || postCallData.specialRequests || 'No special requests',
-          newsletter: postCallData.newsletter === 'yes' || postCallData.newsletter_opt_in === 'yes' || postCallData.newsletter === true || false
-        };
-        
-        console.log('📋 Extracted from Post-Call Analysis:', reservationData);
-        
-    } else if (call?.transcript_object) {
-        console.log('⚠️ No Post-Call Analysis found, falling back to transcript extraction.');
-        const systemLogs = JSON.stringify(call, null, 2);
-        reservationData = extractReservationData(call.transcript_object, systemLogs);
-    } else {
-        console.log('⚠️ No data sources available, using defaults.');
-        reservationData = {
-          firstName: '',
-          lastName: '',
-          date: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString().split('T')[0],
-          time: '22:00',
-          guests: 2,
-          adults: 2,
-          children: 0,
-          phone: '',
-          specialRequests: 'No special requests',
-          newsletter: false
-        };
-    }
-    
-    console.log('📋 Final reservation data:', reservationData);
-    
-    const { firstName, lastName, date, time, guests, adults, children, phone, specialRequests, newsletter } = reservationData;
-    
-    // ===== DATA VALIDATION =====
-    let formattedPhone = phone;
-    if (phone && phone.replace(/\D/g, '').length >= 10) {
-        const digits = phone.replace(/\D/g, '');
-        formattedPhone = digits.startsWith('39') ? `+${digits}` : `+39${digits.substring(0, 10)}`;
-        console.log(`✅ Formatted phone: ${formattedPhone}`);
-    }
-    
-    let validatedDate = date;
-    const reservationDate = new Date(date);
-    const today = new Date();
-    if (reservationDate < today) {
-        const tomorrow = new Date(today);
-        tomorrow.setDate(today.getDate() + 1);
-        validatedDate = tomorrow.toISOString().split('T')[0];
-        console.log(`⚠️ Date in past, adjusted to: ${validatedDate}`);
-    }
-    
-    const arrivalTimeISO = formatTimeForAirtable(time, validatedDate);
-    
-    // ===== SAVE TO AIRTABLE =====
-    console.log('💾 Saving to Airtable...');
-    const record = await base('Reservations').create([
-      {
-        "fields": {
-          "Reservation ID": reservationId,
-          "First Name": firstName,
-          "Last Name": lastName || '',
-          "Phone Number": formattedPhone || '',
-          "Reservation Date": validatedDate,
-          "Arrival Time": arrivalTimeISO,
-          "Total People": parseInt(guests) || 2,
-          "Dinner Count": parseInt(adults) || 2,
-          "Show-Only Count": 0,
-          "Kids Count": parseInt(children) || 0,
-          "Special Requests": specialRequests || '',
-          "Reservation Status": "Pending",
-          "Reservation Type": "Dinner + Show",
-          "Newsletter Opt-In": newsletter || false
-        }
-      }
-    ]);
-    
-    console.log('🎉 RESERVATION SAVED TO AIRTABLE!');
-    console.log('Reservation ID:', reservationId);
-    console.log('Name:', `${firstName} ${lastName}`.trim() || 'Not provided');
-    console.log('Date/Time:', validatedDate, time);
-    console.log('Guests:', guests, `(${adults} adults + ${children} children)`);
-    console.log('Phone:', formattedPhone || 'Not provided');
-    console.log('Special Requests:', specialRequests);
-    console.log('Newsletter:', newsletter);
-    console.log('Airtable Record ID:', record[0].id);
-    
-    // ===== TIME-AWARE RESPONSE =====
-    const greeting = getItalianTimeWithTimezone();
-    let timeAwareResponse;
-    
-    if (greeting === "Buongiorno") {
-        timeAwareResponse = `Perfetto! ${greeting}! Ho prenotato per ${guests} persone il ${validatedDate} alle ${time}. La tua conferma è ${reservationId}. Buona giornata!`;
-    } else if (greeting === "Buon pomeriggio") {
-        timeAwareResponse = `Perfetto! ${greeting}! Ho prenotato per ${guests} persone il ${validatedDate} alle ${time}. La tua conferma è ${reservationId}. Buon proseguimento!`;
-    } else if (greeting === "Buonasera") {
-        timeAwareResponse = `Perfetto! ${greeting}! Ho prenotato per ${guests} persone il ${validatedDate} alle ${time}. La tua conferma è ${reservationId}. Buona serata!`;
-    } else {
-        timeAwareResponse = `Perfetto! ${greeting}! Ho prenotato per ${guests} persone il ${validatedDate} alle ${time}. La tua conferma è ${reservationId}. Buona notte!`;
-    }
-    
-    res.json({
-        response: timeAwareResponse,
-        saveToAirtable: true,
-        reservationId: reservationId,
-        intentDetected: true,
-        detectionDetails: intentResult
-    });
-    
-  } catch (error) {
-    console.error('❌ Error:', error.message);
-    console.error('❌ Error stack:', error.stack);
-    const greeting = getItalianTimeWithTimezone();
-    res.json({
-        response: `${greeting}! Grazie per la tua chiamata! Abbiamo riscontrato un problema. Ti preghiamo di riprovare più tardi.`,
-        saveToAirtable: false,
-        error: error.message
-    });
-  }
-});
-
-// Start server
-app.listen(PORT, () => {
-  console.log(`🎵 Jazzamore server running on port ${PORT}`);
-  console.log(`🔑 Google Calendar service account: ${serviceAccount.client_email}`);
-  console.log(`📅 Calendar using: MOCK DATA (Google Calendar auth in progress)`);
-  console.log(`📅 Test endpoints:`);
-  console.log(`   - Date query (relative): http://localhost:${PORT}/api/calendar/date?date=the+fourth`);
-  console.log(`   - Date query (specific): http://localhost:${PORT}/api/calendar/date?date=2024-02-04`);
-  console.log(`   - Parse test: http://localhost:${PORT}/api/calendar/test-parse?date=the+fourth`);
-  console.log(`   - Debug: http://localhost:${PORT}/api/calendar/debug`);
-  console.log(`📞 Your Airtable webhook: http://localhost:${PORT}/api/reservations`);
-  console.log(`🔍 Reservation detection: ACTIVE (Multilingual: English/Italian)`);
-  console.log(`🎭 Note: Calendar endpoints are using realistic mock data based on your event images`);
-  console.log(`📅 Relative date parsing: ACTIVE ("the fourth" → 2024-02-04)`);
-});
-
+        message
