@@ -92,9 +92,12 @@ function convertDayToDate(dayName) {
 // Helper function to parse relative dates
 function parseRelativeDate(dateString) {
   const today = new Date();
-  const currentYear = today.getFullYear();
+  const currentYear = today.getFullYear(); // This will be 2026
   const currentMonth = today.getMonth() + 1; // JavaScript months are 0-indexed
   const currentDay = today.getDate();
+  
+  console.log(`📅 [DEBUG] Today: ${today.toISOString()}`);
+  console.log(`📅 [DEBUG] Current year: ${currentYear}, month: ${currentMonth}, day: ${currentDay}`);
   
   // Remove any "of this month" or similar phrases
   const cleanString = dateString.toLowerCase()
@@ -108,14 +111,17 @@ function parseRelativeDate(dateString) {
   
   // Check for "today"
   if (cleanString === 'today' || cleanString === 'oggi') {
-    return today.toISOString().split('T')[0];
+    const result = `${currentYear}-${currentMonth.toString().padStart(2, '0')}-${currentDay.toString().padStart(2, '0')}`;
+    console.log(`📅 Today parsed as: ${result}`);
+    return result;
   }
   
   // Check for "tomorrow"
   if (cleanString === 'tomorrow' || cleanString === 'domani') {
-    const tomorrow = new Date(today);
-    tomorrow.setDate(today.getDate() + 1);
-    return tomorrow.toISOString().split('T')[0];
+    const tomorrow = new Date(currentYear, currentMonth - 1, currentDay + 1);
+    const result = tomorrow.toISOString().split('T')[0];
+    console.log(`📅 Tomorrow parsed as: ${result}`);
+    return result;
   }
   
   // Check for day numbers (1st, 2nd, 3rd, 4th, etc.)
@@ -124,22 +130,10 @@ function parseRelativeDate(dateString) {
   if (dayMatch) {
     const day = parseInt(dayMatch[1]);
     
-    // If it's just a day number, assume current month and year
+    // If it's just a day number, use current month and year
     if (day >= 1 && day <= 31) {
-      // Check if the date is in the past for current month
-      const testDate = new Date(currentYear, currentMonth - 1, day);
-      if (testDate < today && testDate.getMonth() === today.getMonth()) {
-        // If it's past in current month, use next month
-        const nextMonth = currentMonth === 12 ? 1 : currentMonth + 1;
-        const nextYear = currentMonth === 12 ? currentYear + 1 : currentYear;
-        const result = `${nextYear}-${nextMonth.toString().padStart(2, '0')}-${day.toString().padStart(2, '0')}`;
-        console.log(`📅 Day ${day} is past in current month, using next month: ${result}`);
-        return result;
-      }
-      
-      // Otherwise use current month
       const result = `${currentYear}-${currentMonth.toString().padStart(2, '0')}-${day.toString().padStart(2, '0')}`;
-      console.log(`📅 Using current month for day ${day}: ${result}`);
+      console.log(`📅 Day ${day} parsed as: ${result} (current year: ${currentYear})`);
       return result;
     }
   }
@@ -158,7 +152,6 @@ function parseRelativeDate(dateString) {
       const dayMatch2 = cleanString.match(/(\d+)(?:st|nd|rd|th)?/);
       if (dayMatch2) {
         const day = parseInt(dayMatch2[1]);
-        // Assume current year unless specified
         const result = `${currentYear}-${monthNumber.toString().padStart(2, '0')}-${day.toString().padStart(2, '0')}`;
         console.log(`📅 Found month ${monthName} day ${day}: ${result}`);
         return result;
@@ -166,7 +159,7 @@ function parseRelativeDate(dateString) {
     }
   }
   
-  // Try standard date conversion
+  // Fallback to convertDayToDate
   console.log(`📅 Falling back to convertDayToDate for: ${cleanString}`);
   return convertDayToDate(cleanString);
 }
@@ -1001,8 +994,8 @@ function getMockEventsForDate(dateString) {
   
   // Mock events for specific dates from your images
   const mockEvents = {
-    // 2024 dates (current year)
-    '2024-02-04': [
+    // 2026 dates (current year)
+    '2026-02-04': [
       {
         date: formattedDate,
         time: '20:00',
@@ -1016,9 +1009,9 @@ function getMockEventsForDate(dateString) {
         description: 'Serata jazz con musica dal vivo in atmosfera intima.'
       }
     ],
-    '2024-02-14': [
+    '2026-02-14': [
       {
-        date: '14/02/2024',
+        date: '14/02/2026',
         time: '20:00',
         title: 'San Valentino Special - Cena Romantica',
         location: 'Jazzamore',
@@ -1030,9 +1023,9 @@ function getMockEventsForDate(dateString) {
         description: 'Cena romantica di San Valentino con musica jazz dal vivo. Menu speciale a lume di candela.'
       }
     ],
-    '2024-02-17': [
+    '2026-02-17': [
       {
-        date: '17/02/2024',
+        date: '17/02/2026',
         time: '20:00',
         title: 'Swing Night',
         location: 'Jazzamore',
@@ -1044,9 +1037,9 @@ function getMockEventsForDate(dateString) {
         description: 'Serata swing con lezioni di ballo e musica dal vivo.'
       }
     ],
-    '2024-02-20': [
+    '2026-02-20': [
       {
-        date: '20/02/2024',
+        date: '20/02/2026',
         time: '20:00',
         title: 'Saraghina Live',
         location: 'Jazzamore',
@@ -1058,9 +1051,9 @@ function getMockEventsForDate(dateString) {
         description: 'Serata con la band Saraghina. Musica italiana e internazionale.'
       }
     ],
-    '2024-02-21': [
+    '2026-02-21': [
       {
-        date: '21/02/2024',
+        date: '21/02/2026',
         time: '20:00',
         title: 'Concerto Country Night',
         location: 'Jazzamore',
@@ -1921,3 +1914,4 @@ app.listen(PORT, () => {
   console.log(`🎭 Note: Calendar endpoints are using realistic mock data based on your event images`);
   console.log(`📅 Relative date parsing: ACTIVE ("the fourth" → 2024-02-04)`);
 });
+
