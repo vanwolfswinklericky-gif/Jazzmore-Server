@@ -89,6 +89,88 @@ function convertDayToDate(dayName) {
   return tomorrow.toISOString().split('T')[0];
 }
 
+// Helper function to parse relative dates
+function parseRelativeDate(dateString) {
+  const today = new Date();
+  const currentYear = today.getFullYear();
+  const currentMonth = today.getMonth() + 1; // JavaScript months are 0-indexed
+  const currentDay = today.getDate();
+  
+  // Remove any "of this month" or similar phrases
+  const cleanString = dateString.toLowerCase()
+    .replace('of this month', '')
+    .replace('this month', '')
+    .replace('the ', '')
+    .replace('on ', '')
+    .trim();
+  
+  console.log(`📅 Parsing relative date: "${dateString}" → "${cleanString}"`);
+  
+  // Check for "today"
+  if (cleanString === 'today' || cleanString === 'oggi') {
+    return today.toISOString().split('T')[0];
+  }
+  
+  // Check for "tomorrow"
+  if (cleanString === 'tomorrow' || cleanString === 'domani') {
+    const tomorrow = new Date(today);
+    tomorrow.setDate(today.getDate() + 1);
+    return tomorrow.toISOString().split('T')[0];
+  }
+  
+  // Check for day numbers (1st, 2nd, 3rd, 4th, etc.)
+  const dayMatch = cleanString.match(/(\d+)(?:st|nd|rd|th)?/);
+  
+  if (dayMatch) {
+    const day = parseInt(dayMatch[1]);
+    
+    // If it's just a day number, assume current month and year
+    if (day >= 1 && day <= 31) {
+      // Check if the date is in the past for current month
+      const testDate = new Date(currentYear, currentMonth - 1, day);
+      if (testDate < today && testDate.getMonth() === today.getMonth()) {
+        // If it's past in current month, use next month
+        const nextMonth = currentMonth === 12 ? 1 : currentMonth + 1;
+        const nextYear = currentMonth === 12 ? currentYear + 1 : currentYear;
+        const result = `${nextYear}-${nextMonth.toString().padStart(2, '0')}-${day.toString().padStart(2, '0')}`;
+        console.log(`📅 Day ${day} is past in current month, using next month: ${result}`);
+        return result;
+      }
+      
+      // Otherwise use current month
+      const result = `${currentYear}-${currentMonth.toString().padStart(2, '0')}-${day.toString().padStart(2, '0')}`;
+      console.log(`📅 Using current month for day ${day}: ${result}`);
+      return result;
+    }
+  }
+  
+  // Try to parse month names
+  const monthMap = {
+    'january': 1, 'february': 2, 'march': 3, 'april': 4, 'may': 5, 'june': 6,
+    'july': 7, 'august': 8, 'september': 9, 'october': 10, 'november': 11, 'december': 12,
+    'jan': 1, 'feb': 2, 'mar': 3, 'apr': 4, 'jun': 6, 'jul': 7, 'aug': 8, 'sep': 9, 'oct': 10, 'nov': 11, 'dec': 12,
+    'gennaio': 1, 'febbraio': 2, 'marzo': 3, 'aprile': 4, 'maggio': 5, 'giugno': 6,
+    'luglio': 7, 'agosto': 8, 'settembre': 9, 'ottobre': 10, 'novembre': 11, 'dicembre': 12
+  };
+  
+  for (const [monthName, monthNumber] of Object.entries(monthMap)) {
+    if (cleanString.includes(monthName)) {
+      const dayMatch2 = cleanString.match(/(\d+)(?:st|nd|rd|th)?/);
+      if (dayMatch2) {
+        const day = parseInt(dayMatch2[1]);
+        // Assume current year unless specified
+        const result = `${currentYear}-${monthNumber.toString().padStart(2, '0')}-${day.toString().padStart(2, '0')}`;
+        console.log(`📅 Found month ${monthName} day ${day}: ${result}`);
+        return result;
+      }
+    }
+  }
+  
+  // Try standard date conversion
+  console.log(`📅 Falling back to convertDayToDate for: ${cleanString}`);
+  return convertDayToDate(cleanString);
+}
+
 // ===== RESERVATION INTENT DETECTION =====
 function detectReservationIntent(conversationText, transcript = []) {
   console.log('🔍 Detecting reservation intent...');
@@ -919,9 +1001,82 @@ function getMockEventsForDate(dateString) {
   
   // Mock events for specific dates from your images
   const mockEvents = {
-    '2026-01-31': [
+    // 2024 dates (current year)
+    '2024-02-04': [
       {
         date: formattedDate,
+        time: '20:00',
+        title: 'Live Jazz Session',
+        location: 'Jazzamore',
+        available: true,
+        reason: 'Available',
+        capacity: '20/45',
+        availableSpots: 25,
+        hasWaitingList: false,
+        description: 'Serata jazz con musica dal vivo in atmosfera intima.'
+      }
+    ],
+    '2024-02-14': [
+      {
+        date: '14/02/2024',
+        time: '20:00',
+        title: 'San Valentino Special - Cena Romantica',
+        location: 'Jazzamore',
+        available: true,
+        reason: 'Available',
+        capacity: '10/40',
+        availableSpots: 30,
+        hasWaitingList: false,
+        description: 'Cena romantica di San Valentino con musica jazz dal vivo. Menu speciale a lume di candela.'
+      }
+    ],
+    '2024-02-17': [
+      {
+        date: '17/02/2024',
+        time: '20:00',
+        title: 'Swing Night',
+        location: 'Jazzamore',
+        available: true,
+        reason: 'Available',
+        capacity: '30/60',
+        availableSpots: 30,
+        hasWaitingList: false,
+        description: 'Serata swing con lezioni di ballo e musica dal vivo.'
+      }
+    ],
+    '2024-02-20': [
+      {
+        date: '20/02/2024',
+        time: '20:00',
+        title: 'Saraghina Live',
+        location: 'Jazzamore',
+        available: true,
+        reason: 'Available',
+        capacity: '25/55',
+        availableSpots: 30,
+        hasWaitingList: false,
+        description: 'Serata con la band Saraghina. Musica italiana e internazionale.'
+      }
+    ],
+    '2024-02-21': [
+      {
+        date: '21/02/2024',
+        time: '20:00',
+        title: 'Concerto Country Night',
+        location: 'Jazzamore',
+        available: true,
+        reason: 'Available',
+        capacity: '20/60',
+        availableSpots: 40,
+        hasWaitingList: false,
+        description: 'Serata country con band locale e menu a tema americano.'
+      }
+    ],
+    
+    // 2026 dates (from your images)
+    '2026-01-31': [
+      {
+        date: '31/01/2026',
         time: '20:00',
         title: 'Fabio Nobile Quartet featuring Joyce Elaine Yuille',
         location: 'Jazzamore',
@@ -931,6 +1086,20 @@ function getMockEventsForDate(dateString) {
         availableSpots: 35,
         hasWaitingList: false,
         description: 'CENA-CONCERTO @ Jazzamore. Un progetto dal forte impatto live, dove energia, groove e personalità sono protagonisti assoluti. Un sound caldo e vibrante che fonde soul, funk e soul-jazz. A completare il progetto, la voce carismatica e intensa di Joyce Elaine Yuille.'
+      }
+    ],
+    '2026-02-04': [
+      {
+        date: '04/02/2026',
+        time: '20:00',
+        title: 'Live Jazz Session',
+        location: 'Jazzamore',
+        available: true,
+        reason: 'Available',
+        capacity: '20/45',
+        availableSpots: 25,
+        hasWaitingList: false,
+        description: 'Serata jazz con musica dal vivo in atmosfera intima.'
       }
     ],
     '2026-02-14': [
@@ -947,18 +1116,18 @@ function getMockEventsForDate(dateString) {
         description: 'Cena romantica di San Valentino con musica jazz dal vivo. Menu speciale a lume di candela.'
       }
     ],
-    '2026-02-21': [
+    '2026-02-17': [
       {
-        date: '21/02/2026',
+        date: '17/02/2026',
         time: '20:00',
-        title: 'Concerto Country Night',
+        title: 'Swing Night',
         location: 'Jazzamore',
         available: true,
         reason: 'Available',
-        capacity: '20/60',
-        availableSpots: 40,
+        capacity: '30/60',
+        availableSpots: 30,
         hasWaitingList: false,
-        description: 'Serata country con band locale e menu a tema americano.'
+        description: 'Serata swing con lezioni di ballo e musica dal vivo.'
       }
     ],
     '2026-02-20': [
@@ -975,32 +1144,18 @@ function getMockEventsForDate(dateString) {
         description: 'Serata con la band Saraghina. Musica italiana e internazionale.'
       }
     ],
-    '2026-02-17': [
+    '2026-02-21': [
       {
-        date: '17/02/2026',
+        date: '21/02/2026',
         time: '20:00',
-        title: 'Swing Night',
+        title: 'Concerto Country Night',
         location: 'Jazzamore',
         available: true,
         reason: 'Available',
-        capacity: '30/60',
-        availableSpots: 30,
+        capacity: '20/60',
+        availableSpots: 40,
         hasWaitingList: false,
-        description: 'Serata swing con lezioni di ballo e musica dal vivo.'
-      }
-    ],
-    '2026-02-04': [
-      {
-        date: '04/02/2026',
-        time: '20:00',
-        title: 'Live Jazz Session',
-        location: 'Jazzamore',
-        available: true,
-        reason: 'Available',
-        capacity: '20/45',
-        availableSpots: 25,
-        hasWaitingList: false,
-        description: 'Serata jazz con musica dal vivo in atmosfera intima.'
+        description: 'Serata country con band locale e menu a tema americano.'
       }
     ]
   };
@@ -1329,19 +1484,27 @@ app.get('/api/calendar/check-availability', async (req, res) => {
 // Get events for a specific date (AI agent will call this)
 app.get('/api/calendar/date', async (req, res) => {
   try {
-    const { date } = req.query;
+    let { date } = req.query;
     
     if (!date) {
       return res.status(400).json({
         success: false,
         error: 'Missing date parameter',
-        message: 'Please provide a date (YYYY-MM-DD)'
+        message: 'Please provide a date (YYYY-MM-DD or relative date like "tomorrow", "the fourth", etc.)'
       });
     }
     
-    console.log(`📅 AI Agent requested events for date: ${date}`);
+    console.log(`📅 AI Agent requested events for date: "${date}"`);
     
-    const events = await searchEventsByDate(date);
+    // Check if it's a relative date
+    let parsedDate = date;
+    if (!date.match(/^\d{4}-\d{2}-\d{2}$/)) {
+      // It's not in YYYY-MM-DD format, try to parse it
+      parsedDate = parseRelativeDate(date);
+      console.log(`📅 Parsed relative date "${date}" → "${parsedDate}"`);
+    }
+    
+    const events = await searchEventsByDate(parsedDate);
     
     // Format response for AI agent
     const formattedEvents = events.map(event => ({
@@ -1359,10 +1522,11 @@ app.get('/api/calendar/date', async (req, res) => {
     
     res.json({
       success: true,
-      date: date,
+      originalDate: date,
+      parsedDate: parsedDate,
       eventCount: events.length,
       events: formattedEvents,
-      summary: `Found ${events.length} event(s) for ${date}. ${formattedEvents.filter(e => e.available).length} available.`,
+      summary: `Found ${events.length} event(s) for ${parsedDate}. ${formattedEvents.filter(e => e.available).length} available.`,
       note: 'Using mock calendar data'
     });
     
@@ -1514,6 +1678,29 @@ app.get('/api/calendar/debug', async (req, res) => {
       note: 'Using mock calendar data'
     });
   }
+});
+
+// Test relative date parsing
+app.get('/api/calendar/test-parse', (req, res) => {
+  const { date } = req.query;
+  
+  if (!date) {
+    return res.status(400).json({
+      error: 'Missing date parameter',
+      message: 'Provide a date like "the fourth", "february fourth", "tomorrow", etc.'
+    });
+  }
+  
+  const parsed = parseRelativeDate(date);
+  const events = getMockEventsForDate(parsed);
+  
+  res.json({
+    original: date,
+    parsed: parsed,
+    eventsFound: events.length,
+    events: events,
+    note: 'Testing relative date parsing'
+  });
 });
 
 // ===== MAIN WEBHOOK ENDPOINT (MODIFIED WITH RESERVATION DETECTION) =====
@@ -1725,10 +1912,12 @@ app.listen(PORT, () => {
   console.log(`🔑 Google Calendar service account: ${serviceAccount.client_email}`);
   console.log(`📅 Calendar using: MOCK DATA (Google Calendar auth in progress)`);
   console.log(`📅 Test endpoints:`);
-  console.log(`   - Date query: http://localhost:${PORT}/api/calendar/date?date=2026-01-31`);
-  console.log(`   - Availability: http://localhost:${PORT}/api/calendar/availability?date=2026-01-31&time=20:00`);
+  console.log(`   - Date query (relative): http://localhost:${PORT}/api/calendar/date?date=the+fourth`);
+  console.log(`   - Date query (specific): http://localhost:${PORT}/api/calendar/date?date=2024-02-04`);
+  console.log(`   - Parse test: http://localhost:${PORT}/api/calendar/test-parse?date=the+fourth`);
   console.log(`   - Debug: http://localhost:${PORT}/api/calendar/debug`);
   console.log(`📞 Your Airtable webhook: http://localhost:${PORT}/api/reservations`);
   console.log(`🔍 Reservation detection: ACTIVE (Multilingual: English/Italian)`);
   console.log(`🎭 Note: Calendar endpoints are using realistic mock data based on your event images`);
+  console.log(`📅 Relative date parsing: ACTIVE ("the fourth" → 2024-02-04)`);
 });
