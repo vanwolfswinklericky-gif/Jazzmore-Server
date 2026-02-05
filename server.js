@@ -772,6 +772,9 @@ function crossValidateFields(finalData, sources) {
 // ===== GOOGLE CALENDAR INTEGRATION =====
 const SCOPES = ['https://www.googleapis.com/auth/calendar.readonly'];
 
+// Your JAZZAMORE CALENDAR ID - using your specific calendar
+const JAZZAMORE_CALENDAR_ID = 'jazzamorecesena@gmail.com';
+
 // Updated service account with new key
 const serviceAccount = {
   "type": "service_account",
@@ -817,22 +820,30 @@ dNyrgrZFgllZsEbtuVd07scIYrPSvBfVhjk8+ZZF24epS7TmcYm6P5hQFcacVRKb
 async function getCalendarClient() {
   try {
     console.log('🔑 Initializing Google Calendar client...');
+    console.log(`📧 Service account: ${serviceAccount.client_email}`);
+    console.log(`👤 Client ID: ${serviceAccount.client_id}`);
     
     const auth = new google.auth.GoogleAuth({
       credentials: serviceAccount,
       scopes: SCOPES,
     });
     
+    console.log('🔐 Getting auth client...');
     const authClient = await auth.getClient();
-    const calendar = google.calendar({ version: 'v3', auth: authClient });
+    console.log('✅ Auth client obtained');
+    
+    const calendar = google.calendar({ 
+      version: 'v3', 
+      auth: authClient 
+    });
     
     console.log('✅ Google Calendar client initialized successfully');
-    console.log(`📧 Service account: ${serviceAccount.client_email}`);
-    
     return calendar;
     
   } catch (error) {
-    console.error('❌ Error getting Google Calendar client:', error.message);
+    console.error('❌ Error getting Google Calendar client:');
+    console.error('   Message:', error.message);
+    console.error('   Code:', error.code);
     return null;
   }
 }
@@ -943,305 +954,21 @@ function analyzeEventAvailability(event) {
   return availability;
 }
 
-async function getCalendarEventsWithAvailability(calendarId = null, timeMin = null, timeMax = null) {
-  try {
-    const calendar = await getCalendarClient();
-    if (!calendar) {
-      throw new Error('Could not authenticate with Google Calendar');
-    }
-
-    const targetCalendarId = calendarId || process.env.GOOGLE_CALENDAR_ID || 'primary';
-
-    const now = new Date();
-    const defaultTimeMin = timeMin || now.toISOString();
-    const defaultTimeMax = timeMax || new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000).toISOString();
-
-    console.log(`📅 Fetching Google Calendar events from ${defaultTimeMin} to ${defaultTimeMax}`);
-
-    const response = await calendar.events.list({
-      calendarId: targetCalendarId,
-      timeMin: defaultTimeMin,
-      timeMax: defaultTimeMax,
-      maxResults: 50,
-      singleEvents: true,
-      orderBy: 'startTime',
-    });
-
-    const events = response.data.items || [];
-    
-    const analyzedEvents = events.map(event => {
-      return analyzeEventAvailability(event);
-    });
-
-    console.log(`✅ Found ${analyzedEvents.length} events with availability analysis`);
-    return analyzedEvents;
-
-  } catch (error) {
-    console.error('❌ Error fetching Google Calendar events:', error.message);
-    return [];
-  }
-}
-
-// Mock data function (fallback if Google Calendar fails)
-function getMockEventsForDate(dateString) {
-  console.log(`🎭 Using mock data for ${dateString}`);
-  
-  const date = new Date(dateString);
-  const year = date.getFullYear();
-  const month = date.getMonth() + 1;
-  const day = date.getDate();
-  const formattedDate = `${day.toString().padStart(2, '0')}/${month.toString().padStart(2, '0')}/${year}`;
-  
-  // Mock events for specific dates from your images
-  const mockEvents = {
-    // 2026 dates (current year)
-    '2026-02-04': [
-      {
-        date: formattedDate,
-        time: '20:00',
-        title: 'Live Jazz Session',
-        location: 'Jazzamore',
-        available: true,
-        reason: 'Available',
-        capacity: '20/45',
-        availableSpots: 25,
-        hasWaitingList: false,
-        description: 'Serata jazz con musica dal vivo in atmosfera intima.'
-      }
-    ],
-    '2026-02-14': [
-      {
-        date: '14/02/2026',
-        time: '20:00',
-        title: 'San Valentino Special - Cena Romantica',
-        location: 'Jazzamore',
-        available: true,
-        reason: 'Available',
-        capacity: '10/40',
-        availableSpots: 30,
-        hasWaitingList: false,
-        description: 'Cena romantica di San Valentino con musica jazz dal vivo. Menu speciale a lume di candela.'
-      }
-    ],
-    '2026-02-17': [
-      {
-        date: '17/02/2026',
-        time: '20:00',
-        title: 'Swing Night',
-        location: 'Jazzamore',
-        available: true,
-        reason: 'Available',
-        capacity: '30/60',
-        availableSpots: 30,
-        hasWaitingList: false,
-        description: 'Serata swing con lezioni di ballo e musica dal vivo.'
-      }
-    ],
-    '2026-02-20': [
-      {
-        date: '20/02/2026',
-        time: '20:00',
-        title: 'Saraghina Live',
-        location: 'Jazzamore',
-        available: true,
-        reason: 'Available',
-        capacity: '25/55',
-        availableSpots: 30,
-        hasWaitingList: false,
-        description: 'Serata con la band Saraghina. Musica italiana e internazionale.'
-      }
-    ],
-    '2026-02-21': [
-      {
-        date: '21/02/2026',
-        time: '20:00',
-        title: 'Concerto Country Night',
-        location: 'Jazzamore',
-        available: true,
-        reason: 'Available',
-        capacity: '20/60',
-        availableSpots: 40,
-        hasWaitingList: false,
-        description: 'Serata country con band locale e menu a tema americano.'
-      }
-    ],
-    
-    // 2026 dates (from your images)
-    '2026-01-31': [
-      {
-        date: '31/01/2026',
-        time: '20:00',
-        title: 'Fabio Nobile Quartet featuring Joyce Elaine Yuille',
-        location: 'Jazzamore',
-        available: true,
-        reason: 'Available',
-        capacity: '15/50',
-        availableSpots: 35,
-        hasWaitingList: false,
-        description: 'CENA-CONCERTO @ Jazzamore. Un progetto dal forte impatto live, dove energia, groove e personalità sono protagonisti assoluti. Un sound caldo e vibrante che fonde soul, funk e soul-jazz. A completare il progetto, la voce carismatica e intensa di Joyce Elaine Yuille.'
-      }
-    ],
-    '2026-02-04': [
-      {
-        date: '04/02/2026',
-        time: '20:00',
-        title: 'Live Jazz Session',
-        location: 'Jazzamore',
-        available: true,
-        reason: 'Available',
-        capacity: '20/45',
-        availableSpots: 25,
-        hasWaitingList: false,
-        description: 'Serata jazz con musica dal vivo in atmosfera intima.'
-      }
-    ],
-    '2026-02-14': [
-      {
-        date: '14/02/2026',
-        time: '20:00',
-        title: 'San Valentino Special - Cena Romantica',
-        location: 'Jazzamore',
-        available: true,
-        reason: 'Available',
-        capacity: '10/40',
-        availableSpots: 30,
-        hasWaitingList: false,
-        description: 'Cena romantica di San Valentino con musica jazz dal vivo. Menu speciale a lume di candela.'
-      }
-    ],
-    '2026-02-17': [
-      {
-        date: '17/02/2026',
-        time: '20:00',
-        title: 'Swing Night',
-        location: 'Jazzamore',
-        available: true,
-        reason: 'Available',
-        capacity: '30/60',
-        availableSpots: 30,
-        hasWaitingList: false,
-        description: 'Serata swing con lezioni di ballo e musica dal vivo.'
-      }
-    ],
-    '2026-02-20': [
-      {
-        date: '20/02/2026',
-        time: '20:00',
-        title: 'Saraghina Live',
-        location: 'Jazzamore',
-        available: true,
-        reason: 'Available',
-        capacity: '25/55',
-        availableSpots: 30,
-        hasWaitingList: false,
-        description: 'Serata con la band Saraghina. Musica italiana e internazionale.'
-      }
-    ],
-    '2026-02-21': [
-      {
-        date: '21/02/2026',
-        time: '20:00',
-        title: 'Concerto Country Night',
-        location: 'Jazzamore',
-        available: true,
-        reason: 'Available',
-        capacity: '20/60',
-        availableSpots: 40,
-        hasWaitingList: false,
-        description: 'Serata country con band locale e menu a tema americano.'
-      }
-    ]
-  };
-  
-  const key = `${year}-${month.toString().padStart(2, '0')}-${day.toString().padStart(2, '0')}`;
-  
-  if (mockEvents[key]) {
-    console.log(`✅ Found ${mockEvents[key].length} mock event(s) for ${key}`);
-    return mockEvents[key];
-  }
-  
-  // Generic events based on day of week
-  const dayOfWeek = date.getDay(); // 0 = Sunday, 1 = Monday, etc.
-  
-  switch(dayOfWeek) {
-    case 5: // Friday
-      return [{
-        date: formattedDate,
-        time: '20:00',
-        title: 'Live Jazz Night',
-        location: 'Jazzamore',
-        available: true,
-        reason: 'Available',
-        capacity: '25/50',
-        availableSpots: 25,
-        hasWaitingList: false,
-        description: 'Serata jazz con musica dal vivo ogni venerdì. Cena e concerto.'
-      }];
-      
-    case 6: // Saturday
-      return [{
-        date: formattedDate,
-        time: '20:00',
-        title: 'Saturday Special Concert',
-        location: 'Jazzamore',
-        available: true,
-        reason: 'Available',
-        capacity: '30/60',
-        availableSpots: 30,
-        hasWaitingList: false,
-        description: 'Serata speciale del sabato con ospiti musicali e menu completo.'
-      }];
-      
-    case 0: // Sunday
-      return [{
-        date: formattedDate,
-        time: '18:00',
-        title: 'Apericena & DJ Set',
-        location: 'Jazzamore',
-        available: true,
-        reason: 'Available',
-        capacity: '40/70',
-        availableSpots: 30,
-        hasWaitingList: false,
-        description: 'Aperitivo e apericena domenicale con DJ set. Menu aperitivo disponibile.'
-      }];
-      
-    default: // Weekdays
-      // 50% chance of having an event on weekdays
-      if (Math.random() > 0.5) {
-        return [{
-          date: formattedDate,
-          time: '20:00',
-          title: 'Weekday Jazz Session',
-          location: 'Jazzamore',
-          available: true,
-          reason: 'Available',
-          capacity: '20/40',
-          availableSpots: 20,
-          hasWaitingList: false,
-          description: 'Musica jazz dal vivo in un atmosfera intima e rilassata.'
-        }];
-      }
-  }
-  
-  console.log(`ℹ️ No mock events for ${key}`);
-  return [];
-}
-
 async function searchEventsByDate(dateString, calendarId = null) {
   console.log(`📅 Searching events for: ${dateString}`);
   
   try {
-    // Try to get real Google Calendar events first
-    console.log('🔍 Attempting to fetch real Google Calendar events...');
+    console.log('🔍 Fetching real Google Calendar events...');
     
     const calendar = await getCalendarClient();
     if (!calendar) {
-      console.log('⚠️ Google Calendar client not available, using mock data');
-      return getMockEventsForDate(dateString);
+      console.log('❌ Google Calendar client not available');
+      throw new Error('Google Calendar client not available');
     }
     
-    const targetCalendarId = calendarId || process.env.GOOGLE_CALENDAR_ID || 'primary';
+    // Use specific Jazzamore calendar ID
+    const targetCalendarId = calendarId || JAZZAMORE_CALENDAR_ID;
+    console.log(`📅 Using Jazzamore calendar ID: ${targetCalendarId}`);
     
     // Create date range for the specific day
     const date = new Date(dateString);
@@ -1251,83 +978,103 @@ async function searchEventsByDate(dateString, calendarId = null) {
     const endOfDay = new Date(date);
     endOfDay.setHours(23, 59, 59, 999);
     
-    console.log(`📅 Fetching events from ${startOfDay.toISOString()} to ${endOfDay.toISOString()}`);
+    console.log(`📅 Date range: ${startOfDay.toISOString()} to ${endOfDay.toISOString()}`);
     
-    const response = await calendar.events.list({
-      calendarId: targetCalendarId,
-      timeMin: startOfDay.toISOString(),
-      timeMax: endOfDay.toISOString(),
-      maxResults: 20,
-      singleEvents: true,
-      orderBy: 'startTime',
-    });
+    try {
+      console.log('🔍 Sending request to Google Calendar API...');
+      const response = await calendar.events.list({
+        calendarId: targetCalendarId,
+        timeMin: startOfDay.toISOString(),
+        timeMax: endOfDay.toISOString(),
+        maxResults: 20,
+        singleEvents: true,
+        orderBy: 'startTime',
+      });
 
-    const events = response.data.items || [];
-    console.log(`✅ Found ${events.length} real events from Google Calendar`);
-    
-    if (events.length === 0) {
-      console.log('⚠️ No real events found, falling back to mock data');
-      return getMockEventsForDate(dateString);
-    }
-    
-    // Analyze each event for availability
-    const analyzedEvents = events.map(event => {
-      const availability = analyzeEventAvailability(event);
+      const events = response.data.items || [];
+      console.log(`✅ Successfully fetched ${events.length} real events from Google Calendar`);
       
-      // Format the event for response
-      const eventStart = event.start?.dateTime ? new Date(event.start.dateTime) : new Date(event.start?.date || date);
-      const eventEnd = event.end?.dateTime ? new Date(event.end.dateTime) : new Date(event.end?.date || date);
-      
-      const time = event.start?.dateTime 
-        ? eventStart.toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' })
-        : 'All day';
-      
-      const dateStr = eventStart.toLocaleDateString('it-IT');
-      
-      // Determine if event is available (not sold out)
-      const isAvailable = !availability.isSoldOut;
-      
-      // Calculate available spots
-      let availableSpots = null;
-      let capacity = 'Unknown';
-      
-      if (availability.totalCapacity !== null && availability.currentAttendees !== null) {
-        availableSpots = Math.max(0, availability.totalCapacity - availability.currentAttendees);
-        capacity = `${availability.currentAttendees}/${availability.totalCapacity}`;
+      if (events.length === 0) {
+        console.log('ℹ️ No events found for this date in Google Calendar');
+        return [];
       }
       
-      return {
-        date: dateStr,
-        time: time,
-        title: availability.title,
-        location: availability.location,
-        available: isAvailable,
-        reason: isAvailable ? 'Available' : availability.soldOutReason || 'Sold out',
-        capacity: capacity,
-        availableSpots: availableSpots,
-        hasWaitingList: availability.waitingList,
-        description: availability.description,
-        startTime: eventStart.toISOString(),
-        endTime: eventEnd.toISOString(),
-        isRealEvent: true // Mark as real event
-      };
-    });
-    
-    console.log(`📊 Analyzed ${analyzedEvents.length} events for availability`);
-    
-    // Sort events by time
-    analyzedEvents.sort((a, b) => {
-      const timeA = a.time === 'All day' ? '00:00' : a.time;
-      const timeB = b.time === 'All day' ? '00:00' : b.time;
-      return timeA.localeCompare(timeB);
-    });
-    
-    return analyzedEvents;
+      // Log the events found
+      console.log('📋 Events found:');
+      events.forEach(event => {
+        const eventTime = event.start?.dateTime 
+          ? new Date(event.start.dateTime).toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' })
+          : event.start?.date || 'All day';
+        console.log(`   - ${eventTime}: ${event.summary || 'No title'}`);
+      });
+      
+      // Analyze each event for availability
+      const analyzedEvents = events.map(event => {
+        const availability = analyzeEventAvailability(event);
+        
+        // Format the event for response
+        const eventStart = event.start?.dateTime ? new Date(event.start.dateTime) : new Date(event.start?.date || date);
+        const eventEnd = event.end?.dateTime ? new Date(event.end.dateTime) : new Date(event.end?.date || date);
+        
+        const time = event.start?.dateTime 
+          ? eventStart.toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' })
+          : 'All day';
+        
+        const dateStr = eventStart.toLocaleDateString('it-IT');
+        
+        // Determine if event is available (not sold out)
+        const isAvailable = !availability.isSoldOut;
+        
+        // Calculate available spots
+        let availableSpots = null;
+        let capacity = 'Unknown';
+        
+        if (availability.totalCapacity !== null && availability.currentAttendees !== null) {
+          availableSpots = Math.max(0, availability.totalCapacity - availability.currentAttendees);
+          capacity = `${availability.currentAttendees}/${availability.totalCapacity}`;
+        }
+        
+        return {
+          date: dateStr,
+          time: time,
+          title: availability.title,
+          location: availability.location,
+          available: isAvailable,
+          reason: isAvailable ? 'Available' : availability.soldOutReason || 'Sold out',
+          capacity: capacity,
+          availableSpots: availableSpots,
+          hasWaitingList: availability.waitingList,
+          description: availability.description,
+          startTime: eventStart.toISOString(),
+          endTime: eventEnd.toISOString(),
+          isRealEvent: true
+        };
+      });
+      
+      console.log(`📊 Analyzed ${analyzedEvents.length} events for availability`);
+      
+      // Sort events by time
+      analyzedEvents.sort((a, b) => {
+        const timeA = a.time === 'All day' ? '00:00' : a.time;
+        const timeB = b.time === 'All day' ? '00:00' : b.time;
+        return timeA.localeCompare(timeB);
+      });
+      
+      return analyzedEvents;
+      
+    } catch (apiError) {
+      console.error('❌ Google Calendar API Error:');
+      console.error('   Message:', apiError.message);
+      console.error('   Code:', apiError.code);
+      if (apiError.response?.data?.error) {
+        console.error('   Error details:', JSON.stringify(apiError.response.data.error, null, 2));
+      }
+      throw new Error(`Google Calendar API Error: ${apiError.message}`);
+    }
     
   } catch (error) {
     console.error('❌ Error searching real Google Calendar events:', error.message);
-    console.log('⚠️ Falling back to mock data due to error');
-    return getMockEventsForDate(dateString);
+    throw error;
   }
 }
 
@@ -1369,12 +1116,8 @@ async function checkCalendarForConflicts(date, time, calendarId = null) {
     };
     
   } catch (error) {
-    console.error('Error checking calendar conflicts:', error.message);
-    return {
-      hasConflicts: false,
-      error: error.message,
-      conflictingEvents: []
-    };
+    console.error('❌ Error checking calendar conflicts:', error.message);
+    throw error;
   }
 }
 // ===== END GOOGLE CALENDAR INTEGRATION =====
@@ -1385,9 +1128,10 @@ app.get('/', (req, res) => {
   res.json({ 
     message: '🎵 Jazzamore Server is running!',
     status: 'Ready for reservations',
-    googleCalendar: 'Connected',
+    googleCalendar: 'Connected to Jazzamore calendar',
+    calendarId: JAZZAMORE_CALENDAR_ID,
     serviceAccount: serviceAccount.client_email,
-    note: 'Using Google Calendar with mock data fallback'
+    note: 'Using REAL Google Calendar data only - no mock data'
   });
 });
 
@@ -1397,9 +1141,10 @@ app.get('/health', (req, res) => {
     timestamp: new Date().toISOString(),
     googleCalendar: {
       connected: true,
+      calendarId: JAZZAMORE_CALENDAR_ID,
       project: serviceAccount.project_id,
       serviceEmail: serviceAccount.client_email,
-      note: 'Using Google Calendar with fallback to mock data'
+      note: 'Using REAL Google Calendar data only'
     }
   });
 });
@@ -1429,7 +1174,7 @@ app.get('/api/calendar/test', async (req, res) => {
       return res.status(500).json({
         error: 'Failed to authenticate with Google Calendar',
         message: 'Check your service account credentials',
-        note: 'Using mock data for calendar events'
+        note: 'No mock data available - only real calendar data'
       });
     }
     
@@ -1441,19 +1186,18 @@ app.get('/api/calendar/test', async (req, res) => {
       accessRole: cal.accessRole
     }));
     
-    const targetCalendarId = process.env.GOOGLE_CALENDAR_ID || 'primary';
-    const targetCalendar = calendars.find(cal => cal.id === targetCalendarId);
+    const targetCalendar = calendars.find(cal => cal.id === JAZZAMORE_CALENDAR_ID);
     
     res.json({
       success: true,
       message: 'Google Calendar API connection successful',
       authenticated: true,
       serviceAccount: serviceAccount.client_email,
+      jazzamoreCalendarId: JAZZAMORE_CALENDAR_ID,
+      jazzamoreCalendarFound: !!targetCalendar,
       totalCalendars: calendars.length,
-      targetCalendar: targetCalendarId,
-      targetCalendarFound: !!targetCalendar,
-      calendars: calendars.slice(0, 5),
-      note: 'Calendar endpoints will use real Google Calendar data'
+      calendars: calendars.slice(0, 10),
+      note: 'Calendar endpoints will use REAL Google Calendar data only'
     });
     
   } catch (error) {
@@ -1462,7 +1206,7 @@ app.get('/api/calendar/test', async (req, res) => {
       success: false,
       error: 'Google Calendar API error',
       message: error.message,
-      note: 'Using mock data for calendar events'
+      note: 'NO MOCK DATA AVAILABLE - Fix Google Calendar access'
     });
   }
 });
@@ -1474,21 +1218,15 @@ app.get('/api/calendar/events', async (req, res) => {
     
     const events = await searchEventsByDate(targetDate, calendarId);
     
-    // Count real vs mock events
-    const realEvents = events.filter(e => e.isRealEvent).length;
-    const mockEvents = events.length - realEvents;
-    
     res.json({
       success: true,
       date: targetDate,
-      calendarId: calendarId || process.env.GOOGLE_CALENDAR_ID || 'primary',
+      calendarId: calendarId || JAZZAMORE_CALENDAR_ID,
       eventCount: events.length,
-      realEvents: realEvents,
-      mockEvents: mockEvents,
       availableEvents: events.filter(e => e.available).length,
       soldOutEvents: events.filter(e => !e.available).length,
       events: events,
-      note: realEvents > 0 ? 'Using real Google Calendar data' : 'Using mock calendar data'
+      note: 'Using REAL Google Calendar data only - no mock data'
     });
     
   } catch (error) {
@@ -1497,7 +1235,7 @@ app.get('/api/calendar/events', async (req, res) => {
       success: false,
       error: 'Failed to fetch calendar events',
       message: error.message,
-      note: 'Falling back to mock data'
+      note: 'NO MOCK DATA AVAILABLE - Google Calendar access required'
     });
   }
 });
@@ -1532,7 +1270,7 @@ app.get('/api/calendar/check-availability', async (req, res) => {
         ? `Time slot ${time} on ${date} is available.` 
         : `Time slot ${time} on ${date} has conflicts with ${calendarCheck.conflictingEvents.length} event(s).`,
       details: calendarCheck,
-      note: 'Checking against real Google Calendar events'
+      note: 'Checking against REAL Google Calendar events only - no mock data'
     });
     
   } catch (error) {
@@ -1541,7 +1279,7 @@ app.get('/api/calendar/check-availability', async (req, res) => {
       success: false,
       error: 'Failed to check availability',
       message: error.message,
-      note: 'Using mock data response'
+      note: 'NO MOCK DATA AVAILABLE - Google Calendar access required'
     });
   }
 });
@@ -1571,46 +1309,51 @@ app.get('/api/calendar/date', async (req, res) => {
       console.log(`📅 Parsed relative date "${date}" → "${parsedDate}"`);
     }
     
-    const events = await searchEventsByDate(parsedDate);
-    
-    // Count real vs mock events
-    const realEvents = events.filter(e => e.isRealEvent).length;
-    const mockEvents = events.length - realEvents;
-    
-    // Format response for AI agent
-    const formattedEvents = events.map(event => ({
-      date: event.date,
-      time: event.time,
-      title: event.title,
-      location: event.location,
-      available: event.available,
-      reason: event.reason,
-      capacity: event.capacity,
-      availableSpots: event.availableSpots,
-      hasWaitingList: event.hasWaitingList,
-      description: event.description,
-      isRealEvent: event.isRealEvent || false
-    }));
-    
-    res.json({
-      success: true,
-      originalDate: date,
-      parsedDate: parsedDate,
-      eventCount: events.length,
-      realEvents: realEvents,
-      mockEvents: mockEvents,
-      events: formattedEvents,
-      summary: `Found ${events.length} event(s) for ${parsedDate} (${realEvents} real, ${mockEvents} mock). ${formattedEvents.filter(e => e.available).length} available.`,
-      note: realEvents > 0 ? 'Using real Google Calendar data' : 'Using mock calendar data'
-    });
+    try {
+      const events = await searchEventsByDate(parsedDate);
+      
+      // Format response for AI agent
+      const formattedEvents = events.map(event => ({
+        date: event.date,
+        time: event.time,
+        title: event.title,
+        location: event.location,
+        available: event.available,
+        reason: event.reason,
+        capacity: event.capacity,
+        availableSpots: event.availableSpots,
+        hasWaitingList: event.hasWaitingList,
+        description: event.description,
+        isRealEvent: event.isRealEvent || false
+      }));
+      
+      res.json({
+        success: true,
+        originalDate: date,
+        parsedDate: parsedDate,
+        eventCount: events.length,
+        events: formattedEvents,
+        summary: `Found ${events.length} event(s) for ${parsedDate}. ${formattedEvents.filter(e => e.available).length} available.`,
+        note: 'Using REAL Google Calendar data only - no mock data'
+      });
+      
+    } catch (calendarError) {
+      console.error('Calendar error:', calendarError.message);
+      res.status(500).json({
+        success: false,
+        error: 'Failed to fetch calendar events',
+        message: calendarError.message,
+        note: 'NO MOCK DATA AVAILABLE - Google Calendar access required'
+      });
+    }
     
   } catch (error) {
     console.error('Error in calendar/date endpoint:', error);
     res.status(500).json({
       success: false,
-      error: 'Failed to fetch calendar events',
+      error: 'Failed to process request',
       message: error.message,
-      note: 'Using mock data response'
+      note: 'NO MOCK DATA AVAILABLE - Google Calendar access required'
     });
   }
 });
@@ -1630,32 +1373,43 @@ app.get('/api/calendar/availability', async (req, res) => {
     
     console.log(`📅 AI Agent checking availability for ${date} at ${time}`);
     
-    const calendarCheck = await checkCalendarForConflicts(date, time);
-    const isAvailable = !calendarCheck.hasConflicts;
-    
-    res.json({
-      success: true,
-      date: date,
-      time: time,
-      available: isAvailable,
-      hasConflicts: calendarCheck.hasConflicts,
-      conflictingEventsCount: calendarCheck.conflictingEvents.length,
-      availableConflicts: calendarCheck.conflictingEvents.filter(e => e.available).length,
-      soldOutConflicts: calendarCheck.conflictingEvents.filter(e => !e.available).length,
-      message: isAvailable 
-        ? `Time slot ${time} on ${date} is available.` 
-        : `Time slot ${time} on ${date} conflicts with ${calendarCheck.conflictingEvents.length} event(s).`,
-      details: 'This time slot availability is checked against real Google Calendar events.',
-      note: 'Using Google Calendar for availability check'
-    });
+    try {
+      const calendarCheck = await checkCalendarForConflicts(date, time);
+      const isAvailable = !calendarCheck.hasConflicts;
+      
+      res.json({
+        success: true,
+        date: date,
+        time: time,
+        available: isAvailable,
+        hasConflicts: calendarCheck.hasConflicts,
+        conflictingEventsCount: calendarCheck.conflictingEvents.length,
+        availableConflicts: calendarCheck.conflictingEvents.filter(e => e.available).length,
+        soldOutConflicts: calendarCheck.conflictingEvents.filter(e => !e.available).length,
+        message: isAvailable 
+          ? `Time slot ${time} on ${date} is available.` 
+          : `Time slot ${time} on ${date} conflicts with ${calendarCheck.conflictingEvents.length} event(s).`,
+        details: 'This time slot availability is checked against REAL Google Calendar events.',
+        note: 'Using REAL Google Calendar data only - no mock data'
+      });
+      
+    } catch (calendarError) {
+      console.error('Calendar error:', calendarError.message);
+      res.status(500).json({
+        success: false,
+        error: 'Failed to check calendar availability',
+        message: calendarError.message,
+        note: 'NO MOCK DATA AVAILABLE - Google Calendar access required'
+      });
+    }
     
   } catch (error) {
     console.error('Error in calendar/availability endpoint:', error);
     res.status(500).json({
       success: false,
-      error: 'Failed to check availability',
+      error: 'Failed to process request',
       message: error.message,
-      note: 'Using mock data response'
+      note: 'NO MOCK DATA AVAILABLE - Google Calendar access required'
     });
   }
 });
@@ -1670,37 +1424,33 @@ app.get('/api/calendar/upcoming', async (req, res) => {
     // Get events for each day
     const eventsByDate = {};
     const now = new Date();
-    let totalRealEvents = 0;
-    let totalMockEvents = 0;
     
     for (let i = 0; i < parseInt(days); i++) {
       const futureDate = new Date(now);
       futureDate.setDate(now.getDate() + i);
       const dateStr = futureDate.toISOString().split('T')[0];
       
-      const events = await searchEventsByDate(dateStr);
-      
-      // Count real vs mock events
-      const realEvents = events.filter(e => e.isRealEvent).length;
-      const mockEvents = events.length - realEvents;
-      
-      totalRealEvents += realEvents;
-      totalMockEvents += mockEvents;
-      
-      if (events.length > 0) {
-        eventsByDate[dateStr] = events.map(event => ({
-          date: event.date,
-          time: event.time,
-          title: event.title,
-          location: event.location,
-          available: event.available,
-          reason: event.reason,
-          capacity: event.capacity,
-          availableSpots: event.availableSpots,
-          hasWaitingList: event.hasWaitingList,
-          description: event.description,
-          isRealEvent: event.isRealEvent || false
-        }));
+      try {
+        const events = await searchEventsByDate(dateStr);
+        
+        if (events.length > 0) {
+          eventsByDate[dateStr] = events.map(event => ({
+            date: event.date,
+            time: event.time,
+            title: event.title,
+            location: event.location,
+            available: event.available,
+            reason: event.reason,
+            capacity: event.capacity,
+            availableSpots: event.availableSpots,
+            hasWaitingList: event.hasWaitingList,
+            description: event.description,
+            isRealEvent: event.isRealEvent || false
+          }));
+        }
+      } catch (error) {
+        console.error(`Error fetching events for ${dateStr}:`, error.message);
+        // Continue with other dates even if one fails
       }
     }
     
@@ -1708,11 +1458,9 @@ app.get('/api/calendar/upcoming', async (req, res) => {
       success: true,
       days: parseInt(days),
       totalEvents: Object.values(eventsByDate).flat().length,
-      realEvents: totalRealEvents,
-      mockEvents: totalMockEvents,
       eventsByDate: eventsByDate,
-      summary: `Found ${Object.values(eventsByDate).flat().length} event(s) in the next ${days} days (${totalRealEvents} real, ${totalMockEvents} mock).`,
-      note: totalRealEvents > 0 ? 'Using real Google Calendar data' : 'Using mock calendar data'
+      summary: `Found ${Object.values(eventsByDate).flat().length} event(s) in the next ${days} days.`,
+      note: 'Using REAL Google Calendar data only - no mock data'
     });
     
   } catch (error) {
@@ -1721,7 +1469,7 @@ app.get('/api/calendar/upcoming', async (req, res) => {
       success: false,
       error: 'Failed to fetch upcoming events',
       message: error.message,
-      note: 'Using mock data response'
+      note: 'NO MOCK DATA AVAILABLE - Google Calendar access required'
     });
   }
 });
@@ -1739,14 +1487,14 @@ app.get('/api/calendar/debug', async (req, res) => {
         message: 'Failed to create calendar client',
         serviceAccount: serviceAccount.client_email,
         recommendation: 'Check service account credentials and permissions',
-        note: 'Currently using mock data for calendar events'
+        note: 'NO MOCK DATA AVAILABLE - Fix Google Calendar access'
       });
     }
     
     // Try to list calendars
     let calendarList;
     try {
-      const response = await calendar.calendarList.list({ maxResults: 5 });
+      const response = await calendar.calendarList.list({ maxResults: 20 });
       calendarList = response.data.items;
     } catch (error) {
       return res.json({
@@ -1755,50 +1503,86 @@ app.get('/api/calendar/debug', async (req, res) => {
         error: error.message,
         serviceAccount: serviceAccount.client_email,
         recommendation: 'Service account may not have calendar access',
-        note: 'Using mock data'
+        note: 'NO MOCK DATA AVAILABLE - Fix Google Calendar permissions'
       });
     }
     
-    // Test fetching events
+    // Test fetching events from Jazzamore calendar
     let testEvents = [];
+    let jazzamoreAccessible = false;
+    
     try {
       const now = new Date();
       const weekLater = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
       
+      console.log(`🔍 Testing access to Jazzamore calendar: ${JAZZAMORE_CALENDAR_ID}`);
       const response = await calendar.events.list({
-        calendarId: 'primary',
+        calendarId: JAZZAMORE_CALENDAR_ID,
         timeMin: now.toISOString(),
         timeMax: weekLater.toISOString(),
-        maxResults: 3,
+        maxResults: 5,
         singleEvents: true,
         orderBy: 'startTime',
       });
       
       testEvents = response.data.items || [];
+      jazzamoreAccessible = true;
+      console.log(`✅ Jazzamore calendar accessible, found ${testEvents.length} events`);
+      
     } catch (error) {
-      console.log('Test event fetch failed:', error.message);
+      console.log('❌ Jazzamore calendar access failed:', error.message);
+      console.log('⚠️ Trying primary calendar instead...');
+      
+      try {
+        const now = new Date();
+        const weekLater = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
+        
+        const response = await calendar.events.list({
+          calendarId: 'primary',
+          timeMin: now.toISOString(),
+          timeMax: weekLater.toISOString(),
+          maxResults: 5,
+          singleEvents: true,
+          orderBy: 'startTime',
+        });
+        
+        testEvents = response.data.items || [];
+        console.log(`✅ Primary calendar accessible, found ${testEvents.length} events`);
+      } catch (primaryError) {
+        console.log('❌ Primary calendar also failed:', primaryError.message);
+      }
     }
     
     res.json({
       success: true,
       serviceAccount: serviceAccount.client_email,
+      jazzamoreCalendarId: JAZZAMORE_CALENDAR_ID,
+      jazzamoreCalendarAccessible: jazzamoreAccessible,
       availableCalendars: calendarList.map(c => ({
         id: c.id,
         summary: c.summary,
-        primary: c.primary
+        primary: c.primary,
+        accessRole: c.accessRole
       })),
       calendarsFound: calendarList.length,
       testEvents: testEvents.map(e => ({
         id: e.id,
         summary: e.summary,
         start: e.start?.dateTime || e.start?.date,
-        end: e.end?.dateTime || e.end?.date
+        end: e.end?.dateTime || e.end?.date,
+        status: e.status
       })),
       testEventsFound: testEvents.length,
-      message: 'Google Calendar API is accessible',
-      note: testEvents.length > 0 
-        ? 'Calendar endpoints will use real Google Calendar data' 
-        : 'No events found, will use mock data'
+      message: testEvents.length > 0 
+        ? 'Google Calendar API is accessible and returning events' 
+        : 'Google Calendar API is accessible but no events found',
+      note: 'Using REAL Google Calendar data only - no mock data',
+      warnings: !jazzamoreAccessible ? [
+        `Jazzamore calendar (${JAZZAMORE_CALENDAR_ID}) not accessible`,
+        'Make sure the calendar is shared with the service account',
+        'Service account email: retell-ai-calendar@retell-calendar-478918.iam.gserviceaccount.com',
+        'Share your calendar with this email and grant "Make changes to events" permission'
+      ] : []
     });
     
   } catch (error) {
@@ -1806,7 +1590,66 @@ app.get('/api/calendar/debug', async (req, res) => {
     res.status(500).json({
       success: false,
       error: error.message,
-      note: 'Using mock calendar data'
+      note: 'NO MOCK DATA AVAILABLE - Fix Google Calendar access'
+    });
+  }
+});
+
+// Diagnostic endpoint
+app.get('/api/calendar/diagnostic', async (req, res) => {
+  try {
+    console.log('🩺 Running calendar diagnostic...');
+    
+    const calendar = await getCalendarClient();
+    
+    if (!calendar) {
+      return res.json({
+        success: false,
+        step: 'authentication',
+        error: 'Failed to authenticate with Google Calendar',
+        serviceAccount: serviceAccount.client_email,
+        clientId: serviceAccount.client_id,
+        action: 'Check service account credentials'
+      });
+    }
+    
+    // Test Jazzamore calendar access
+    try {
+      const now = new Date();
+      const response = await calendar.events.list({
+        calendarId: JAZZAMORE_CALENDAR_ID,
+        timeMin: now.toISOString(),
+        timeMax: new Date(now.getTime() + 24 * 60 * 60 * 1000).toISOString(),
+        maxResults: 1,
+      });
+      
+      res.json({
+        success: true,
+        diagnostic: {
+          authentication: '✅ OK',
+          jazzamoreCalendar: `✅ Accessible (${JAZZAMORE_CALENDAR_ID})`,
+          eventsFound: response.data.items?.length || 0,
+          serviceAccount: serviceAccount.client_email,
+          message: 'Jazzamore calendar is accessible and ready for use'
+        }
+      });
+      
+    } catch (error) {
+      return res.json({
+        success: false,
+        step: 'calendar_access',
+        error: `Cannot access Jazzamore calendar: ${error.message}`,
+        jazzamoreCalendarId: JAZZAMORE_CALENDAR_ID,
+        serviceAccount: serviceAccount.client_email,
+        action: 'Share your Google Calendar with the service account email above'
+      });
+    }
+    
+  } catch (error) {
+    console.error('Diagnostic error:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message
     });
   }
 });
@@ -1823,14 +1666,11 @@ app.get('/api/calendar/test-parse', (req, res) => {
   }
   
   const parsed = parseRelativeDate(date);
-  const events = getMockEventsForDate(parsed);
   
   res.json({
     original: date,
     parsed: parsed,
-    eventsFound: events.length,
-    events: events,
-    note: 'Testing relative date parsing (using mock data for this test)'
+    note: 'Date parsing only - will need Google Calendar access for actual events'
   });
 });
 
@@ -1972,12 +1812,22 @@ app.post('/api/reservation/create', async (req, res) => {
     console.log(`🎫 Generated reservation ID: ${reservationId}`);
     
     // Check calendar availability
-    const calendarCheck = await checkCalendarForConflicts(reservationData.date, reservationData.time);
-    
-    if (calendarCheck.hasConflicts && calendarCheck.conflictingEvents.length > 0) {
-      console.log(`⚠️ Calendar conflicts detected: ${calendarCheck.conflictingEvents.length} events`);
-    } else {
-      console.log('✅ No calendar conflicts detected');
+    let calendarCheck;
+    try {
+      calendarCheck = await checkCalendarForConflicts(reservationData.date, reservationData.time);
+      
+      if (calendarCheck.hasConflicts && calendarCheck.conflictingEvents.length > 0) {
+        console.log(`⚠️ Calendar conflicts detected: ${calendarCheck.conflictingEvents.length} events`);
+      } else {
+        console.log('✅ No calendar conflicts detected');
+      }
+    } catch (calendarError) {
+      console.error('❌ Calendar check failed:', calendarError.message);
+      calendarCheck = {
+        hasConflicts: false,
+        conflictingEvents: [],
+        error: calendarError.message
+      };
     }
     
     // Prepare Airtable record
@@ -1999,8 +1849,12 @@ app.post('/api/reservation/create', async (req, res) => {
       "Source": "Direct API",
       "Created At": new Date().toISOString(),
       "Italian Time": getItalianTimeWithTimezone(),
-      "Calendar Conflicts": calendarCheck.hasConflicts
     };
+    
+    // Only add calendar conflicts if field exists
+    if (calendarCheck.hasConflicts !== undefined) {
+      airtableRecord["Calendar Conflicts"] = calendarCheck.hasConflicts;
+    }
     
     console.log('📊 Airtable record prepared:', airtableRecord);
     
@@ -2024,7 +1878,8 @@ app.post('/api/reservation/create', async (req, res) => {
         },
         calendarCheck: {
           hasConflicts: calendarCheck.hasConflicts,
-          conflictingEventsCount: calendarCheck.conflictingEvents.length
+          conflictingEventsCount: calendarCheck.conflictingEvents.length,
+          calendarError: calendarCheck.error
         }
       });
       
@@ -2286,85 +2141,123 @@ app.post('/api/reservations', async (req, res) => {
     
     // ===== CHECK CALENDAR AVAILABILITY =====
     console.log('📅 Checking calendar availability...');
-    const calendarCheck = await checkCalendarForConflicts(validatedDate, time);
-    
-    if (calendarCheck.hasConflicts) {
-      console.log(`⚠️ Calendar conflicts detected: ${calendarCheck.conflictingEvents.length} events`);
-    } else {
-      console.log('✅ No calendar conflicts detected');
+    let calendarCheck;
+    try {
+      calendarCheck = await checkCalendarForConflicts(validatedDate, time);
+      
+      if (calendarCheck.hasConflicts) {
+        console.log(`⚠️ Calendar conflicts detected: ${calendarCheck.conflictingEvents.length} events`);
+      } else {
+        console.log('✅ No calendar conflicts detected');
+      }
+    } catch (calendarError) {
+      console.error('❌ Calendar check failed:', calendarError.message);
+      calendarCheck = {
+        hasConflicts: false,
+        conflictingEvents: [],
+        error: calendarError.message
+      };
     }
     
     // ===== SAVE TO AIRTABLE =====
     console.log('💾 Saving to Airtable...');
-    const record = await base('Reservations').create([
-      {
-        "fields": {
-          "Reservation ID": reservationId,
-          "First Name": firstName,
-          "Last Name": lastName || '',
-          "Phone Number": formattedPhone || '',
-          "Reservation Date": validatedDate,
-          "Arrival Time": arrivalTimeISO,
-          "Total People": parseInt(guests) || 2,
-          "Dinner Count": parseInt(adults) || 2,
-          "Show-Only Count": 0,
-          "Kids Count": parseInt(children) || 0,
-          "Special Requests": specialRequests || '',
-          "Reservation Status": "Pending",
-          "Reservation Type": "Dinner + Show",
-          "Newsletter Opt-In": newsletter || false,
-          "Calendar Conflicts": calendarCheck.hasConflicts,
-          "Conflict Count": calendarCheck.conflictingEvents.length,
-          "Source": "Retell AI Webhook"
-        }
-      }
-    ]);
     
-    console.log('🎉 RESERVATION SAVED TO AIRTABLE!');
-    console.log('Reservation ID:', reservationId);
-    console.log('Name:', `${firstName} ${lastName}`.trim() || 'Not provided');
-    console.log('Date/Time:', validatedDate, time);
-    console.log('Guests:', guests, `(${adults} adults + ${children} children)`);
-    console.log('Phone:', formattedPhone || 'Not provided');
-    console.log('Special Requests:', specialRequests);
-    console.log('Newsletter:', newsletter);
-    console.log('Calendar Conflicts:', calendarCheck.hasConflicts ? `Yes (${calendarCheck.conflictingEvents.length})` : 'No');
-    console.log('Airtable Record ID:', record[0].id);
+    // Prepare Airtable record
+    const airtableFields = {
+      "Reservation ID": reservationId,
+      "First Name": firstName,
+      "Last Name": lastName || '',
+      "Phone Number": formattedPhone || '',
+      "Reservation Date": validatedDate,
+      "Arrival Time": arrivalTimeISO,
+      "Total People": parseInt(guests) || 2,
+      "Dinner Count": parseInt(adults) || 2,
+      "Show-Only Count": 0,
+      "Kids Count": parseInt(children) || 0,
+      "Special Requests": specialRequests || '',
+      "Reservation Status": "Pending",
+      "Reservation Type": "Dinner + Show",
+      "Newsletter Opt-In": newsletter || false,
+      "Source": "Retell AI Webhook"
+    };
     
-    // ===== TIME-AWARE RESPONSE =====
-    const greeting = getItalianTimeWithTimezone();
-    let timeAwareResponse;
-    
-    // Check if there are calendar conflicts
-    if (calendarCheck.hasConflicts && calendarCheck.conflictingEvents.length > 0) {
-      const conflictMessage = calendarCheck.conflictingEvents[0].title 
-        ? `C'è un conflitto con "${calendarCheck.conflictingEvents[0].title}" alle ${calendarCheck.conflictingEvents[0].time}.` 
-        : 'C\'è un conflitto di orario.';
-      
-      timeAwareResponse = `${greeting}! Ho prenotato per ${guests} persone il ${validatedDate} alle ${time}. ${conflictMessage} La tua conferma è ${reservationId}.`;
-    } else {
-      if (greeting === "Buongiorno") {
-          timeAwareResponse = `Perfetto! ${greeting}! Ho prenotato per ${guests} persone il ${validatedDate} alle ${time}. La tua conferma è ${reservationId}. Buona giornata!`;
-      } else if (greeting === "Buon pomeriggio") {
-          timeAwareResponse = `Perfetto! ${greeting}! Ho prenotato per ${guests} persone il ${validatedDate} alle ${time}. La tua conferma è ${reservationId}. Buon proseguimento!`;
-      } else if (greeting === "Buonasera") {
-          timeAwareResponse = `Perfetto! ${greeting}! Ho prenotato per ${guests} persone il ${validatedDate} alle ${time}. La tua conferma è ${reservationId}. Buona serata!`;
-      } else {
-          timeAwareResponse = `Perfetto! ${greeting}! Ho prenotato per ${guests} persone il ${validatedDate} alle ${time}. La tua conferma è ${reservationId}. Buona notte!`;
-      }
+    // Only add calendar conflicts if we have the result
+    if (calendarCheck.hasConflicts !== undefined) {
+      airtableFields["Calendar Conflicts"] = calendarCheck.hasConflicts;
+    }
+    if (calendarCheck.conflictingEvents !== undefined) {
+      airtableFields["Conflict Count"] = calendarCheck.conflictingEvents.length;
     }
     
-    res.json({
-        response: timeAwareResponse,
-        saveToAirtable: true,
-        reservationId: reservationId,
-        intentDetected: true,
-        detectionDetails: intentResult,
-        calendarCheck: {
-          hasConflicts: calendarCheck.hasConflicts,
-          conflictingEventsCount: calendarCheck.conflictingEvents.length
+    try {
+      const record = await base('Reservations').create([
+        {
+          "fields": airtableFields
         }
-    });
+      ]);
+      
+      console.log('🎉 RESERVATION SAVED TO AIRTABLE!');
+      console.log('Reservation ID:', reservationId);
+      console.log('Name:', `${firstName} ${lastName}`.trim() || 'Not provided');
+      console.log('Date/Time:', validatedDate, time);
+      console.log('Guests:', guests, `(${adults} adults + ${children} children)`);
+      console.log('Phone:', formattedPhone || 'Not provided');
+      console.log('Special Requests:', specialRequests);
+      console.log('Newsletter:', newsletter);
+      console.log('Calendar Status:', calendarCheck.error ? `Error: ${calendarCheck.error}` : 
+        calendarCheck.hasConflicts ? `Conflicts: ${calendarCheck.conflictingEvents.length}` : 'No conflicts');
+      console.log('Airtable Record ID:', record[0].id);
+      
+      // ===== TIME-AWARE RESPONSE =====
+      const greeting = getItalianTimeWithTimezone();
+      let timeAwareResponse;
+      
+      // Check if there are calendar conflicts
+      if (calendarCheck.hasConflicts && calendarCheck.conflictingEvents.length > 0) {
+        const conflictMessage = calendarCheck.conflictingEvents[0].title 
+          ? `C'è un conflitto con "${calendarCheck.conflictingEvents[0].title}" alle ${calendarCheck.conflictingEvents[0].time}.` 
+          : 'C\'è un conflitto di orario.';
+        
+        timeAwareResponse = `${greeting}! Ho prenotato per ${guests} persone il ${validatedDate} alle ${time}. ${conflictMessage} La tua conferma è ${reservationId}.`;
+      } else {
+        if (greeting === "Buongiorno") {
+            timeAwareResponse = `Perfetto! ${greeting}! Ho prenotato per ${guests} persone il ${validatedDate} alle ${time}. La tua conferma è ${reservationId}. Buona giornata!`;
+        } else if (greeting === "Buon pomeriggio") {
+            timeAwareResponse = `Perfetto! ${greeting}! Ho prenotato per ${guests} persone il ${validatedDate} alle ${time}. La tua conferma è ${reservationId}. Buon proseguimento!`;
+        } else if (greeting === "Buonasera") {
+            timeAwareResponse = `Perfetto! ${greeting}! Ho prenotato per ${guests} persone il ${validatedDate} alle ${time}. La tua conferma è ${reservationId}. Buona serata!`;
+        } else {
+            timeAwareResponse = `Perfetto! ${greeting}! Ho prenotato per ${guests} persone il ${validatedDate} alle ${time}. La tua conferma è ${reservationId}. Buona notte!`;
+        }
+      }
+      
+      // If calendar check failed, mention it
+      if (calendarCheck.error) {
+        timeAwareResponse += ` (Nota: Non è stato possibile verificare la disponibilità del calendario)`;
+      }
+      
+      res.json({
+          response: timeAwareResponse,
+          saveToAirtable: true,
+          reservationId: reservationId,
+          intentDetected: true,
+          detectionDetails: intentResult,
+          calendarCheck: {
+            hasConflicts: calendarCheck.hasConflicts,
+            conflictingEventsCount: calendarCheck.conflictingEvents.length,
+            error: calendarCheck.error
+          }
+      });
+      
+    } catch (airtableError) {
+      console.error('❌ Airtable error:', airtableError.message);
+      const greeting = getItalianTimeWithTimezone();
+      res.json({
+          response: `${greeting}! Abbiamo riscontrato un problema con la prenotazione. Ti preghiamo di riprovare o chiamarci direttamente.`,
+          saveToAirtable: false,
+          error: airtableError.message
+      });
+    }
     
   } catch (error) {
     console.error('❌ Error:', error.message);
@@ -2427,65 +2320,39 @@ Newsletter: Yes`;
     const extractedData = extractReservationData(testConversation, testSystemLogs);
     console.log('✅ Extracted data:', extractedData);
     
-    console.log('\n🧪 Testing calendar availability...');
-    const calendarEvents = await searchEventsByDate(extractedData.date);
-    const calendarCheck = await checkCalendarForConflicts(extractedData.date, extractedData.time);
-    console.log(`✅ Calendar events for ${extractedData.date}:`, calendarEvents.length);
-    console.log(`✅ Calendar conflicts for ${extractedData.date} at ${extractedData.time}:`, calendarCheck.conflictingEvents.length);
+    console.log('\n🧪 Testing Google Calendar access...');
+    try {
+      const calendarEvents = await searchEventsByDate(extractedData.date);
+      const calendarCheck = await checkCalendarForConflicts(extractedData.date, extractedData.time);
+      console.log(`✅ Calendar events for ${extractedData.date}:`, calendarEvents.length);
+      console.log(`✅ Calendar conflicts for ${extractedData.date} at ${extractedData.time}:`, calendarCheck.conflictingEvents.length);
+    } catch (calendarError) {
+      console.error(`❌ Calendar test failed:`, calendarError.message);
+    }
     
-    console.log('\n🧪 Generating reservation ID...');
+    console.log('\n🧪 Testing all functions...');
     const reservationId = generateReservationId();
-    console.log(`✅ Reservation ID: ${reservationId}`);
-    
-    console.log('\n🧪 Testing Italian time greeting...');
     const greeting = getItalianTimeWithTimezone();
-    console.log(`✅ Italian greeting: ${greeting}`);
-    
-    console.log('\n🧪 Testing time formatting for Airtable...');
     const airtableTime = formatTimeForAirtable(extractedData.time, extractedData.date);
-    console.log(`✅ Airtable time format: ${airtableTime}`);
     
-    console.log('\n🧪 Testing Google Calendar client...');
-    const calendarClient = await getCalendarClient();
-    console.log(`✅ Google Calendar client: ${calendarClient ? 'Available' : 'Not available'}`);
+    console.log(`✅ Reservation ID: ${reservationId}`);
+    console.log(`✅ Italian greeting: ${greeting}`);
+    console.log(`✅ Airtable time format: ${airtableTime}`);
     
     res.json({
       success: true,
       tests: {
         intentDetection: intentResult,
         dataExtraction: extractedData,
-        calendarAvailability: {
-          date: extractedData.date,
-          time: extractedData.time,
-          eventsFound: calendarEvents.length,
-          realEvents: calendarEvents.filter(e => e.isRealEvent).length,
-          mockEvents: calendarEvents.filter(e => !e.isRealEvent).length,
-          conflictsFound: calendarCheck.conflictingEvents.length,
-          events: calendarEvents.slice(0, 3), // Show first 3 events only
-          conflicts: calendarCheck.conflictingEvents.slice(0, 2) // Show first 2 conflicts
-        },
-        googleCalendar: {
-          clientAvailable: !!calendarClient,
-          serviceAccount: serviceAccount.client_email
-        },
+        googleCalendar: 'Test attempted - check logs for results',
         reservationId: reservationId,
         italianGreeting: greeting,
         airtableFormat: {
           time: airtableTime,
           date: extractedData.date
         },
-        allEndpoints: {
-          detectIntent: 'POST /api/reservation/detect-intent',
-          extractData: 'POST /api/reservation/extract',
-          createReservation: 'POST /api/reservation/create',
-          getReservation: 'GET /api/reservation/:id',
-          todayReservations: 'GET /api/reservations/today',
-          webhook: 'POST /api/reservations',
-          calendarDate: 'GET /api/calendar/date',
-          calendarAvailability: 'GET /api/calendar/availability'
-        }
-      },
-      note: 'This is a test endpoint for development purposes only'
+        note: 'Calendar test may fail if Google Calendar is not accessible'
+      }
     });
     
   } catch (error) {
@@ -2502,14 +2369,15 @@ Newsletter: Yes`;
 app.listen(PORT, () => {
   console.log(`\n🎵 Jazzamore server running on port ${PORT}`);
   console.log(`🔑 Google Calendar service account: ${serviceAccount.client_email}`);
-  console.log(`📅 Calendar integration: ACTIVE (with mock data fallback)`);
+  console.log(`📅 Jazzamore Calendar ID: ${JAZZAMORE_CALENDAR_ID}`);
+  console.log(`📅 Calendar integration: REAL DATA ONLY (no mock data)`);
   
   console.log(`\n📅 CALENDAR ENDPOINTS:`);
   console.log(`   - Date query (relative): http://localhost:${PORT}/api/calendar/date?date=the+fourth`);
   console.log(`   - Date query (specific): http://localhost:${PORT}/api/calendar/date?date=2024-02-04`);
   console.log(`   - Availability check: http://localhost:${PORT}/api/calendar/availability?date=2024-02-04&time=20:00`);
-  console.log(`   - Parse test: http://localhost:${PORT}/api/calendar/test-parse?date=the+fourth`);
   console.log(`   - Debug: http://localhost:${PORT}/api/calendar/debug`);
+  console.log(`   - Diagnostic: http://localhost:${PORT}/api/calendar/diagnostic`);
   
   console.log(`\n📞 RESERVATION ENDPOINTS:`);
   console.log(`   - Webhook (Retell): http://localhost:${PORT}/api/reservations`);
@@ -2524,13 +2392,13 @@ app.listen(PORT, () => {
   console.log(`   - Reservation detection: ACTIVE (Multilingual: English/Italian)`);
   console.log(`   - Relative date parsing: ACTIVE ("the fourth" → 2026-02-04)`);
   console.log(`   - Time-aware greetings: ${getItalianTimeWithTimezone()}`);
-  console.log(`   - Google Calendar: ACTIVE (with real data extraction)`);
+  console.log(`   - Google Calendar: REAL DATA ONLY (no mock data)`);
   console.log(`   - Airtable integration: ${process.env.AIRTABLE_BASE_ID ? 'CONFIGURED' : 'NOT CONFIGURED'}`);
   console.log(`   - Calendar conflict detection: ACTIVE`);
   
-  console.log(`\n📊 Google Calendar Status:`);
-  console.log(`   - Will attempt to fetch real events first`);
-  console.log(`   - Falls back to mock data if real events not available`);
-  console.log(`   - Service account: ${serviceAccount.client_email}`);
-  console.log(`   - Project ID: ${serviceAccount.project_id}`);
+  console.log(`\n⚠️  IMPORTANT:`);
+  console.log(`   - All mock data has been REMOVED`);
+  console.log(`   - Google Calendar access is REQUIRED`);
+  console.log(`   - Test the diagnostic endpoint first: http://localhost:${PORT}/api/calendar/diagnostic`);
+  console.log(`   - If diagnostic fails, share your calendar with: ${serviceAccount.client_email}`);
 });
