@@ -2,9 +2,19 @@ const express = require('express');
 const Airtable = require('airtable');
 const cors = require('cors');
 const { google } = require('googleapis');
+const crypto = require('crypto');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
+
+// Fix for Node.js 17+ OpenSSL compatibility
+if (typeof crypto.setEngine === 'function') {
+  try {
+    crypto.setEngine('dynamic');
+  } catch (err) {
+    console.log('ℹ️ Crypto engine already set');
+  }
+}
 
 // Middleware
 app.use(cors());
@@ -772,41 +782,41 @@ function crossValidateFields(finalData, sources) {
 // ===== GOOGLE CALENDAR INTEGRATION =====
 const SCOPES = ['https://www.googleapis.com/auth/calendar.readonly'];
 
-// Your JAZZAMORE CALENDAR ID - using your specific calendar
+// Your JAZZAMORE CALENDAR ID
 const JAZZAMORE_CALENDAR_ID = 'jazzamorecesena@gmail.com';
 
-// Updated service account with new key
+// Service account credentials from your JSON
 const serviceAccount = {
   "type": "service_account",
   "project_id": "retell-calendar-478918",
-  "private_key_id": "d0959938c456b7ffcf3a15d96418eb9d6b2e45a4",
+  "private_key_id": "61c350b543e79f38bbbd392e86abf26a092e813f",
   "private_key": `-----BEGIN PRIVATE KEY-----
-MIIEvQIBADANBgkqhkiG9w0BAQEFAASCBKcwggSjAgEAAoIBAQCXs/3R0VUNR6uH
-lsVbSln0K5KDpObUggFoiITjw+8L1KsE4jBO2F/MVEtnd6PRs/ramB0tFbVMKqly
-nPmIueN+eYQc+vgDJpSkqiDgGZerpbiA0183rFVFG48lHA02vPqfoGghIuUbN6eD
-/VBD8keM0m/i4atulRG8XI+dWjDRdVHBa9yJkdXNao4UI8HWiWMNjeexCUAg5Y+g
-lR2dG/GQp3h3dBWaI+ifW+E7VE8miAZJgWRB+ru1m6iV+YqQ/evhVBtrS5ZnjTu+
-ApTTD1KeFXpl1pEkZSFmaHTRl4V9WbJPEvzTMcWZJgbEUjspSFpaI6x7qkwvYIZd
-jk3riJJ/AgMBAAECggEAD0fsrdlpuVQ6VYac66SyKfPHpuYR8F8GGEsEI9NFPYpX
-Db9hAVgvUiw9ijcVc9au0p0W90ckA3+aoPZp9llPLpq78ZVgLSUSPQH8HMbHLd2c
-F7Hy+e8sibEMer74H8bqcfDc/FWBAXxaLePy1V1O0sMRzSdRNuriJfim6MFAgKCq
-fPFxvBcnONWr6r5uT9mr3C3laL+9JEgIu6OiJyizPAS0EYKV84cJRTsGFkT1UvGq
-P+ZPZMa9ciQMFB3csaqmKYYaPoAfWArxV/razjoPSPdzIMMFrSzgDLAJJvpJTyZn
-no1i3LWeRyQp1d5psv2LqfoS0+z9IlV34cBw74AoMxQKBgQDJd53eI+B3okeiUQ/7
-oUaCNQQD9L4JQOWARubRLU0he0FiTMntsylcfCvZf/oEUWctKbtS0Fqnrvt8WUAw
-xTcKpUmk2pCKUrz+KVOp+8gTD/ANSHiMlI1rp17QJLe7m+ih2zJm4jKMKk06FOZ4
-CWiFy7ElywCRNZbYFJvOeA3iKwKBgQDAxAn1ayVJJpWA2fZ5eQc/UURuz56S/m9a
-9nhEnIacPzR8G8lzuvcGvxtZQOL8Ilt0h1mrVdDGr4c1wEjIULK9oO8JNFNHy3Ut
-RHsAIKJW/wXgM+lVgWowa99mUWqHanCWdp3sbvYQrALpzlAKfD1eupH04fDgi/uY
-1kVZkp8q/QKBgEqNlUHrDNm4l8GdNcjsOWddrwq3uss51LPPiQLHPM+zCNMTj3YC
-4r9yw9dM4HxQk1nHI6bVq3Z57l5puLNTh7bMy5/RscM+MIInUOqKXdOQBkkkFFgR
-cPPxj8h+je9DFqcuskwYUJRF4yYnLdIlySQZ6IgPwzn5FsUHe1DAZILZAoGAa7Jb
-OgFVwIvNBUNBYFaNBQQbbqmSl9+NSU3gnbyxvEPXw+siXwU7FErbNb950ZJEdFNW
-dtIoJYlVymMWhswHQMjUI9lXGgqC+fqDmeuhp2ct2jhGid4W/NyX4KtmECgYpQe6
-bakE0wW3TvdUYrdM9krYVu+Qy3OJ6rbz4fp38OUCgYEApR56LdQVBxFSMgdVrNB0
-oIKAld50FWu2ZmkDUzb8zhFScDZgdpZ6euD/bPlriEkN3gQ2UNoMtA5F+lvl+uue
-dNyrgrZFgllZsEbtuVd07scIYrPSvBfVhjk8+ZZF24epS7TmcYm6P5hQFcacVRKb
-/Uaolwap+9QfH+z1cBydASQ=
+MIIEuwIBADANBgkqhkiG9w0BAQEFAASCBKUwggShAgEAAoIBAQC8ews3+pAiFTK0
+NQzVD1E6nMJpY+gXWbM5vfqNGoQ8zIGG/2GYhWnAqoX6nXq15HqGiuduOna6gf7T
+52BnIHyaiQNJhpd9J6E93MSYd+yAHgkymiSKUg6a+wcT91AhEJ/dTt161+2hznF8
+qOt6u1D4r5XKN30P+LtI5X0rMtKFq5PI3XfZwsMaKiYL43/i5U+DlxkiwiJZXwj3
+opCfmchJoV0sm8LeiJhELYrsiDpuLbyD1RIuNbfEX9SraZKBL/zhc6JlxUflParv
+G++X/lc9UWHtqkKHWDFjc0z89SXk/DCFVVX9o0KEKcT2D/d6EmcBU8hX5mC9WjrY
+1ENgKp0LAgMBAAECgf9J/gPpdfQfbTL6i9j9y4WX/PJVbWMvx4cUpAA4ZLCFLcOr
+u5YUyks517fBKxGBVrDDIMS6ATma/m2LwsmVsqs3/5HKy4utFmG2Z3TGZk3x/die
+hOTTaGNTdDjTHcPXNy+LMerAzwP7AZCL38SR6fdfqY6kVCREoODlPTJmQw1ia8vC
+veb9ZQQoP0GOU0e8T/z8ybXSp3to6+oLMgoISCmGv+6w5dDwYErvh3E13iQF8bsq
+c+fAk3gGnScz0qL5UQGsmfafZp9TE5c3UwAhQNyUig8twew+Lq/IgZppJ00Tspl8
+eCqrMa0/KIHCNsndyiLJ4vN08HS+F2tLIiRxOgUCgYEA8tEFjHhd4BZVW1BUskst
+pynPB36FbE31Zwap3cNJeA5tGE8kwInC0COoac5MgAZ8gwqOyqG1YI1LkVVjHEch
+ElLPcrcrgEojEPDW15vsYKdDo1i2T0GeBiP+NKovp8IoDbJNeLpf+1aXwEHkbFrM
+FfewPnoI6iicnO2iqYxjLRcCgYEAxrbKxJTbUbBf1rJvYS3FGPCj51RX9EoQ7SyN
+gJvQdGGjLhc2CR2EPIHFHzwCyz1yKy7vfcr085zCS3IbP/p/C7IHLdZt2iLgOv/C
+oaddIQo03yQQ/C/Ouft2qHSBc1wlMunHyxR+QjwALav3NE95QY4KF6OOuFjCTLMF
+L+xP0C0CgYEA2T6Ps1UB0HrK1Y7yqC5A4z2xv+e/4d2CATJiCkot0l891jEBFc5r
+YSN2C2wK38Rt5CQvCzZQ+9iO0rHNocA145n5ho5BOl+aLg78eR1FCFi+WEgHnLN9
+ecr8JgxZ5ML+aPqs+6XsOAgKb3XEs/ksfT8FDXDLxwycyn6GOSGknfMCgYAgsSX+
+3XaPo/LAga6tUDhi+AQfJNMrj5vlSTUmeXv8CawtAwiSy1ZcFgV2NAtJoJxN2nTw
+Pxm5koqsmuM8zVtlcy6XLfX4s1AspLNCoSRDMUithWN9+eeK1YIaCMDbV8eO7sM9
+9+slvnVRDj+nTYPncxTZ+sCaN5APykwKLFidKQKBgAo5b57WIPozfkWDKcoKrK3x
+7jrqVNpigQC/FJjYRowRAIWr4k8hm/LXxGGrP9Km3OqwTQcfCxL06bxeb3Y/mfWz
+ejQerM4Bu1hcq38DAq/84ZLrx2hRySzD8/PcFVvE5Web5yH4cXN3icU1970vVCgQ
+UIfURnA8dT2WX4pl24pR
 -----END PRIVATE KEY-----`,
   "client_email": "retell-ai-calendar@retell-calendar-478918.iam.gserviceaccount.com",
   "client_id": "107319862827925724291",
@@ -821,10 +831,15 @@ async function getCalendarClient() {
   try {
     console.log('🔑 Initializing Google Calendar client...');
     console.log(`📧 Service account: ${serviceAccount.client_email}`);
-    console.log(`👤 Client ID: ${serviceAccount.client_id}`);
+    
+    // Ensure private key has proper newlines
+    const privateKey = serviceAccount.private_key.replace(/\\n/g, '\n');
     
     const auth = new google.auth.GoogleAuth({
-      credentials: serviceAccount,
+      credentials: {
+        ...serviceAccount,
+        private_key: privateKey
+      },
       scopes: SCOPES,
     });
     
@@ -844,6 +859,7 @@ async function getCalendarClient() {
     console.error('❌ Error getting Google Calendar client:');
     console.error('   Message:', error.message);
     console.error('   Code:', error.code);
+    console.error('   Stack:', error.stack);
     return null;
   }
 }
@@ -1145,7 +1161,8 @@ app.get('/health', (req, res) => {
       project: serviceAccount.project_id,
       serviceEmail: serviceAccount.client_email,
       note: 'Using REAL Google Calendar data only'
-    }
+    },
+    airtable: process.env.AIRTABLE_BASE_ID ? 'CONFIGURED' : 'NOT CONFIGURED'
   });
 });
 
@@ -1775,235 +1792,7 @@ app.post('/api/reservation/extract', async (req, res) => {
   }
 });
 
-app.post('/api/reservation/create', async (req, res) => {
-  try {
-    console.log('\n' + '='.repeat(80));
-    console.log('📝 [CREATE RESERVATION] API Called');
-    console.log('='.repeat(80));
-    
-    const reservationData = req.body;
-    
-    console.log('📋 Reservation data received:', {
-      firstName: reservationData.firstName,
-      lastName: reservationData.lastName,
-      date: reservationData.date,
-      time: reservationData.time,
-      guests: reservationData.guests,
-      phone: reservationData.phone ? `${reservationData.phone.substring(0, 5)}...` : 'None',
-      timestamp: new Date().toISOString()
-    });
-    
-    // Validate required fields
-    const requiredFields = ['firstName', 'lastName', 'date', 'time', 'guests', 'phone'];
-    const missingFields = requiredFields.filter(field => !reservationData[field]);
-    
-    if (missingFields.length > 0) {
-      console.log(`❌ Missing required fields: ${missingFields.join(', ')}`);
-      return res.status(400).json({
-        success: false,
-        error: 'Missing required fields',
-        missingFields,
-        message: 'Please provide all required reservation information'
-      });
-    }
-    
-    // Generate reservation ID
-    const reservationId = generateReservationId();
-    console.log(`🎫 Generated reservation ID: ${reservationId}`);
-    
-    // Check calendar availability
-    let calendarCheck;
-    try {
-      calendarCheck = await checkCalendarForConflicts(reservationData.date, reservationData.time);
-      
-      if (calendarCheck.hasConflicts && calendarCheck.conflictingEvents.length > 0) {
-        console.log(`⚠️ Calendar conflicts detected: ${calendarCheck.conflictingEvents.length} events`);
-      } else {
-        console.log('✅ No calendar conflicts detected');
-      }
-    } catch (calendarError) {
-      console.error('❌ Calendar check failed:', calendarError.message);
-      calendarCheck = {
-        hasConflicts: false,
-        conflictingEvents: [],
-        error: calendarError.message
-      };
-    }
-    
-    // Prepare Airtable record
-    const airtableRecord = {
-      "Reservation ID": reservationId,
-      "First Name": reservationData.firstName,
-      "Last Name": reservationData.lastName,
-      "Phone Number": reservationData.phone,
-      "Reservation Date": reservationData.date,
-      "Arrival Time": formatTimeForAirtable(reservationData.time, reservationData.date),
-      "Total People": reservationData.guests,
-      "Dinner Count": reservationData.adults || reservationData.guests,
-      "Kids Count": reservationData.children || 0,
-      "Show-Only Count": 0,
-      "Special Requests": reservationData.specialRequests || 'No special requests',
-      "Reservation Status": "Pending",
-      "Reservation Type": "Dinner + Show",
-      "Newsletter Opt-In": reservationData.newsletter || false,
-      "Source": "Direct API",
-      "Created At": new Date().toISOString(),
-      "Italian Time": getItalianTimeWithTimezone(),
-    };
-    
-    // Only add calendar conflicts if field exists
-    if (calendarCheck.hasConflicts !== undefined) {
-      airtableRecord["Calendar Conflicts"] = calendarCheck.hasConflicts;
-    }
-    
-    console.log('📊 Airtable record prepared:', airtableRecord);
-    
-    try {
-      // Create record in Airtable
-      const createdRecord = await base('Reservations').create([{ fields: airtableRecord }]);
-      
-      console.log('✅ Reservation created in Airtable');
-      console.log(`📝 Airtable record ID: ${createdRecord[0].id}`);
-      
-      res.json({
-        success: true,
-        message: 'Reservation created successfully',
-        reservationId: reservationId,
-        airtableRecordId: createdRecord[0].id,
-        data: {
-          ...reservationData,
-          reservationId,
-          created: new Date().toISOString(),
-          italianGreeting: getItalianTimeWithTimezone()
-        },
-        calendarCheck: {
-          hasConflicts: calendarCheck.hasConflicts,
-          conflictingEventsCount: calendarCheck.conflictingEvents.length,
-          calendarError: calendarCheck.error
-        }
-      });
-      
-    } catch (airtableError) {
-      console.error('❌ Airtable error:', airtableError);
-      res.status(500).json({
-        success: false,
-        error: 'Failed to create reservation in Airtable',
-        message: airtableError.message,
-        reservationId: reservationId,
-        note: 'Reservation ID was generated but Airtable sync failed'
-      });
-    }
-    
-  } catch (error) {
-    console.error('Error creating reservation:', error);
-    res.status(500).json({
-      success: false,
-      error: 'Failed to create reservation',
-      message: error.message
-    });
-  }
-});
-
-app.get('/api/reservation/:id', async (req, res) => {
-  try {
-    const { id } = req.params;
-    
-    console.log(`🔍 Looking up reservation: ${id}`);
-    
-    // Search in Airtable
-    const records = await base('Reservations')
-      .select({
-        filterByFormula: `{Reservation ID} = '${id}'`,
-        maxRecords: 1
-      })
-      .firstPage();
-    
-    if (records.length === 0) {
-      return res.status(404).json({
-        success: false,
-        error: 'Reservation not found',
-        message: `No reservation found with ID: ${id}`
-      });
-    }
-    
-    const record = records[0];
-    const reservationData = {
-      id: record.id,
-      reservationId: record.fields['Reservation ID'],
-      firstName: record.fields['First Name'],
-      lastName: record.fields['Last Name'],
-      phone: record.fields['Phone Number'],
-      date: record.fields['Reservation Date'],
-      time: record.fields['Arrival Time'] ? new Date(record.fields['Arrival Time']).toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' }) : '',
-      guests: record.fields['Total People'],
-      adults: record.fields['Dinner Count'],
-      children: record.fields['Kids Count'],
-      specialRequests: record.fields['Special Requests'],
-      newsletter: record.fields['Newsletter Opt-In'],
-      status: record.fields['Reservation Status'],
-      type: record.fields['Reservation Type'],
-      source: record.fields['Source'],
-      createdAt: record.fields['Created At'],
-      calendarConflicts: record.fields['Calendar Conflicts']
-    };
-    
-    res.json({
-      success: true,
-      reservation: reservationData
-    });
-    
-  } catch (error) {
-    console.error('Error fetching reservation:', error);
-    res.status(500).json({
-      success: false,
-      error: 'Failed to fetch reservation',
-      message: error.message
-    });
-  }
-});
-
-app.get('/api/reservations/today', async (req, res) => {
-  try {
-    const today = new Date().toISOString().split('T')[0];
-    
-    console.log(`📅 Fetching reservations for today: ${today}`);
-    
-    const records = await base('Reservations')
-      .select({
-        filterByFormula: `DATETIME_PARSE({Reservation Date}, 'YYYY-MM-DD') = DATETIME_PARSE('${today}', 'YYYY-MM-DD')`,
-        maxRecords: 50
-      })
-      .firstPage();
-    
-    const reservations = records.map(record => ({
-      id: record.id,
-      reservationId: record.fields['Reservation ID'],
-      firstName: record.fields['First Name'],
-      lastName: record.fields['Last Name'],
-      phone: record.fields['Phone Number'],
-      time: record.fields['Arrival Time'] ? new Date(record.fields['Arrival Time']).toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' }) : '',
-      guests: record.fields['Total People'],
-      status: record.fields['Reservation Status']
-    }));
-    
-    res.json({
-      success: true,
-      date: today,
-      count: reservations.length,
-      reservations: reservations
-    });
-    
-  } catch (error) {
-    console.error('Error fetching today\'s reservations:', error);
-    res.status(500).json({
-      success: false,
-      error: 'Failed to fetch reservations',
-      message: error.message
-    });
-  }
-});
-
-// ===== MAIN WEBHOOK ENDPOINT (MODIFIED WITH RESERVATION DETECTION) =====
+// ===== MAIN WEBHOOK ENDPOINT =====
 app.post('/api/reservations', async (req, res) => {
   try {
     console.log('\n📞 RETELL WEBHOOK RECEIVED');
@@ -2043,76 +1832,61 @@ app.post('/api/reservations', async (req, res) => {
     console.log('✅ Reservation intent detected. Proceeding with data extraction...');
     console.log('🔍 Detection reason:', intentResult.reason);
     
-    // ===== DIAGNOSTIC LOGGING =====
-    console.log('🔍 Searching for Post-Call Analysis data structure...');
-    
-    let postCallData = null;
-    
-    if (call?.call_analysis?.custom_analysis_data?.reservation_details) {
-        const reservationDetailsStr = call.call_analysis.custom_analysis_data.reservation_details;
-        try {
-            postCallData = JSON.parse(reservationDetailsStr);
-            console.log('✅ Found and parsed reservation_details from call_analysis.custom_analysis_data');
-            console.log('Post-Call Data:', postCallData);
-        } catch (error) {
-            console.log('❌ Error parsing reservation_details JSON:', error.message);
-        }
-    } else if (call?.post_call_analysis?.reservation_details) {
-        postCallData = call.post_call_analysis.reservation_details;
-        console.log('✅ Found at: post_call_analysis.reservation_details');
-    } else if (call?.analysis?.reservation_details) {
-        postCallData = call.analysis.reservation_details;
-        console.log('✅ Found at: analysis.reservation_details');
-    } else if (call?.call_analysis?.reservation_details) {
-        postCallData = call.call_analysis.reservation_details;
-        console.log('✅ Found at: call_analysis.reservation_details');
-    } else {
-        console.log('❌ No Post-Call Analysis data found in common locations');
-    }
-    
     // ===== POST-CALL ANALYSIS EXTRACTION =====
     const italianGreeting = getItalianTimeWithTimezone();
     const reservationId = generateReservationId();
     
     let reservationData = {};
     
+    let postCallData = null;
+    if (call?.call_analysis?.custom_analysis_data?.reservation_details) {
+      const reservationDetailsStr = call.call_analysis.custom_analysis_data.reservation_details;
+      try {
+        postCallData = JSON.parse(reservationDetailsStr);
+        console.log('✅ Found and parsed reservation_details from call_analysis.custom_analysis_data');
+        console.log('Post-Call Data:', postCallData);
+      } catch (error) {
+        console.log('❌ Error parsing reservation_details JSON:', error.message);
+      }
+    }
+    
     if (postCallData) {
-        console.log('✅ Using structured data from Post-Call Analysis');
-        console.log('Post-Call Data:', JSON.stringify(postCallData, null, 2));
-        
-        reservationData = {
-          firstName: postCallData.first_name || postCallData.firstName || '',
-          lastName: postCallData.last_name || postCallData.lastName || '',
-          phone: postCallData.phone || '',
-          guests: parseInt(postCallData.guests) || 2,
-          adults: parseInt(postCallData.adults) || (parseInt(postCallData.guests) || 2),
-          children: parseInt(postCallData.children) || 0,
-          date: postCallData.date ? convertDayToDate(postCallData.date) : new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString().split('T')[0],
-          time: postCallData.time || '22:00',
-          specialRequests: postCallData.special_requests || postCallData.specialRequests || 'No special requests',
-          newsletter: postCallData.newsletter === 'yes' || postCallData.newsletter_opt_in === 'yes' || postCallData.newsletter === true || false
-        };
-        
-        console.log('📋 Extracted from Post-Call Analysis:', reservationData);
-        
+      console.log('✅ Using structured data from Post-Call Analysis');
+      console.log('Post-Call Data:', JSON.stringify(postCallData, null, 2));
+      
+      reservationData = {
+        firstName: postCallData.first_name || postCallData.firstName || '',
+        lastName: postCallData.last_name || postCallData.lastName || '',
+        phone: postCallData.phone || '',
+        guests: parseInt(postCallData.guests) || 2,
+        adults: parseInt(postCallData.adults) || (parseInt(postCallData.guests) || 2),
+        children: parseInt(postCallData.children) || 0,
+        date: postCallData.date ? convertDayToDate(postCallData.date) : new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+        time: postCallData.time || '22:00',
+        specialRequests: postCallData.special_requests || postCallData.specialRequests || 'No special requests',
+        newsletter: postCallData.newsletter === 'yes' || postCallData.newsletter_opt_in === 'yes' || postCallData.newsletter === true || false
+      };
+      
+      console.log('📋 Extracted from Post-Call Analysis:', reservationData);
+      
     } else if (call?.transcript_object) {
-        console.log('⚠️ No Post-Call Analysis found, falling back to transcript extraction.');
-        const systemLogs = JSON.stringify(call, null, 2);
-        reservationData = extractReservationData(call.transcript_object, systemLogs);
+      console.log('⚠️ No Post-Call Analysis found, falling back to transcript extraction.');
+      const systemLogs = JSON.stringify(call, null, 2);
+      reservationData = extractReservationData(call.transcript_object, systemLogs);
     } else {
-        console.log('⚠️ No data sources available, using defaults.');
-        reservationData = {
-          firstName: '',
-          lastName: '',
-          date: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString().split('T')[0],
-          time: '22:00',
-          guests: 2,
-          adults: 2,
-          children: 0,
-          phone: '',
-          specialRequests: 'No special requests',
-          newsletter: false
-        };
+      console.log('⚠️ No data sources available, using defaults.');
+      reservationData = {
+        firstName: '',
+        lastName: '',
+        date: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+        time: '22:00',
+        guests: 2,
+        adults: 2,
+        children: 0,
+        phone: '',
+        specialRequests: 'No special requests',
+        newsletter: false
+      };
     }
     
     console.log('📋 Final reservation data:', reservationData);
@@ -2122,19 +1896,19 @@ app.post('/api/reservations', async (req, res) => {
     // ===== DATA VALIDATION =====
     let formattedPhone = phone;
     if (phone && phone.replace(/\D/g, '').length >= 10) {
-        const digits = phone.replace(/\D/g, '');
-        formattedPhone = digits.startsWith('39') ? `+${digits}` : `+39${digits.substring(0, 10)}`;
-        console.log(`✅ Formatted phone: ${formattedPhone}`);
+      const digits = phone.replace(/\D/g, '');
+      formattedPhone = digits.startsWith('39') ? `+${digits}` : `+39${digits.substring(0, 10)}`;
+      console.log(`✅ Formatted phone: ${formattedPhone}`);
     }
     
     let validatedDate = date;
     const reservationDate = new Date(date);
     const today = new Date();
     if (reservationDate < today) {
-        const tomorrow = new Date(today);
-        tomorrow.setDate(today.getDate() + 1);
-        validatedDate = tomorrow.toISOString().split('T')[0];
-        console.log(`⚠️ Date in past, adjusted to: ${validatedDate}`);
+      const tomorrow = new Date(today);
+      tomorrow.setDate(today.getDate() + 1);
+      validatedDate = tomorrow.toISOString().split('T')[0];
+      console.log(`⚠️ Date in past, adjusted to: ${validatedDate}`);
     }
     
     const arrivalTimeISO = formatTimeForAirtable(time, validatedDate);
@@ -2162,7 +1936,7 @@ app.post('/api/reservations', async (req, res) => {
     // ===== SAVE TO AIRTABLE =====
     console.log('💾 Saving to Airtable...');
     
-    // Prepare Airtable record
+    // Prepare Airtable record - only use fields that exist in your Airtable
     const airtableFields = {
       "Reservation ID": reservationId,
       "First Name": firstName,
@@ -2172,29 +1946,21 @@ app.post('/api/reservations', async (req, res) => {
       "Arrival Time": arrivalTimeISO,
       "Total People": parseInt(guests) || 2,
       "Dinner Count": parseInt(adults) || 2,
-      "Show-Only Count": 0,
       "Kids Count": parseInt(children) || 0,
       "Special Requests": specialRequests || '',
       "Reservation Status": "Pending",
       "Reservation Type": "Dinner + Show",
-      "Newsletter Opt-In": newsletter || false,
-      "Source": "Retell AI Webhook"
+      "Newsletter Opt-In": newsletter || false
     };
     
-    // Only add calendar conflicts if we have the result
+    // Only add calendar conflicts if the field exists in your Airtable
+    // Remove this line if you don't have "Calendar Conflicts" field:
     if (calendarCheck.hasConflicts !== undefined) {
       airtableFields["Calendar Conflicts"] = calendarCheck.hasConflicts;
     }
-    if (calendarCheck.conflictingEvents !== undefined) {
-      airtableFields["Conflict Count"] = calendarCheck.conflictingEvents.length;
-    }
     
     try {
-      const record = await base('Reservations').create([
-        {
-          "fields": airtableFields
-        }
-      ]);
+      const record = await base('Reservations').create([{ fields: airtableFields }]);
       
       console.log('🎉 RESERVATION SAVED TO AIRTABLE!');
       console.log('Reservation ID:', reservationId);
@@ -2221,13 +1987,13 @@ app.post('/api/reservations', async (req, res) => {
         timeAwareResponse = `${greeting}! Ho prenotato per ${guests} persone il ${validatedDate} alle ${time}. ${conflictMessage} La tua conferma è ${reservationId}.`;
       } else {
         if (greeting === "Buongiorno") {
-            timeAwareResponse = `Perfetto! ${greeting}! Ho prenotato per ${guests} persone il ${validatedDate} alle ${time}. La tua conferma è ${reservationId}. Buona giornata!`;
+          timeAwareResponse = `Perfetto! ${greeting}! Ho prenotato per ${guests} persone il ${validatedDate} alle ${time}. La tua conferma è ${reservationId}. Buona giornata!`;
         } else if (greeting === "Buon pomeriggio") {
-            timeAwareResponse = `Perfetto! ${greeting}! Ho prenotato per ${guests} persone il ${validatedDate} alle ${time}. La tua conferma è ${reservationId}. Buon proseguimento!`;
+          timeAwareResponse = `Perfetto! ${greeting}! Ho prenotato per ${guests} persone il ${validatedDate} alle ${time}. La tua conferma è ${reservationId}. Buon proseguimento!`;
         } else if (greeting === "Buonasera") {
-            timeAwareResponse = `Perfetto! ${greeting}! Ho prenotato per ${guests} persone il ${validatedDate} alle ${time}. La tua conferma è ${reservationId}. Buona serata!`;
+          timeAwareResponse = `Perfetto! ${greeting}! Ho prenotato per ${guests} persone il ${validatedDate} alle ${time}. La tua conferma è ${reservationId}. Buona serata!`;
         } else {
-            timeAwareResponse = `Perfetto! ${greeting}! Ho prenotato per ${guests} persone il ${validatedDate} alle ${time}. La tua conferma è ${reservationId}. Buona notte!`;
+          timeAwareResponse = `Perfetto! ${greeting}! Ho prenotato per ${guests} persone il ${validatedDate} alle ${time}. La tua conferma è ${reservationId}. Buona notte!`;
         }
       }
       
@@ -2237,25 +2003,26 @@ app.post('/api/reservations', async (req, res) => {
       }
       
       res.json({
-          response: timeAwareResponse,
-          saveToAirtable: true,
-          reservationId: reservationId,
-          intentDetected: true,
-          detectionDetails: intentResult,
-          calendarCheck: {
-            hasConflicts: calendarCheck.hasConflicts,
-            conflictingEventsCount: calendarCheck.conflictingEvents.length,
-            error: calendarCheck.error
-          }
+        response: timeAwareResponse,
+        saveToAirtable: true,
+        reservationId: reservationId,
+        intentDetected: true,
+        detectionDetails: intentResult,
+        calendarCheck: {
+          hasConflicts: calendarCheck.hasConflicts,
+          conflictingEventsCount: calendarCheck.conflictingEvents.length,
+          error: calendarCheck.error
+        }
       });
       
     } catch (airtableError) {
       console.error('❌ Airtable error:', airtableError.message);
+      console.error('❌ Airtable error details:', airtableError);
       const greeting = getItalianTimeWithTimezone();
       res.json({
-          response: `${greeting}! Abbiamo riscontrato un problema con la prenotazione. Ti preghiamo di riprovare o chiamarci direttamente.`,
-          saveToAirtable: false,
-          error: airtableError.message
+        response: `${greeting}! Abbiamo riscontrato un problema con la prenotazione. Ti preghiamo di riprovare o chiamarci direttamente.`,
+        saveToAirtable: false,
+        error: airtableError.message
       });
     }
     
@@ -2264,103 +2031,9 @@ app.post('/api/reservations', async (req, res) => {
     console.error('❌ Error stack:', error.stack);
     const greeting = getItalianTimeWithTimezone();
     res.json({
-        response: `${greeting}! Grazie per la tua chiamata! Abbiamo riscontrato un problema. Ti preghiamo di riprovare più tardi.`,
-        saveToAirtable: false,
-        error: error.message
-    });
-  }
-});
-
-// ===== TEST ENDPOINT FOR RESERVATION FLOW =====
-
-app.post('/api/test/reservation-flow', async (req, res) => {
-  try {
-    console.log('\n' + '='.repeat(80));
-    console.log('🧪 [TEST RESERVATION FLOW] Called');
-    console.log('='.repeat(80));
-    
-    // Test conversation similar to what the AI agent would send
-    const testConversation = [
-      {
-        role: 'user',
-        content: "Hi, I'd like to make a reservation for dinner tomorrow night for 2 people. My name is David Anderson and my phone number is 555-123-4567."
-      },
-      {
-        role: 'agent',
-        content: "Buonasera! I'd be happy to help you make a reservation. Let me check availability for tomorrow. Could you tell me what time you'd prefer?"
-      },
-      {
-        role: 'user',
-        content: "Around 8 PM would be great. Also, we're celebrating our honeymoon, so if you could arrange something special, that would be wonderful!"
-      },
-      {
-        role: 'agent',
-        content: "Congratulations on your honeymoon! I'll make a note for a romantic surprise. Let me check our availability for tomorrow at 8 PM..."
-      }
-    ];
-    
-    const testSystemLogs = `RESERVATION_DATA:
-First Name: David
-Last Name: Anderson
-Phone: 5551234567
-Guests: 2
-Adults: 2
-Children: 0
-Date: tomorrow
-Time: 20:00
-Special Requests: Romantic song in the background for honeymoon surprise
-Newsletter: Yes`;
-    
-    console.log('🧪 Testing intent detection...');
-    const intentText = testConversation.map(msg => msg.content).join(' ');
-    const intentResult = detectReservationIntent(intentText, testConversation);
-    console.log('✅ Intent detection:', intentResult);
-    
-    console.log('\n🧪 Testing data extraction...');
-    const extractedData = extractReservationData(testConversation, testSystemLogs);
-    console.log('✅ Extracted data:', extractedData);
-    
-    console.log('\n🧪 Testing Google Calendar access...');
-    try {
-      const calendarEvents = await searchEventsByDate(extractedData.date);
-      const calendarCheck = await checkCalendarForConflicts(extractedData.date, extractedData.time);
-      console.log(`✅ Calendar events for ${extractedData.date}:`, calendarEvents.length);
-      console.log(`✅ Calendar conflicts for ${extractedData.date} at ${extractedData.time}:`, calendarCheck.conflictingEvents.length);
-    } catch (calendarError) {
-      console.error(`❌ Calendar test failed:`, calendarError.message);
-    }
-    
-    console.log('\n🧪 Testing all functions...');
-    const reservationId = generateReservationId();
-    const greeting = getItalianTimeWithTimezone();
-    const airtableTime = formatTimeForAirtable(extractedData.time, extractedData.date);
-    
-    console.log(`✅ Reservation ID: ${reservationId}`);
-    console.log(`✅ Italian greeting: ${greeting}`);
-    console.log(`✅ Airtable time format: ${airtableTime}`);
-    
-    res.json({
-      success: true,
-      tests: {
-        intentDetection: intentResult,
-        dataExtraction: extractedData,
-        googleCalendar: 'Test attempted - check logs for results',
-        reservationId: reservationId,
-        italianGreeting: greeting,
-        airtableFormat: {
-          time: airtableTime,
-          date: extractedData.date
-        },
-        note: 'Calendar test may fail if Google Calendar is not accessible'
-      }
-    });
-    
-  } catch (error) {
-    console.error('Error in test reservation flow:', error);
-    res.status(500).json({
-      success: false,
-      error: 'Test failed',
-      message: error.message
+      response: `${greeting}! Grazie per la tua chiamata! Abbiamo riscontrato un problema. Ti preghiamo di riprovare più tardi.`,
+      saveToAirtable: false,
+      error: error.message
     });
   }
 });
@@ -2373,9 +2046,8 @@ app.listen(PORT, () => {
   console.log(`📅 Calendar integration: REAL DATA ONLY (no mock data)`);
   
   console.log(`\n📅 CALENDAR ENDPOINTS:`);
-  console.log(`   - Date query (relative): http://localhost:${PORT}/api/calendar/date?date=the+fourth`);
-  console.log(`   - Date query (specific): http://localhost:${PORT}/api/calendar/date?date=2024-02-04`);
-  console.log(`   - Availability check: http://localhost:${PORT}/api/calendar/availability?date=2024-02-04&time=20:00`);
+  console.log(`   - Date query (relative): http://localhost:${PORT}/api/calendar/date?date=tomorrow`);
+  console.log(`   - Availability check: http://localhost:${PORT}/api/calendar/availability?date=2026-02-06&time=20:00`);
   console.log(`   - Debug: http://localhost:${PORT}/api/calendar/debug`);
   console.log(`   - Diagnostic: http://localhost:${PORT}/api/calendar/diagnostic`);
   
@@ -2383,10 +2055,6 @@ app.listen(PORT, () => {
   console.log(`   - Webhook (Retell): http://localhost:${PORT}/api/reservations`);
   console.log(`   - Intent detection: POST http://localhost:${PORT}/api/reservation/detect-intent`);
   console.log(`   - Data extraction: POST http://localhost:${PORT}/api/reservation/extract`);
-  console.log(`   - Create reservation: POST http://localhost:${PORT}/api/reservation/create`);
-  console.log(`   - Get reservation: GET http://localhost:${PORT}/api/reservation/:id`);
-  console.log(`   - Today's reservations: GET http://localhost:${PORT}/api/reservations/today`);
-  console.log(`   - Test flow: POST http://localhost:${PORT}/api/test/reservation-flow`);
   
   console.log(`\n🔍 FEATURES:`);
   console.log(`   - Reservation detection: ACTIVE (Multilingual: English/Italian)`);
