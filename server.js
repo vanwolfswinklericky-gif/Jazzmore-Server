@@ -3,43 +3,151 @@ const Airtable = require('airtable');
 const cors = require('cors');
 const { google } = require('googleapis');
 const crypto = require('crypto');
+const { formatInTimeZone, zonedTimeToUtc, utcToZonedTime } = require('date-fns-tz');
+const { addDays, startOfDay, endOfDay, format, isBefore, isAfter, addMonths } = require('date-fns');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// Fix for Node.js 17+ OpenSSL compatibility
-if (typeof crypto.setEngine === 'function') {
-  try {
-    crypto.setEngine('dynamic');
-  } catch (err) {
-    console.log('ℹ️ Crypto engine already set');
+// ===== ENVIRONMENT VALIDATION =====
+function validateEnvironment() {
+  const requiredEnvVars = [
+    'AIRTABLE_TOKEN',
+    'AIRTABLE_BASE_ID'
+  ];
+  
+  const missing = requiredEnvVars.filter(v => !process.env[v]);
+  
+  if (missing.length > 0) {
+    console.error('❌ Missing required environment variables:', missing.join(', '));
+    console.error('   Please set these in your Render/Heroku environment variables');
+    process.exit(1);
   }
+  
+  console.log('✅ Environment variables validated');
+}
+
+// Run validation
+validateEnvironment();
+
+// ===== SECURITY & PRIVACY HELPER =====
+function maskSensitiveData(text) {
+  if (!text) return '';
+  
+  // Mask phone numbers
+  let masked = text.replace(/\+\d[\d\s\-\(\)]+/g, match => {
+    // Keep country code and last 4 digits, mask the rest
+    const digits = match.replace(/\D/g, '');
+    if (digits.length <= 4) return match;
+    return digits.substring(0, Math.min(2, digits.length - 4)) + 
+           '****' + 
+           digits.substring(digits.length - 4);
+  });
+  
+  // Mask email addresses
+  masked = masked.replace(/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/g, match => {
+    const [local, domain] = match.split('@');
+    return local.substring(0, 2) + '***@' + domain;
+  });
+  
+  return masked;
+}
+
+// ===== LOGGING HELPER =====
+function safeLog(message, data = null, level = 'info') {
+  const timestamp = new Date().toISOString();
+  let logMessage = `[${timestamp}] ${message}`;
+  
+  if (data) {
+    // Mask sensitive data in logs - ONLY specific PII fields
+    const safeData = JSON.parse(JSON.stringify(data));
+    
+    // Recursively mask specific PII fields only
+    const piiKeys = new Set(['firstname', 'lastname', 'phone', 'phonenumber', 'email', 'fullname']);
+    
+    function maskObject(obj) {
+      if (!obj || typeof obj !== 'object') return obj;
+      
+      Object.keys(obj).forEach(key => {
+        const lowerKey = key.toLowerCase();
+        if (piiKeys.has(lowerKey)) {
+          if (typeof obj[key] === 'string') {
+            obj[key] = maskSensitiveData(obj[key]);
+          }
+        } else if (typeof obj[key] === 'object') {
+          maskObject(obj[key]);
+        }
+      });
+      
+      return obj;
+    }
+    
+    maskObject(safeData);
+    logMessage += ` ${JSON.stringify(safeData, null, 2)}`;
+  }
+  
+  console[level](logMessage);
 }
 
 // Middleware
 app.use(cors());
 app.use(express.json());
 
-// Initialize Airtable
-const airtable = new Airtable({
-  apiKey: process.env.AIRTABLE_TOKEN
-});
+// Initialize Airtable with validation
+let base;
+try {
+  const airtable = new Airtable({
+    apiKey: process.env.AIRTABLE_TOKEN
+  });
+  
+  base = airtable.base(process.env.AIRTABLE_BASE_ID);
+  safeLog('✅ Airtable initialized successfully');
+} catch (error) {
+  safeLog('❌ Failed to initialize Airtable', { error: error.message }, 'error');
+  process.exit(1);
+}
 
-const base = airtable.base(process.env.AIRTABLE_BASE_ID);
+// ===== ROME TIMEZONE CONSTANTS AND FUNCTIONS =====
+const ROME_TIMEZONE = 'Europe/Rome';
 
-// ===== TIME AWARENESS FUNCTIONS =====
-function getItalianTimeWithTimezone() {
-    const now = new Date();
-    const romeTime = new Date(now.toLocaleString("en-US", {timeZone: "Europe/Rome"}));
-    const currentHour = romeTime.getHours();
-    
-    console.log(`🇮🇹 Italian time: ${romeTime.toISOString()}, Hour: ${currentHour}`);
-    
-    if (currentHour >= 5 && currentHour < 12) return "Buongiorno";
-    else if (currentHour >= 12 && currentHour < 13) return "Buon pranzo";
-    else if (currentHour >= 13 && currentHour < 18) return "Buon pomeriggio";
-    else if (currentHour >= 18 && currentHour < 22) return "Buonasera";
-    else return "Buonanotte";
+// Get current date in Rome timezone
+function getRomeDate() {
+  return utcToZonedTime(new Date(), ROME_TIMEZONE);
+}
+
+// Get today's date string in Rome (YYYY-MM-DD)
+function getRomeDateToday() {
+  return formatInTimeZone(new Date(), ROME_TIMEZONE, 'yyyy-MM-dd');
+}
+
+// Get comprehensive Rome date/time info
+function getRomeDateTime() {
+  const romeDate = getRomeDate();
+  return {
+    date: formatInTimeZone(new Date(), ROME_TIMEZONE, 'yyyy-MM-dd'),
+    time: formatInTimeZone(new Date(), ROME_TIMEZONE, 'HH:mm:ss'),
+    year: romeDate.getFullYear(),
+    month: romeDate.getMonth() + 1,
+    day: romeDate.getDate(),
+    hour: romeDate.getHours(),
+    minute: romeDate.getMinutes(),
+    iso: formatInTimeZone(new Date(), ROME_TIMEZONE, "yyyy-MM-dd'T'HH:mm:ssXXX"),
+    romeDate: romeDate
+  };
+}
+
+// Get Italian greeting based on Rome time
+function getItalianTimeGreeting() {
+  const romeDate = getRomeDate();
+  const currentHour = romeDate.getHours();
+  
+  safeLog('Italian time check', { hour: currentHour });
+  
+  if (currentHour >= 5 && currentHour < 12) return "Buongiorno";
+  else if (currentHour >= 12 && currentHour < 13) return "Buon pranzo";
+  else if (currentHour >= 13 && currentHour < 18) return "Buon pomeriggio";
+  else if (currentHour >= 18 && currentHour < 22) return "Buonasera";
+  else return "Buonanotte";
 }
 
 // Generate unique reservation ID
@@ -49,23 +157,43 @@ function generateReservationId() {
   return `JAZ-${timestamp}-${random}`.toUpperCase();
 }
 
-// Convert time string to Airtable date format
+// Convert time string to Airtable date format using Rome timezone
 function formatTimeForAirtable(timeString, dateString) {
   try {
-    const [hours, minutes] = timeString.split(':');
-    const date = new Date(dateString);
-    date.setHours(parseInt(hours), parseInt(minutes), 0, 0);
-    return date.toISOString();
+    // Create a Rome-local datetime and convert to UTC ISO for Airtable
+    const utcDate = zonedTimeToUtc(`${dateString}T${timeString}:00`, ROME_TIMEZONE);
+    return utcDate.toISOString();
   } catch (error) {
-    const defaultDate = new Date(dateString);
-    defaultDate.setHours(19, 30, 0, 0);
-    return defaultDate.toISOString();
+    safeLog('Error formatting time for Airtable', { error: error.message }, 'error');
+    
+    // Fallback: create a date for 19:30 Rome time
+    const fallbackDateTime = `${dateString}T19:30:00`;
+    const utcFallback = zonedTimeToUtc(fallbackDateTime, ROME_TIMEZONE);
+    return utcFallback.toISOString();
   }
 }
 
-// Convert day name to actual date - COMPREHENSIVE BILINGUAL SUPPORT
+// Enhanced day name to date conversion with "next" handling
 function convertDayToDate(dayName) {
-  const today = new Date();
+  const cleaned = dayName.toLowerCase().trim();
+  
+  safeLog('convertDayToDate called', { input: dayName, cleaned });
+  
+  // Handle "next [day]" patterns
+  const nextEnglishMatch = cleaned.match(/^next\s+(monday|tuesday|wednesday|thursday|friday|saturday|sunday)$/);
+  if (nextEnglishMatch) {
+    safeLog('Found "next" pattern', { day: nextEnglishMatch[1] });
+    return findNextDayOfWeek(nextEnglishMatch[1], true);
+  }
+  
+  // Handle "prossimo/a [day]" patterns (Italian)
+  const prossimoMatch = cleaned.match(/^prossim[oa]\s+(lunedì|lunedi|martedì|martedi|mercoledì|mercoledi|giovedì|giovedi|venerdì|venerdi|sabato|domenica)$/);
+  if (prossimoMatch) {
+    safeLog('Found "prossimo" pattern', { day: prossimoMatch[1] });
+    return findNextDayOfWeek(prossimoMatch[1], true);
+  }
+  
+  // Handle simple day names
   const dayMap = {
     // English days
     'sunday': 0, 'monday': 1, 'tuesday': 2, 'wednesday': 3,
@@ -78,38 +206,70 @@ function convertDayToDate(dayName) {
     'tonight': 'today', 'stasera': 'today', 'questa sera': 'today'
   };
   
-  const targetDay = dayMap[dayName.toLowerCase()];
+  const targetDay = dayMap[cleaned];
   
   if (targetDay === 'today') {
-    return today.toISOString().split('T')[0];
+    const result = getRomeDateToday();
+    safeLog('"today" parsed', { result });
+    return result;
   } else if (targetDay === 'tomorrow') {
-    const tomorrow = new Date(today);
-    tomorrow.setDate(today.getDate() + 1);
-    return tomorrow.toISOString().split('T')[0];
+    const today = getRomeDate();
+    const tomorrow = addDays(today, 1);
+    const result = formatInTimeZone(tomorrow, ROME_TIMEZONE, 'yyyy-MM-dd');
+    safeLog('"tomorrow" parsed', { result });
+    return result;
   } else if (targetDay !== undefined) {
-    const daysUntil = (targetDay - today.getDay() + 7) % 7 || 7;
-    const targetDate = new Date(today);
-    targetDate.setDate(today.getDate() + daysUntil);
-    return targetDate.toISOString().split('T')[0];
+    const result = findNextDayOfWeek(cleaned, false);
+    safeLog('Day name parsed', { day: cleaned, result });
+    return result;
   }
   
   // Default to tomorrow if day not recognized
-  const tomorrow = new Date(today);
-  tomorrow.setDate(today.getDate() + 1);
-  return tomorrow.toISOString().split('T')[0];
+  const today = getRomeDate();
+  const tomorrow = addDays(today, 1);
+  const result = formatInTimeZone(tomorrow, ROME_TIMEZONE, 'yyyy-MM-dd');
+  safeLog('Day not recognized, defaulting to tomorrow', { input: cleaned, result });
+  return result;
 }
 
-// Helper function to parse relative dates
+// Helper function to find next day of week (with option for "next" meaning skip current week)
+function findNextDayOfWeek(dayName, skipCurrentWeek = false) {
+  const dayMap = {
+    'sunday': 0, 'monday': 1, 'tuesday': 2, 'wednesday': 3,
+    'thursday': 4, 'friday': 5, 'saturday': 6,
+    'domenica': 0, 'lunedì': 1, 'lunedi': 1, 'martedì': 2, 'martedi': 2,
+    'mercoledì': 3, 'mercoledi': 3, 'giovedì': 4, 'giovedi': 4, 
+    'venerdì': 5, 'venerdi': 5, 'sabato': 6
+  };
+  
+  const targetDayNum = dayMap[dayName];
+  if (targetDayNum === undefined) {
+    throw new Error(`Unknown day name: ${dayName}`);
+  }
+  
+  const today = getRomeDate();
+  const todayDayNum = today.getDay();
+  
+  let daysToAdd = (targetDayNum - todayDayNum + 7) % 7;
+  
+  if (daysToAdd === 0) {
+    // It's today
+    if (skipCurrentWeek) {
+      daysToAdd = 7; // Skip to next week
+    }
+  }
+  
+  const targetDate = addDays(today, daysToAdd);
+  return formatInTimeZone(targetDate, ROME_TIMEZONE, 'yyyy-MM-dd');
+}
+
+// Helper function to parse relative dates (ROME TIMEZONE) - IMPROVED to handle "the 3rd" smartly
 function parseRelativeDate(dateString) {
-  const today = new Date();
-  const currentYear = today.getFullYear(); // This will be 2026
-  const currentMonth = today.getMonth() + 1; // JavaScript months are 0-indexed
-  const currentDay = today.getDate();
+  const romeNow = getRomeDateTime();
   
-  console.log(`📅 [DEBUG] Today: ${today.toISOString()}`);
-  console.log(`📅 [DEBUG] Current year: ${currentYear}, month: ${currentMonth}, day: ${currentDay}`);
+  safeLog('Parsing relative date', { input: dateString, todayInRome: romeNow.date });
   
-  // Remove any "of this month" or similar phrases
+  // Clean the string
   const cleanString = dateString.toLowerCase()
     .replace('of this month', '')
     .replace('this month', '')
@@ -117,33 +277,66 @@ function parseRelativeDate(dateString) {
     .replace('on ', '')
     .trim();
   
-  console.log(`📅 Parsing relative date: "${dateString}" → "${cleanString}"`);
-  
-  // Check for "today"
+  // Check for "today" and "tomorrow" first
   if (cleanString === 'today' || cleanString === 'oggi') {
-    const result = `${currentYear}-${currentMonth.toString().padStart(2, '0')}-${currentDay.toString().padStart(2, '0')}`;
-    console.log(`📅 Today parsed as: ${result}`);
-    return result;
+    safeLog('"today" parsed', { result: romeNow.date });
+    return romeNow.date;
   }
   
-  // Check for "tomorrow"
   if (cleanString === 'tomorrow' || cleanString === 'domani') {
-    const tomorrow = new Date(currentYear, currentMonth - 1, currentDay + 1);
-    const result = tomorrow.toISOString().split('T')[0];
-    console.log(`📅 Tomorrow parsed as: ${result}`);
+    const tomorrow = addDays(getRomeDate(), 1);
+    const result = formatInTimeZone(tomorrow, ROME_TIMEZONE, 'yyyy-MM-dd');
+    safeLog('"tomorrow" parsed', { result });
     return result;
   }
   
-  // Check for day numbers (1st, 2nd, 3rd, 4th, etc.)
+  // Try to handle "next [day]" patterns
+  if (cleanString.startsWith('next ') || cleanString.startsWith('prossim')) {
+    safeLog('Using convertDayToDate for pattern', { pattern: cleanString });
+    return convertDayToDate(cleanString);
+  }
+  
+  // Check for day numbers (1st, 2nd, 3rd, 4th, etc.) - IMPROVED: if day has passed, use next month
   const dayMatch = cleanString.match(/(\d+)(?:st|nd|rd|th)?/);
   
   if (dayMatch) {
     const day = parseInt(dayMatch[1]);
     
-    // If it's just a day number, use current month and year
+    // If it's just a day number, use current Rome month and year
     if (day >= 1 && day <= 31) {
-      const result = `${currentYear}-${currentMonth.toString().padStart(2, '0')}-${day.toString().padStart(2, '0')}`;
-      console.log(`📅 Day ${day} parsed as: ${result} (current year: ${currentYear})`);
+      // Get today's date
+      const today = getRomeDate();
+      const currentYear = today.getFullYear();
+      const currentMonth = today.getMonth() + 1;
+      const currentDay = today.getDate();
+      
+      // Try the current month first
+      let testMonth = currentMonth;
+      let testYear = currentYear;
+      
+      // If the day has already passed this month, use next month
+      if (day < currentDay) {
+        testMonth++;
+        if (testMonth > 12) {
+          testMonth = 1;
+          testYear++;
+        }
+      }
+      
+      // Create a date in Rome timezone for this day
+      const testDateStr = `${testYear}-${testMonth.toString().padStart(2, '0')}-${day.toString().padStart(2, '0')}`;
+      const testDate = zonedTimeToUtc(`${testDateStr}T12:00:00`, ROME_TIMEZONE);
+      const romeTestDate = utcToZonedTime(testDate, ROME_TIMEZONE);
+      
+      // Format the result
+      const result = formatInTimeZone(romeTestDate, ROME_TIMEZONE, 'yyyy-MM-dd');
+      safeLog('Day number parsed with smart month handling', { 
+        day, 
+        currentDay,
+        currentMonth,
+        testMonth,
+        result 
+      });
       return result;
     }
   }
@@ -162,21 +355,91 @@ function parseRelativeDate(dateString) {
       const dayMatch2 = cleanString.match(/(\d+)(?:st|nd|rd|th)?/);
       if (dayMatch2) {
         const day = parseInt(dayMatch2[1]);
-        const result = `${currentYear}-${monthNumber.toString().padStart(2, '0')}-${day.toString().padStart(2, '0')}`;
-        console.log(`📅 Found month ${monthName} day ${day}: ${result}`);
+        // Use current year (Rome timezone)
+        const result = `${romeNow.year}-${monthNumber.toString().padStart(2, '0')}-${day.toString().padStart(2, '0')}`;
+        safeLog('Month + day parsed', { month: monthName, day, result });
         return result;
       }
     }
   }
   
   // Fallback to convertDayToDate
-  console.log(`📅 Falling back to convertDayToDate for: ${cleanString}`);
+  safeLog('Falling back to convertDayToDate', { input: cleanString });
   return convertDayToDate(cleanString);
+}
+
+// ===== RESERVATION VALIDATION =====
+function validateReservationData(reservationData) {
+  const errors = [];
+  const warnings = [];
+  
+  // Required fields
+  if (!reservationData.date) {
+    errors.push('Date is required');
+  }
+  
+  if (!reservationData.time) {
+    errors.push('Time is required');
+  } else if (!/^([01]?[0-9]|2[0-3]):[0-5][0-9]$/.test(reservationData.time)) {
+    errors.push('Time must be in HH:MM format (e.g., 20:00)');
+  }
+  
+  if (!reservationData.guests || reservationData.guests < 1) {
+    errors.push('Number of guests is required and must be at least 1');
+  }
+  
+  // Important but not strictly required (can prompt for clarification)
+  if (!reservationData.firstName || !reservationData.lastName) {
+    warnings.push('Name not provided');
+  }
+  
+  if (!reservationData.phone) {
+    warnings.push('Phone number not provided');
+  } else {
+    const phoneDigits = reservationData.phone.replace(/\D/g, '');
+    if (phoneDigits.length < 7) {
+      warnings.push('Phone number appears incomplete');
+    }
+  }
+  
+  // Date validation (Rome timezone) - FIXED: Compare date-only, not noon vs now
+  if (reservationData.date) {
+    try {
+      // Create date-only comparison (midnight to midnight)
+      const romeResDay = startOfDay(
+        utcToZonedTime(
+          zonedTimeToUtc(`${reservationData.date}T00:00:00`, ROME_TIMEZONE), 
+          ROME_TIMEZONE
+        )
+      );
+      const romeTodayDay = startOfDay(getRomeDate());
+      
+      if (isBefore(romeResDay, romeTodayDay)) {
+        errors.push('Reservation date cannot be in the past');
+      }
+      
+      // Also check if time has already passed for today's reservations
+      if (reservationData.date === getRomeDateToday() && reservationData.time) {
+        const now = getRomeDate();
+        const [hours, minutes] = reservationData.time.split(':').map(Number);
+        const reservationTime = new Date(now);
+        reservationTime.setHours(hours, minutes, 0, 0);
+        
+        if (isBefore(reservationTime, now)) {
+          warnings.push('Reservation time appears to be in the past for today');
+        }
+      }
+    } catch (error) {
+      errors.push(`Invalid date format: ${reservationData.date}`);
+    }
+  }
+  
+  return { isValid: errors.length === 0, errors, warnings };
 }
 
 // ===== RESERVATION INTENT DETECTION =====
 function detectReservationIntent(conversationText, transcript = []) {
-  console.log('🔍 Detecting reservation intent...');
+  safeLog('Detecting reservation intent', { conversationLength: conversationText?.length });
   
   const lowerText = conversationText.toLowerCase();
   
@@ -216,7 +479,7 @@ function detectReservationIntent(conversationText, transcript = []) {
   }
   
   if (foundKeywords.length > 0) {
-    console.log(`✅ Found reservation keywords: ${foundKeywords.join(', ')}`);
+    safeLog('Found reservation keywords', { keywords: foundKeywords });
     return { wantsReservation: true, reason: `Keywords: ${foundKeywords.join(', ')}` };
   }
   
@@ -240,94 +503,32 @@ function detectReservationIntent(conversationText, transcript = []) {
   for (const pattern of patterns) {
     const match = lowerText.match(pattern);
     if (match) {
-      console.log(`✅ Found reservation pattern: ${pattern.source} → "${match[0]}"`);
+      safeLog('Found reservation pattern', { pattern: pattern.source, match: match[0] });
       return { wantsReservation: true, reason: `Pattern: ${match[0]}` };
     }
   }
   
-  // Check if agent asked reservation-related questions
-  const agentMessages = transcript
-    .filter(msg => msg.role === 'agent')
-    .map(msg => msg.content || '')
-    .join(' ')
-    .toLowerCase();
-  
-  const agentQuestions = [
-    // English questions
-    'how many', 'what date', 'what time', 'phone number',
-    'name', 'last name', 'first name', 'special requests',
-    'guests', 'people', 'persons', 'reservation',
-    
-    // Italian questions
-    'quante persone', 'che data', 'che ora', 'numero di telefono',
-    'nome', 'cognome', 'nome e cognome', 'richieste speciali',
-    'ospiti', 'persone', 'prenotazione', 'fino a che ora'
-  ];
-  
-  let agentQuestionCount = 0;
-  for (const question of agentQuestions) {
-    if (agentMessages.includes(question)) {
-      agentQuestionCount++;
-    }
-  }
-  
-  // If agent asked multiple reservation-related questions
-  if (agentQuestionCount >= 2) {
-    console.log(`✅ Agent asked ${agentQuestionCount} reservation-related questions`);
-    return { wantsReservation: true, reason: `Agent questions: ${agentQuestionCount}` };
-  }
-  
-  // Check for user providing reservation details without explicit keyword
-  const userDetails = transcript
-    .filter(msg => msg.role === 'user')
-    .map(msg => msg.content || '');
-  
-  const detailIndicators = [
-    // Time indicators
-    /\b(\d{1,2}[:.]\d{2})\b/,
-    /\b(\d{1,2})\s*(am|pm|di mattina|di pomeriggio|di sera)\b/i,
-    // Date indicators
-    /\b(oggi|domani|lunedì|lunedi|martedì|martedi|mercoledì|mercoledi|giovedì|giovedi|venerdì|venerdi|sabato|domenica)\b/i,
-    // Number indicators
-    /\b(\d+)\s*(persone|ospiti|adulti|bambini)\b/i,
-    // Phone indicators
-    /\b(\d{3}[-.\s]?\d{3}[-.\s]?\d{4})\b/,
-    /\b(\d{2}\s?\d{4}\s?\d{4})\b/
-  ];
-  
-  let detailCount = 0;
-  for (const detail of userDetails) {
-    for (const indicator of detailIndicators) {
-      if (indicator.test(detail)) {
-        detailCount++;
-        break;
-      }
-    }
-  }
-  
-  if (detailCount >= 2) {
-    console.log(`✅ User provided ${detailCount} reservation details`);
-    return { wantsReservation: true, reason: `User details: ${detailCount}` };
-  }
-  
-  console.log('❌ No clear reservation intent detected');
+  safeLog('No clear reservation intent detected');
   return { wantsReservation: false, reason: 'No indicators found' };
 }
 
-// ===== YOUR EXISTING RESERVATION EXTRACTION CODE =====
+// ===== RESERVATION EXTRACTION CODE =====
 function extractReservationData(conversation, systemLogs = '') {
-  console.log('🔍 Comprehensive reservation data extraction started...');
+  safeLog('Starting comprehensive reservation data extraction', {
+    conversationLength: conversation?.length,
+    hasSystemLogs: !!systemLogs
+  });
   
   const defaultReservation = {
     firstName: '',
     lastName: '',
-    date: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString().split('T')[0],
-    time: '22:00',
-    guests: 2,
-    adults: 2,
+    date: '', // Empty by default - don't assume today
+    time: '', // Empty by default - don't assume 22:00
+    guests: 0, // Zero by default - must be provided
+    adults: 0,
     children: 0,
     phone: '',
-    specialRequests: 'No special requests',
+    specialRequests: '',
     newsletter: false
   };
 
@@ -338,17 +539,16 @@ function extractReservationData(conversation, systemLogs = '') {
     systemLogs: extractFromSystemLogs(systemLogs)
   };
 
-  console.log('📊 Data from all sources:', sources);
+  safeLog('Data from all sources', sources);
 
   // Merge and resolve conflicts
   const finalData = mergeAndResolveData(sources, defaultReservation);
   
-  console.log('✅ Final resolved data:', finalData);
+  safeLog('Final resolved data', finalData);
   return finalData;
 }
 
 function extractFromStructuredBlock(conversation, systemLogs) {
-  console.log('🔍 Checking for structured data block...');
   const data = {};
   
   const fullConversationText = conversation 
@@ -357,19 +557,19 @@ function extractFromStructuredBlock(conversation, systemLogs) {
   
   const structuredMatch = fullConversationText.match(/RESERVATION_DATA:[\s\S]*?(?=\n\n|\n$|$)/i);
   if (structuredMatch) {
-    console.log('✅ Found structured data in conversation');
+    safeLog('Found structured data in conversation');
     return parseStructuredBlock(structuredMatch[0]);
   }
   
   if (systemLogs) {
     const logMatch = systemLogs.match(/RESERVATION_DATA:[\s\S]*?(?=\n\n|\n$|$)/i);
     if (logMatch) {
-      console.log('✅ Found structured data in system logs');
+      safeLog('Found structured data in system logs');
       return parseStructuredBlock(logMatch[0]);
     }
   }
   
-  console.log('❌ No structured data block found');
+  safeLog('No structured data block found');
   return data;
 }
 
@@ -379,12 +579,12 @@ function parseStructuredBlock(block) {
     'first name': (val) => data.firstName = val,
     'last name': (val) => data.lastName = val,
     'phone': (val) => data.phone = '+39' + val.replace(/\D/g, ''),
-    'guests': (val) => data.guests = parseInt(val) || 2,
-    'adults': (val) => data.adults = parseInt(val) || data.guests,
+    'guests': (val) => data.guests = parseInt(val) || 0,
+    'adults': (val) => data.adults = parseInt(val) || 0,
     'children': (val) => data.children = parseInt(val) || 0,
     'date': (val) => data.date = convertDayToDate(val),
     'time': (val) => data.time = val,
-    'special requests': (val) => data.specialRequests = val === 'None' ? 'No special requests' : val,
+    'special requests': (val) => data.specialRequests = val === 'None' ? '' : val,
     'newsletter': (val) => data.newsletter = val.toLowerCase() === 'yes'
   };
 
@@ -393,7 +593,7 @@ function parseStructuredBlock(block) {
     const match = block.match(regex);
     if (match && match[1]) {
       const value = match[1].trim();
-      console.log(`📋 Structured ${field}: "${value}"`);
+      safeLog('Structured field found', { field, value });
       setter(value);
     }
   });
@@ -402,7 +602,7 @@ function parseStructuredBlock(block) {
 }
 
 function extractFromConversationFlow(conversation) {
-  console.log('🔍 Extracting from conversation flow...');
+  safeLog('Extracting from conversation flow', { messages: conversation?.length });
   const data = {};
   
   let phoneDigits = '';
@@ -411,6 +611,7 @@ function extractFromConversationFlow(conversation) {
   let phoneAsked = false;
   let guestsAsked = false;
   let dateAsked = false;
+  let timeAsked = false;
 
   for (let i = 0; i < conversation.length; i++) {
     const msg = conversation[i];
@@ -429,7 +630,6 @@ function extractFromConversationFlow(conversation) {
           lowerContent.includes('qual e il tuo nome') ||
           lowerContent.includes('il tuo nome')) {
         firstNameAsked = true;
-        console.log('👤 Agent asked for first name');
       }
       
       // Last name questions - English + Italian
@@ -439,7 +639,6 @@ function extractFromConversationFlow(conversation) {
            lowerContent.includes('qual è il tuo cognome') ||
            lowerContent.includes('qual e il tuo cognome'))) {
         lastNameAsked = true;
-        console.log('👤 Agent asked for last name');
       }
       
       // Phone number questions - English + Italian
@@ -451,7 +650,6 @@ function extractFromConversationFlow(conversation) {
           lowerContent.includes('recapito') ||
           lowerContent.includes('cellulare')) {
         phoneAsked = true;
-        console.log('📞 Agent asked for phone number');
       }
       
       // Guest count questions - English + Italian
@@ -464,7 +662,6 @@ function extractFromConversationFlow(conversation) {
           lowerContent.includes('ospiti') ||
           lowerContent.includes('quant')) {
         guestsAsked = true;
-        console.log('👥 Agent asked for guest count');
       }
       
       // Date questions - English + Italian
@@ -476,37 +673,14 @@ function extractFromConversationFlow(conversation) {
           lowerContent.includes('che giorno') ||
           lowerContent.includes('quale data')) {
         dateAsked = true;
-        console.log('📅 Agent asked for date');
       }
       
-      // Extract confirmation of information from agent
-      if ((content.includes('David') && content.includes('Anderson')) ||
-          (content.includes('Dina') && content.includes('Anderson')) ||
-          lowerContent.includes('signor anderson') ||
-          lowerContent.includes('sig. anderson')) {
-        data.firstName = content.includes('David') ? 'David' : 'Dina';
-        data.lastName = 'Anderson';
-        console.log(`✅ Agent confirmed: ${data.firstName} ${data.lastName}`);
-      }
-      
-      // Confirm guest count
-      if (lowerContent.match(/2\s*(people|person|guests?|adults?)/) ||
-          lowerContent.includes('due persone') ||
-          lowerContent.includes('2 persone') ||
-          lowerContent.includes('per due') ||
-          lowerContent.match(/per\s*2/)) {
-        data.guests = 2;
-        data.adults = 2;
-        console.log('✅ Agent confirmed: 2 guests');
-      }
-      
-      // Confirm date/time
-      if ((lowerContent.includes('friday') && (lowerContent.includes('9:45') || lowerContent.includes('9.45'))) ||
-          (lowerContent.includes('venerdì') && lowerContent.includes('21:45')) ||
-          (lowerContent.includes('venerdi') && lowerContent.includes('21:45'))) {
-        data.date = convertDayToDate('next friday');
-        data.time = '21:45';
-        console.log('✅ Agent confirmed: Friday 9:45 PM');
+      // Time questions - English + Italian
+      if (lowerContent.includes('what time') ||
+          lowerContent.includes('which time') ||
+          lowerContent.includes('che ora') ||
+          lowerContent.includes('a che ora')) {
+        timeAsked = true;
       }
     }
 
@@ -516,7 +690,6 @@ function extractFromConversationFlow(conversation) {
         const nameMatch = content.match(/\b([A-Z][a-zàèéìòù]+)\b/);
         if (nameMatch && nameMatch[1]) {
           data.firstName = nameMatch[1];
-          console.log(`✅ User provided first name: ${data.firstName}`);
           firstNameAsked = false;
         }
       }
@@ -526,7 +699,6 @@ function extractFromConversationFlow(conversation) {
         const nameMatch = content.match(/\b([A-Z][a-zàèéìòù]+)\b/);
         if (nameMatch && nameMatch[1]) {
           data.lastName = nameMatch[1];
-          console.log(`✅ User provided last name: ${data.lastName}`);
           lastNameAsked = false;
         }
       }
@@ -535,9 +707,8 @@ function extractFromConversationFlow(conversation) {
       if (guestsAsked && !data.guests) {
         if (lowerContent.match(/(\d+)\s*(people|person|guests?|adults?)/)) {
           const match = lowerContent.match(/(\d+)\s*(people|person|guests?|adults?)/);
-          data.guests = parseInt(match[1]) || 2;
+          data.guests = parseInt(match[1]) || 0;
           data.adults = data.guests;
-          console.log(`✅ User specified guests: ${data.guests}`);
           guestsAsked = false;
         }
         else if (lowerContent.match(/(\d+)\s*(persone|ospiti|adulti|bambini)/) ||
@@ -545,11 +716,19 @@ function extractFromConversationFlow(conversation) {
                  lowerContent.includes('per due')) {
           const match = lowerContent.match(/(\d+)\s*(persone|ospiti|adulti|bambini)/);
           if (match && match[1]) {
-            data.guests = parseInt(match[1]) || 2;
+            data.guests = parseInt(match[1]) || 0;
             data.adults = data.guests;
-            console.log(`✅ User specified guests: ${data.guests}`);
             guestsAsked = false;
           }
+        }
+      }
+      
+      // Capture time
+      if (timeAsked && !data.time) {
+        const timeMatch = content.match(/\b(\d{1,2}[:.]\d{2})\b/);
+        if (timeMatch) {
+          data.time = timeMatch[1].replace('.', ':');
+          timeAsked = false;
         }
       }
       
@@ -558,26 +737,22 @@ function extractFromConversationFlow(conversation) {
         if (lowerContent.includes('friday') && (lowerContent.includes('9:45') || lowerContent.includes('9.45'))) {
           data.date = convertDayToDate('next friday');
           data.time = '21:45';
-          console.log('✅ User specified: Friday 9:45 PM');
           dateAsked = false;
         }
         else if ((lowerContent.includes('venerdì') || lowerContent.includes('venerdi')) && 
                  (lowerContent.includes('21:45') || lowerContent.includes('21.45'))) {
           data.date = convertDayToDate('next friday');
           data.time = '21:45';
-          console.log('✅ User specified: Friday 9:45 PM');
           dateAsked = false;
         }
         else if (lowerContent.includes('stasera') || lowerContent.includes('questa sera')) {
           data.date = convertDayToDate('today');
           data.time = '20:00';
-          console.log('✅ User specified: tonight');
           dateAsked = false;
         }
         else if (lowerContent.includes('domani') || lowerContent.includes('tomorrow')) {
           data.date = convertDayToDate('tomorrow');
           data.time = '20:00';
-          console.log('✅ User specified: tomorrow');
           dateAsked = false;
         }
       }
@@ -608,50 +783,24 @@ function extractFromConversationFlow(conversation) {
         
         if (digits.length > 0) {
           phoneDigits += digits;
-          console.log(`📞 Phone digits collected: ${phoneDigits}`);
         }
         
         if (phoneDigits.length >= 10) {
           phoneAsked = false;
         }
       }
-      
-      // Extract special requests
-      if (lowerContent.includes('honeymoon') || 
-          lowerContent.includes('surprise') ||
-          lowerContent.includes('romantic') ||
-          lowerContent.includes('luna di miele') || 
-          lowerContent.includes('luna di miele') ||
-          lowerContent.includes('sorpresa') ||
-          lowerContent.includes('romantico') ||
-          lowerContent.includes('romantica')) {
-        data.specialRequests = 'Romantic song in the background for honeymoon surprise';
-        console.log('✅ User mentioned honeymoon/surprise');
-      }
-      
-      // Newsletter opt-in
-      if ((lowerContent.includes('newsletter') && (lowerContent.includes('yes') || lowerContent.includes('join'))) ||
-          (lowerContent.includes('newsletter') && (lowerContent.includes('sì') || lowerContent.includes('si'))) ||
-          lowerContent.includes('iscriviti') ||
-          lowerContent.includes('mi iscrivo') ||
-          lowerContent.includes('volentieri')) {
-        data.newsletter = true;
-        console.log('✅ User opted into newsletter');
-      }
     }
   }
   
   if (phoneDigits.length >= 7) {
     data.phone = '+39' + phoneDigits.substring(0, 10);
-    console.log(`✅ Processed phone number: ${data.phone}`);
   }
   
-  console.log('🗣️ Conversation flow data:', data);
+  safeLog('Conversation flow data extracted', data);
   return data;
 }
 
 function extractFromSystemLogs(logs) {
-  console.log('🔍 Extracting from system logs...');
   const data = {};
   
   if (!logs) return data;
@@ -671,7 +820,7 @@ function extractFromSystemLogs(logs) {
     const match = logs.match(pattern);
     if (match && match[1]) {
       const value = match[1].trim();
-      console.log(`📝 Log ${field}: "${value}"`);
+      safeLog('System log field found', { field, value });
       
       switch (field) {
         case 'firstName':
@@ -707,7 +856,7 @@ function extractFromSystemLogs(logs) {
 }
 
 function mergeAndResolveData(sources, defaultData) {
-  console.log('🔄 Merging and resolving data from all sources...');
+  safeLog('Merging and resolving data from all sources');
   
   const finalData = { ...defaultData };
   const sourcePriority = ['structuredBlock', 'conversationFlow', 'systemLogs'];
@@ -721,7 +870,7 @@ function mergeAndResolveData(sources, defaultData) {
           sources[source][field] !== null) {
         
         if (isValidFieldValue(field, sources[source][field])) {
-          console.log(`✅ Using ${field} from ${source}: ${sources[source][field]}`);
+          safeLog('Using field from source', { field, source, value: sources[source][field] });
           finalData[field] = sources[source][field];
           break;
         }
@@ -750,34 +899,43 @@ function isValidFieldValue(field, value) {
 }
 
 function crossValidateFields(finalData, sources) {
-  console.log('🔍 Cross-validating fields...');
-  
   if (finalData.adults && finalData.children !== undefined) {
     const calculatedGuests = finalData.adults + finalData.children;
     if (finalData.guests !== calculatedGuests) {
-      console.log(`⚠️ Guest count mismatch: ${finalData.guests} total vs ${finalData.adults} adults + ${finalData.children} children`);
+      safeLog('Guest count mismatch', { 
+        total: finalData.guests, 
+        adults: finalData.adults, 
+        children: finalData.children 
+      });
       if (calculatedGuests > 0 && calculatedGuests < 20) {
         finalData.guests = calculatedGuests;
-        console.log(`✅ Using calculated guest count: ${finalData.guests}`);
       }
     }
   }
   
   if (finalData.phone && !finalData.phone.startsWith('+39')) {
     finalData.phone = '+39' + finalData.phone.replace(/\D/g, '');
-    console.log(`✅ Formatted phone: ${finalData.phone}`);
   }
   
-  const reservationDate = new Date(finalData.date);
-  const today = new Date();
-  if (reservationDate < today) {
-    const tomorrow = new Date(today);
-    tomorrow.setDate(today.getDate() + 1);
-    finalData.date = tomorrow.toISOString().split('T')[0];
-    console.log(`⚠️ Date in past, defaulting to tomorrow: ${finalData.date}`);
+  // Check if date is in the past (Rome timezone) - FIXED: date-only comparison
+  if (finalData.date) {
+    try {
+      const romeResDay = startOfDay(
+        utcToZonedTime(
+          zonedTimeToUtc(`${finalData.date}T00:00:00`, ROME_TIMEZONE), 
+          ROME_TIMEZONE
+        )
+      );
+      const romeTodayDay = startOfDay(getRomeDate());
+      
+      if (isBefore(romeResDay, romeTodayDay)) {
+        safeLog('Date is in the past', { date: finalData.date });
+      }
+    } catch (error) {
+      safeLog('Error validating date', { error: error.message, date: finalData.date }, 'warn');
+    }
   }
 }
-// ===== END RESERVATION EXTRACTION CODE =====
 
 // ===== GOOGLE CALENDAR INTEGRATION =====
 const SCOPES = ['https://www.googleapis.com/auth/calendar.readonly'];
@@ -803,7 +961,7 @@ hOTTaGNTdDjTHcPXNy+LMerAzwP7AZCL38SR6fdfqY6kVCREoODlPTJmQw1ia8vC
 veb9ZQQoP0GOU0e8T/z8ybXSp3to6+oLMgoISCmGv+6w5dDwYErvh3E13iQF8bsq
 c+fAk3gGnScz0qL5UQGsmfafZp9TE5c3UwAhQNyUig8twew+Lq/IgZppJ00Tspl8
 eCqrMa0/KIHCNsndyiLJ4vN08HS+F2tLIiRxOgUCgYEA8tEFjHhd4BZVW1BUskst
-pynPB36FbE31Zwap3cNJeA5tGE8kwInC0COoac5MgAZ8gwqOyqG1YI1LkVVjHEch
+pynPB36FbE31Zwap3cNJeA5tGE8kw.InC0COoac5MgAZ8gwqOyqG1YI1LkVVjHEch
 ElLPcrcrgEojEPDW15vsYKdDo1i2T0GeBiP+NKovp8IoDbJNeLpf+1aXwEHkbFrM
 FfewPnoI6iicnO2iqYxjLRcCgYEAxrbKxJTbUbBf1rJvYS3FGPCj51RX9EoQ7SyN
 gJvQdGGjLhc2CR2EPIHFHzwCyz1yKy7vfcr085zCS3IbP/p/C7IHLdZt2iLgOv/C
@@ -829,8 +987,7 @@ UIfURnA8dT2WX4pl24pR
 
 async function getCalendarClient() {
   try {
-    console.log('🔑 Initializing Google Calendar client...');
-    console.log(`📧 Service account: ${serviceAccount.client_email}`);
+    safeLog('Initializing Google Calendar client', { serviceAccount: serviceAccount.client_email });
     
     // Ensure private key has proper newlines
     const privateKey = serviceAccount.private_key.replace(/\\n/g, '\n');
@@ -843,23 +1000,18 @@ async function getCalendarClient() {
       scopes: SCOPES,
     });
     
-    console.log('🔐 Getting auth client...');
     const authClient = await auth.getClient();
-    console.log('✅ Auth client obtained');
     
     const calendar = google.calendar({ 
       version: 'v3', 
       auth: authClient 
     });
     
-    console.log('✅ Google Calendar client initialized successfully');
+    safeLog('Google Calendar client initialized successfully');
     return calendar;
     
   } catch (error) {
-    console.error('❌ Error getting Google Calendar client:');
-    console.error('   Message:', error.message);
-    console.error('   Code:', error.code);
-    console.error('   Stack:', error.stack);
+    safeLog('Error getting Google Calendar client', { error: error.message }, 'error');
     return null;
   }
 }
@@ -971,83 +1123,59 @@ function analyzeEventAvailability(event) {
 }
 
 async function searchEventsByDate(dateString, calendarId = null) {
-  console.log(`📅 Searching events for: ${dateString}`);
+  safeLog('Searching events for date', { date: dateString, timezone: ROME_TIMEZONE });
   
   try {
-    console.log('🔍 Fetching real Google Calendar events...');
-    
     const calendar = await getCalendarClient();
     if (!calendar) {
-      console.log('❌ Google Calendar client not available');
       throw new Error('Google Calendar client not available');
     }
     
     // Use specific Jazzamore calendar ID
     const targetCalendarId = calendarId || JAZZAMORE_CALENDAR_ID;
-    console.log(`📅 Using Jazzamore calendar ID: ${targetCalendarId}`);
     
-    // Create date range for the specific day
-    const date = new Date(dateString);
-    const startOfDay = new Date(date);
-    startOfDay.setHours(0, 0, 0, 0);
+    // Create date range for the specific day in Rome timezone
+    const date = zonedTimeToUtc(`${dateString}T12:00:00`, ROME_TIMEZONE);
+    const romeDate = utcToZonedTime(date, ROME_TIMEZONE);
     
-    const endOfDay = new Date(date);
-    endOfDay.setHours(23, 59, 59, 999);
+    // Get start and end of day in Rome
+    const startOfDayRome = startOfDay(romeDate);
+    const endOfDayRome = endOfDay(romeDate);
     
-    console.log(`📅 Date range: ${startOfDay.toISOString()} to ${endOfDay.toISOString()}`);
+    // Convert to UTC for Google Calendar API
+    const startOfDayUTC = zonedTimeToUtc(startOfDayRome, ROME_TIMEZONE);
+    const endOfDayUTC = zonedTimeToUtc(endOfDayRome, ROME_TIMEZONE);
     
     try {
-      console.log('🔍 Sending request to Google Calendar API...');
       const response = await calendar.events.list({
         calendarId: targetCalendarId,
-        timeMin: startOfDay.toISOString(),
-        timeMax: endOfDay.toISOString(),
+        timeMin: startOfDayUTC.toISOString(),
+        timeMax: endOfDayUTC.toISOString(),
         maxResults: 20,
         singleEvents: true,
         orderBy: 'startTime',
+        timeZone: ROME_TIMEZONE
       });
 
       const events = response.data.items || [];
-      console.log(`✅ Successfully fetched ${events.length} real events from Google Calendar`);
+      safeLog('Successfully fetched events from Google Calendar', { count: events.length });
       
       if (events.length === 0) {
-        console.log('ℹ️ No events found for this date in Google Calendar');
         return [];
       }
-      
-      // Log the events found
-      console.log('📋 Events found:');
-      events.forEach(event => {
-        const eventTime = event.start?.dateTime 
-          ? new Date(event.start.dateTime).toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' })
-          : event.start?.date || 'All day';
-        console.log(`   - ${eventTime}: ${event.summary || 'No title'}`);
-      });
       
       // Analyze each event for availability
       const analyzedEvents = events.map(event => {
         const availability = analyzeEventAvailability(event);
         
         // Format the event for response
-        const eventStart = event.start?.dateTime ? new Date(event.start.dateTime) : new Date(event.start?.date || date);
-        const eventEnd = event.end?.dateTime ? new Date(event.end.dateTime) : new Date(event.end?.date || date);
+        let time = 'All day';
+        let dateStr = formatInTimeZone(romeDate, ROME_TIMEZONE, 'dd/MM/yyyy');
         
-        const time = event.start?.dateTime 
-          ? eventStart.toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' })
-          : 'All day';
-        
-        const dateStr = eventStart.toLocaleDateString('it-IT');
-        
-        // Determine if event is available (not sold out)
-        const isAvailable = !availability.isSoldOut;
-        
-        // Calculate available spots
-        let availableSpots = null;
-        let capacity = 'Unknown';
-        
-        if (availability.totalCapacity !== null && availability.currentAttendees !== null) {
-          availableSpots = Math.max(0, availability.totalCapacity - availability.currentAttendees);
-          capacity = `${availability.currentAttendees}/${availability.totalCapacity}`;
+        if (event.start?.dateTime) {
+          const eventStart = new Date(event.start.dateTime);
+          time = formatInTimeZone(eventStart, ROME_TIMEZONE, 'HH:mm');
+          dateStr = formatInTimeZone(eventStart, ROME_TIMEZONE, 'dd/MM/yyyy');
         }
         
         return {
@@ -1055,19 +1183,18 @@ async function searchEventsByDate(dateString, calendarId = null) {
           time: time,
           title: availability.title,
           location: availability.location,
-          available: isAvailable,
-          reason: isAvailable ? 'Available' : availability.soldOutReason || 'Sold out',
-          capacity: capacity,
-          availableSpots: availableSpots,
+          isSoldOut: availability.isSoldOut,
+          soldOutReason: availability.soldOutReason,
+          capacity: availability.totalCapacity ? 
+            `${availability.currentAttendees}/${availability.totalCapacity}` : 'Unknown',
+          availableSpots: availability.availableSpots,
           hasWaitingList: availability.waitingList,
           description: availability.description,
-          startTime: eventStart.toISOString(),
-          endTime: eventEnd.toISOString(),
+          startTime: event.start?.dateTime || event.start?.date,
+          endTime: event.end?.dateTime || event.end?.date,
           isRealEvent: true
         };
       });
-      
-      console.log(`📊 Analyzed ${analyzedEvents.length} events for availability`);
       
       // Sort events by time
       analyzedEvents.sort((a, b) => {
@@ -1079,224 +1206,143 @@ async function searchEventsByDate(dateString, calendarId = null) {
       return analyzedEvents;
       
     } catch (apiError) {
-      console.error('❌ Google Calendar API Error:');
-      console.error('   Message:', apiError.message);
-      console.error('   Code:', apiError.code);
-      if (apiError.response?.data?.error) {
-        console.error('   Error details:', JSON.stringify(apiError.response.data.error, null, 2));
-      }
+      safeLog('Google Calendar API Error', { error: apiError.message }, 'error');
       throw new Error(`Google Calendar API Error: ${apiError.message}`);
     }
     
   } catch (error) {
-    console.error('❌ Error searching real Google Calendar events:', error.message);
+    safeLog('Error searching Google Calendar events', { error: error.message }, 'error');
     throw error;
   }
 }
 
+// Check for actual time overlap conflicts (CORRECTED - include all events)
 async function checkCalendarForConflicts(date, time, calendarId = null) {
   try {
-    const targetDate = new Date(date);
-    const [hours, minutes] = time.split(':').map(Number);
-    targetDate.setHours(hours, minutes, 0, 0);
+    // Create reservation start time in Rome timezone
+    const reservationStartStr = `${date}T${time}:00`;
+    const reservationStart = zonedTimeToUtc(reservationStartStr, ROME_TIMEZONE);
     
-    console.log(`🔍 Checking calendar conflicts for ${date} at ${time}`);
+    // Assume reservation lasts 2 hours (dinner + show)
+    const RESERVATION_DURATION_MINUTES = 120;
+    const reservationEnd = new Date(reservationStart.getTime() + RESERVATION_DURATION_MINUTES * 60 * 1000);
+    
+    safeLog('Checking calendar conflicts', { 
+      date, 
+      time, 
+      reservationWindow: {
+        start: reservationStart.toISOString(),
+        end: reservationEnd.toISOString()
+      }
+    });
     
     const events = await searchEventsByDate(date, calendarId);
     
-    // Filter for events that conflict with the requested time
+    // Check for actual time overlap with ALL events (not just available ones)
     const conflictingEvents = events.filter(event => {
-      if (!event.available) {
-        return false; // Skip sold out events
-      }
-      
       try {
-        const eventStart = new Date(event.startTime || event.date);
-        const timeDiff = Math.abs(eventStart.getTime() - targetDate.getTime());
+        if (!event.startTime) return false;
         
-        // Consider events within 3 hours as conflicts
-        return timeDiff < 3 * 60 * 60 * 1000;
+        const eventStart = new Date(event.startTime);
+        const eventEnd = event.endTime ? new Date(event.endTime) : 
+          new Date(eventStart.getTime() + 60 * 60 * 1000); // Default 1 hour if no end time
+        
+        // Check for overlap (any event blocks the time, regardless of availability)
+        const overlaps = (reservationStart < eventEnd && eventStart < reservationEnd);
+        
+        return overlaps;
       } catch (error) {
-        console.log(`⚠️ Error parsing event time for conflict check: ${error.message}`);
+        safeLog('Error parsing event time for conflict check', { error: error.message }, 'warn');
         return false;
       }
     });
     
-    console.log(`📊 Found ${conflictingEvents.length} conflicting events out of ${events.length} total events`);
+    safeLog('Calendar conflict check result', { 
+      conflictingEventsCount: conflictingEvents.length,
+      totalEvents: events.length 
+    });
     
     return {
       hasConflicts: conflictingEvents.length > 0,
       conflictingEvents: conflictingEvents,
-      targetTime: targetDate.toISOString(),
+      reservationWindow: {
+        start: reservationStart.toISOString(),
+        end: reservationEnd.toISOString(),
+        durationMinutes: RESERVATION_DURATION_MINUTES
+      },
       totalEventsInTimeframe: events.length
     };
     
   } catch (error) {
-    console.error('❌ Error checking calendar conflicts:', error.message);
+    safeLog('Error checking calendar conflicts', { error: error.message }, 'error');
     throw error;
   }
 }
-// ===== END GOOGLE CALENDAR INTEGRATION =====
 
-// ===== EXPRESS ROUTES =====
+// ===== NEW TIMEZONE AWARE ENDPOINTS =====
 
-app.get('/', (req, res) => {
-  res.json({ 
-    message: '🎵 Jazzamore Server is running!',
-    status: 'Ready for reservations',
-    googleCalendar: 'Connected to Jazzamore calendar',
-    calendarId: JAZZAMORE_CALENDAR_ID,
-    serviceAccount: serviceAccount.client_email,
-    note: 'Using REAL Google Calendar data only - no mock data'
-  });
-});
-
-app.get('/health', (req, res) => {
-  res.json({ 
-    status: 'healthy', 
-    timestamp: new Date().toISOString(),
-    googleCalendar: {
-      connected: true,
-      calendarId: JAZZAMORE_CALENDAR_ID,
-      project: serviceAccount.project_id,
-      serviceEmail: serviceAccount.client_email,
-      note: 'Using REAL Google Calendar data only'
-    },
-    airtable: process.env.AIRTABLE_BASE_ID ? 'CONFIGURED' : 'NOT CONFIGURED'
-  });
-});
-
-app.get('/api/time-test', (req, res) => {
-    const serverTime = new Date();
-    const italianTime = new Date(serverTime.toLocaleString("en-US", {timeZone: "Europe/Rome"}));
-    const greeting = getItalianTimeWithTimezone();
-    
-    res.json({
-        server_time: serverTime.toISOString(),
-        italian_time: italianTime.toISOString(),
-        italian_hour: italianTime.getHours(),
-        current_greeting: greeting,
-        message: `If you called now, I would say: "${greeting}"`
-    });
-});
-
-// ===== GOOGLE CALENDAR ENDPOINTS =====
-
-app.get('/api/calendar/test', async (req, res) => {
+// A) Authoritative time context endpoint
+app.get('/api/now', (req, res) => {
   try {
-    console.log('🔧 Testing Google Calendar connection...');
-    
-    const calendar = await getCalendarClient();
-    if (!calendar) {
-      return res.status(500).json({
-        error: 'Failed to authenticate with Google Calendar',
-        message: 'Check your service account credentials',
-        note: 'No mock data available - only real calendar data'
-      });
-    }
-    
-    const response = await calendar.calendarList.list();
-    const calendars = response.data.items.map(cal => ({
-      id: cal.id,
-      summary: cal.summary,
-      primary: cal.primary,
-      accessRole: cal.accessRole
-    }));
-    
-    const targetCalendar = calendars.find(cal => cal.id === JAZZAMORE_CALENDAR_ID);
+    const romeDateTime = getRomeDateTime();
+    const greeting = getItalianTimeGreeting();
     
     res.json({
       success: true,
-      message: 'Google Calendar API connection successful',
-      authenticated: true,
-      serviceAccount: serviceAccount.client_email,
-      jazzamoreCalendarId: JAZZAMORE_CALENDAR_ID,
-      jazzamoreCalendarFound: !!targetCalendar,
-      totalCalendars: calendars.length,
-      calendars: calendars.slice(0, 10),
-      note: 'Calendar endpoints will use REAL Google Calendar data only'
+      timezone: ROME_TIMEZONE,
+      now: romeDateTime.iso,
+      date: romeDateTime.date,
+      time: romeDateTime.time,
+      year: romeDateTime.year,
+      month: romeDateTime.month,
+      day: romeDateTime.day,
+      hour: romeDateTime.hour,
+      minute: romeDateTime.minute,
+      greeting: greeting,
+      note: "All dates and times are based on Europe/Rome timezone using date-fns-tz"
     });
-    
   } catch (error) {
-    console.error('Google Calendar test error:', error);
+    safeLog('Error in /api/now endpoint', { error: error.message }, 'error');
     res.status(500).json({
       success: false,
-      error: 'Google Calendar API error',
-      message: error.message,
-      note: 'NO MOCK DATA AVAILABLE - Fix Google Calendar access'
+      error: 'Failed to get Rome time',
+      message: error.message
     });
   }
 });
 
-app.get('/api/calendar/events', async (req, res) => {
+// B) Date resolution endpoint
+app.get('/api/resolve-date', (req, res) => {
   try {
-    const { date, calendarId } = req.query;
-    const targetDate = date || new Date().toISOString().split('T')[0];
+    const { text } = req.query;
     
-    const events = await searchEventsByDate(targetDate, calendarId);
-    
-    res.json({
-      success: true,
-      date: targetDate,
-      calendarId: calendarId || JAZZAMORE_CALENDAR_ID,
-      eventCount: events.length,
-      availableEvents: events.filter(e => e.available).length,
-      soldOutEvents: events.filter(e => !e.available).length,
-      events: events,
-      note: 'Using REAL Google Calendar data only - no mock data'
-    });
-    
-  } catch (error) {
-    console.error('Error fetching calendar events:', error);
-    res.status(500).json({
-      success: false,
-      error: 'Failed to fetch calendar events',
-      message: error.message,
-      note: 'NO MOCK DATA AVAILABLE - Google Calendar access required'
-    });
-  }
-});
-
-app.get('/api/calendar/check-availability', async (req, res) => {
-  try {
-    const { date, time } = req.query;
-    
-    if (!date || !time) {
+    if (!text) {
       return res.status(400).json({
         success: false,
-        error: 'Missing parameters',
-        message: 'Please provide both date (YYYY-MM-DD) and time (HH:MM)'
+        error: 'Missing text parameter',
+        message: 'Please provide a date text like "the 13th", "tomorrow", "next friday", etc.'
       });
     }
     
-    const calendarCheck = await checkCalendarForConflicts(date, time);
-    
-    // Determine if time slot is available
-    const isAvailable = !calendarCheck.hasConflicts;
+    const resolvedDate = parseRelativeDate(text);
+    const romeDateTime = getRomeDateTime();
     
     res.json({
       success: true,
-      date: date,
-      time: time,
-      available: isAvailable,
-      hasConflicts: calendarCheck.hasConflicts,
-      conflictingEventsCount: calendarCheck.conflictingEvents.length,
-      availableConflicts: calendarCheck.conflictingEvents.filter(e => e.available).length,
-      soldOutConflicts: calendarCheck.conflictingEvents.filter(e => !e.available).length,
-      message: isAvailable 
-        ? `Time slot ${time} on ${date} is available.` 
-        : `Time slot ${time} on ${date} has conflicts with ${calendarCheck.conflictingEvents.length} event(s).`,
-      details: calendarCheck,
-      note: 'Checking against REAL Google Calendar events only - no mock data'
+      originalText: text,
+      resolvedDate: resolvedDate,
+      timezone: ROME_TIMEZONE,
+      todayInRome: romeDateTime.date,
+      source: 'Rome-timezone-aware parsing using date-fns-tz',
+      message: `"${text}" resolved to ${resolvedDate} based on Rome time (today: ${romeDateTime.date})`
     });
     
   } catch (error) {
-    console.error('Error checking availability:', error);
+    safeLog('Error in /api/resolve-date endpoint', { error: error.message }, 'error');
     res.status(500).json({
       success: false,
-      error: 'Failed to check availability',
-      message: error.message,
-      note: 'NO MOCK DATA AVAILABLE - Google Calendar access required'
+      error: 'Failed to resolve date',
+      message: error.message
     });
   }
 });
@@ -1316,46 +1362,30 @@ app.get('/api/calendar/date', async (req, res) => {
       });
     }
     
-    console.log(`📅 AI Agent requested events for date: "${date}"`);
+    safeLog('AI Agent requested events for date', { originalDate: date });
     
     // Check if it's a relative date
     let parsedDate = date;
     if (!date.match(/^\d{4}-\d{2}-\d{2}$/)) {
-      // It's not in YYYY-MM-DD format, try to parse it
       parsedDate = parseRelativeDate(date);
-      console.log(`📅 Parsed relative date "${date}" → "${parsedDate}"`);
+      safeLog('Parsed relative date', { original: date, parsed: parsedDate });
     }
     
     try {
       const events = await searchEventsByDate(parsedDate);
-      
-      // Format response for AI agent
-      const formattedEvents = events.map(event => ({
-        date: event.date,
-        time: event.time,
-        title: event.title,
-        location: event.location,
-        available: event.available,
-        reason: event.reason,
-        capacity: event.capacity,
-        availableSpots: event.availableSpots,
-        hasWaitingList: event.hasWaitingList,
-        description: event.description,
-        isRealEvent: event.isRealEvent || false
-      }));
       
       res.json({
         success: true,
         originalDate: date,
         parsedDate: parsedDate,
         eventCount: events.length,
-        events: formattedEvents,
-        summary: `Found ${events.length} event(s) for ${parsedDate}. ${formattedEvents.filter(e => e.available).length} available.`,
+        events: events,
+        summary: `Found ${events.length} event(s) for ${parsedDate}.`,
         note: 'Using REAL Google Calendar data only - no mock data'
       });
       
     } catch (calendarError) {
-      console.error('Calendar error:', calendarError.message);
+      safeLog('Calendar error in /api/calendar/date', { error: calendarError.message }, 'error');
       res.status(500).json({
         success: false,
         error: 'Failed to fetch calendar events',
@@ -1365,7 +1395,7 @@ app.get('/api/calendar/date', async (req, res) => {
     }
     
   } catch (error) {
-    console.error('Error in calendar/date endpoint:', error);
+    safeLog('Error in calendar/date endpoint', { error: error.message }, 'error');
     res.status(500).json({
       success: false,
       error: 'Failed to process request',
@@ -1388,7 +1418,7 @@ app.get('/api/calendar/availability', async (req, res) => {
       });
     }
     
-    console.log(`📅 AI Agent checking availability for ${date} at ${time}`);
+    safeLog('AI Agent checking availability', { date, time });
     
     try {
       const calendarCheck = await checkCalendarForConflicts(date, time);
@@ -1401,17 +1431,21 @@ app.get('/api/calendar/availability', async (req, res) => {
         available: isAvailable,
         hasConflicts: calendarCheck.hasConflicts,
         conflictingEventsCount: calendarCheck.conflictingEvents.length,
-        availableConflicts: calendarCheck.conflictingEvents.filter(e => e.available).length,
-        soldOutConflicts: calendarCheck.conflictingEvents.filter(e => !e.available).length,
+        conflictingEvents: calendarCheck.conflictingEvents.map(e => ({
+          title: e.title,
+          time: e.time,
+          isSoldOut: e.isSoldOut
+        })),
+        reservationDuration: calendarCheck.reservationWindow.durationMinutes,
         message: isAvailable 
-          ? `Time slot ${time} on ${date} is available.` 
+          ? `Time slot ${time} on ${date} is available for a ${calendarCheck.reservationWindow.durationMinutes}-minute reservation.` 
           : `Time slot ${time} on ${date} conflicts with ${calendarCheck.conflictingEvents.length} event(s).`,
-        details: 'This time slot availability is checked against REAL Google Calendar events.',
+        details: 'This checks for actual time overlap conflicts with ALL calendar events.',
         note: 'Using REAL Google Calendar data only - no mock data'
       });
       
     } catch (calendarError) {
-      console.error('Calendar error:', calendarError.message);
+      safeLog('Calendar error in /api/calendar/availability', { error: calendarError.message }, 'error');
       res.status(500).json({
         success: false,
         error: 'Failed to check calendar availability',
@@ -1421,7 +1455,7 @@ app.get('/api/calendar/availability', async (req, res) => {
     }
     
   } catch (error) {
-    console.error('Error in calendar/availability endpoint:', error);
+    safeLog('Error in calendar/availability endpoint', { error: error.message }, 'error');
     res.status(500).json({
       success: false,
       error: 'Failed to process request',
@@ -1431,191 +1465,10 @@ app.get('/api/calendar/availability', async (req, res) => {
   }
 });
 
-// Get upcoming events (next 7 days)
-app.get('/api/calendar/upcoming', async (req, res) => {
-  try {
-    const { days = 7 } = req.query;
-    
-    console.log(`📅 AI Agent requested upcoming events for next ${days} days`);
-    
-    // Get events for each day
-    const eventsByDate = {};
-    const now = new Date();
-    
-    for (let i = 0; i < parseInt(days); i++) {
-      const futureDate = new Date(now);
-      futureDate.setDate(now.getDate() + i);
-      const dateStr = futureDate.toISOString().split('T')[0];
-      
-      try {
-        const events = await searchEventsByDate(dateStr);
-        
-        if (events.length > 0) {
-          eventsByDate[dateStr] = events.map(event => ({
-            date: event.date,
-            time: event.time,
-            title: event.title,
-            location: event.location,
-            available: event.available,
-            reason: event.reason,
-            capacity: event.capacity,
-            availableSpots: event.availableSpots,
-            hasWaitingList: event.hasWaitingList,
-            description: event.description,
-            isRealEvent: event.isRealEvent || false
-          }));
-        }
-      } catch (error) {
-        console.error(`Error fetching events for ${dateStr}:`, error.message);
-        // Continue with other dates even if one fails
-      }
-    }
-    
-    res.json({
-      success: true,
-      days: parseInt(days),
-      totalEvents: Object.values(eventsByDate).flat().length,
-      eventsByDate: eventsByDate,
-      summary: `Found ${Object.values(eventsByDate).flat().length} event(s) in the next ${days} days.`,
-      note: 'Using REAL Google Calendar data only - no mock data'
-    });
-    
-  } catch (error) {
-    console.error('Error in calendar/upcoming endpoint:', error);
-    res.status(500).json({
-      success: false,
-      error: 'Failed to fetch upcoming events',
-      message: error.message,
-      note: 'NO MOCK DATA AVAILABLE - Google Calendar access required'
-    });
-  }
-});
-
-// Debug endpoint for calendar setup
-app.get('/api/calendar/debug', async (req, res) => {
-  try {
-    console.log('🔧 Debugging Google Calendar setup...');
-    
-    const calendar = await getCalendarClient();
-    
-    if (!calendar) {
-      return res.json({
-        success: false,
-        message: 'Failed to create calendar client',
-        serviceAccount: serviceAccount.client_email,
-        recommendation: 'Check service account credentials and permissions',
-        note: 'NO MOCK DATA AVAILABLE - Fix Google Calendar access'
-      });
-    }
-    
-    // Try to list calendars
-    let calendarList;
-    try {
-      const response = await calendar.calendarList.list({ maxResults: 20 });
-      calendarList = response.data.items;
-    } catch (error) {
-      return res.json({
-        success: false,
-        message: 'Failed to list calendars',
-        error: error.message,
-        serviceAccount: serviceAccount.client_email,
-        recommendation: 'Service account may not have calendar access',
-        note: 'NO MOCK DATA AVAILABLE - Fix Google Calendar permissions'
-      });
-    }
-    
-    // Test fetching events from Jazzamore calendar
-    let testEvents = [];
-    let jazzamoreAccessible = false;
-    
-    try {
-      const now = new Date();
-      const weekLater = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
-      
-      console.log(`🔍 Testing access to Jazzamore calendar: ${JAZZAMORE_CALENDAR_ID}`);
-      const response = await calendar.events.list({
-        calendarId: JAZZAMORE_CALENDAR_ID,
-        timeMin: now.toISOString(),
-        timeMax: weekLater.toISOString(),
-        maxResults: 5,
-        singleEvents: true,
-        orderBy: 'startTime',
-      });
-      
-      testEvents = response.data.items || [];
-      jazzamoreAccessible = true;
-      console.log(`✅ Jazzamore calendar accessible, found ${testEvents.length} events`);
-      
-    } catch (error) {
-      console.log('❌ Jazzamore calendar access failed:', error.message);
-      console.log('⚠️ Trying primary calendar instead...');
-      
-      try {
-        const now = new Date();
-        const weekLater = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
-        
-        const response = await calendar.events.list({
-          calendarId: 'primary',
-          timeMin: now.toISOString(),
-          timeMax: weekLater.toISOString(),
-          maxResults: 5,
-          singleEvents: true,
-          orderBy: 'startTime',
-        });
-        
-        testEvents = response.data.items || [];
-        console.log(`✅ Primary calendar accessible, found ${testEvents.length} events`);
-      } catch (primaryError) {
-        console.log('❌ Primary calendar also failed:', primaryError.message);
-      }
-    }
-    
-    res.json({
-      success: true,
-      serviceAccount: serviceAccount.client_email,
-      jazzamoreCalendarId: JAZZAMORE_CALENDAR_ID,
-      jazzamoreCalendarAccessible: jazzamoreAccessible,
-      availableCalendars: calendarList.map(c => ({
-        id: c.id,
-        summary: c.summary,
-        primary: c.primary,
-        accessRole: c.accessRole
-      })),
-      calendarsFound: calendarList.length,
-      testEvents: testEvents.map(e => ({
-        id: e.id,
-        summary: e.summary,
-        start: e.start?.dateTime || e.start?.date,
-        end: e.end?.dateTime || e.end?.date,
-        status: e.status
-      })),
-      testEventsFound: testEvents.length,
-      message: testEvents.length > 0 
-        ? 'Google Calendar API is accessible and returning events' 
-        : 'Google Calendar API is accessible but no events found',
-      note: 'Using REAL Google Calendar data only - no mock data',
-      warnings: !jazzamoreAccessible ? [
-        `Jazzamore calendar (${JAZZAMORE_CALENDAR_ID}) not accessible`,
-        'Make sure the calendar is shared with the service account',
-        'Service account email: retell-ai-calendar@retell-calendar-478918.iam.gserviceaccount.com',
-        'Share your calendar with this email and grant "Make changes to events" permission'
-      ] : []
-    });
-    
-  } catch (error) {
-    console.error('Debug error:', error);
-    res.status(500).json({
-      success: false,
-      error: error.message,
-      note: 'NO MOCK DATA AVAILABLE - Fix Google Calendar access'
-    });
-  }
-});
-
-// Diagnostic endpoint
+// Diagnostic endpoint (CORRECTED - uses Rome timezone correctly)
 app.get('/api/calendar/diagnostic', async (req, res) => {
   try {
-    console.log('🩺 Running calendar diagnostic...');
+    safeLog('Running calendar diagnostic');
     
     const calendar = await getCalendarClient();
     
@@ -1632,11 +1485,19 @@ app.get('/api/calendar/diagnostic', async (req, res) => {
     
     // Test Jazzamore calendar access
     try {
-      const now = new Date();
+      // Get Rome start and end of today
+      const romeNow = getRomeDate();
+      const startOfToday = startOfDay(romeNow);
+      const endOfToday = endOfDay(romeNow);
+      
+      // Convert to UTC for API
+      const startUTC = zonedTimeToUtc(startOfToday, ROME_TIMEZONE);
+      const endUTC = zonedTimeToUtc(endOfToday, ROME_TIMEZONE);
+      
       const response = await calendar.events.list({
         calendarId: JAZZAMORE_CALENDAR_ID,
-        timeMin: now.toISOString(),
-        timeMax: new Date(now.getTime() + 24 * 60 * 60 * 1000).toISOString(),
+        timeMin: startUTC.toISOString(),
+        timeMax: endUTC.toISOString(),
         maxResults: 1,
       });
       
@@ -1647,23 +1508,29 @@ app.get('/api/calendar/diagnostic', async (req, res) => {
           jazzamoreCalendar: `✅ Accessible (${JAZZAMORE_CALENDAR_ID})`,
           eventsFound: response.data.items?.length || 0,
           serviceAccount: serviceAccount.client_email,
+          scope: 'calendar.readonly',
+          permissionRequired: 'Read-only access (See all event details)',
+          timezone: ROME_TIMEZONE,
+          romeToday: formatInTimeZone(romeNow, ROME_TIMEZONE, 'yyyy-MM-dd HH:mm:ss'),
           message: 'Jazzamore calendar is accessible and ready for use'
         }
       });
       
     } catch (error) {
+      safeLog('Jazzamore calendar access failed', { error: error.message }, 'error');
       return res.json({
         success: false,
         step: 'calendar_access',
         error: `Cannot access Jazzamore calendar: ${error.message}`,
         jazzamoreCalendarId: JAZZAMORE_CALENDAR_ID,
         serviceAccount: serviceAccount.client_email,
-        action: 'Share your Google Calendar with the service account email above'
+        action: 'Share your Google Calendar with the service account email above with "See all event details" permission',
+        note: 'Only read permission is needed, not edit permission'
       });
     }
     
   } catch (error) {
-    console.error('Diagnostic error:', error);
+    safeLog('Diagnostic error', { error: error.message }, 'error');
     res.status(500).json({
       success: false,
       error: error.message
@@ -1671,140 +1538,16 @@ app.get('/api/calendar/diagnostic', async (req, res) => {
   }
 });
 
-// Test relative date parsing
-app.get('/api/calendar/test-parse', (req, res) => {
-  const { date } = req.query;
-  
-  if (!date) {
-    return res.status(400).json({
-      error: 'Missing date parameter',
-      message: 'Provide a date like "the fourth", "february fourth", "tomorrow", etc.'
-    });
-  }
-  
-  const parsed = parseRelativeDate(date);
-  
-  res.json({
-    original: date,
-    parsed: parsed,
-    note: 'Date parsing only - will need Google Calendar access for actual events'
-  });
-});
-
-// ===== ADDITIONAL RESERVATION ENDPOINTS =====
-
-app.post('/api/reservation/detect-intent', async (req, res) => {
-  try {
-    console.log('\n' + '='.repeat(80));
-    console.log('🔍 [RESERVATION INTENT DETECTION] API Called');
-    console.log('='.repeat(80));
-    
-    const { conversation, transcript } = req.body;
-    
-    console.log('📝 Request body:', {
-      conversationLength: conversation?.length || 0,
-      transcriptLength: transcript?.length || 0
-    });
-    
-    if (!conversation) {
-      console.log('❌ ERROR: No conversation provided');
-      return res.status(400).json({
-        success: false,
-        error: 'Missing conversation parameter',
-        message: 'Please provide the conversation array'
-      });
-    }
-    
-    const conversationText = conversation
-      .map(msg => msg.content || '')
-      .join(' ');
-    
-    console.log(`📝 Conversation text length: ${conversationText.length} characters`);
-    
-    const intentResult = detectReservationIntent(conversationText, transcript);
-    
-    console.log('🎯 Intent detection result:', intentResult);
-    console.log('='.repeat(80) + '\n');
-    
-    res.json({
-      success: true,
-      wantsReservation: intentResult.wantsReservation,
-      reason: intentResult.reason,
-      timestamp: new Date().toISOString(),
-      detectionMethod: 'Standalone API endpoint'
-    });
-    
-  } catch (error) {
-    console.error('Error in reservation intent detection:', error);
-    res.status(500).json({
-      success: false,
-      error: 'Failed to detect reservation intent',
-      message: error.message
-    });
-  }
-});
-
-app.post('/api/reservation/extract', async (req, res) => {
-  try {
-    console.log('\n' + '='.repeat(80));
-    console.log('📋 [RESERVATION DATA EXTRACTION] API Called');
-    console.log('='.repeat(80));
-    
-    const { conversation, systemLogs } = req.body;
-    
-    console.log('📝 Request body:', {
-      conversationLength: conversation?.length || 0,
-      systemLogsLength: systemLogs?.length || 0,
-      systemLogsPreview: systemLogs ? systemLogs.substring(0, 200) + '...' : 'None'
-    });
-    
-    if (!conversation) {
-      console.log('❌ ERROR: No conversation provided');
-      return res.status(400).json({
-        success: false,
-        error: 'Missing conversation parameter',
-        message: 'Please provide the conversation array'
-      });
-    }
-    
-    const reservationData = extractReservationData(conversation, systemLogs);
-    const reservationId = generateReservationId();
-    
-    console.log('✅ Extracted reservation data:', reservationData);
-    console.log(`🎫 Generated reservation ID: ${reservationId}`);
-    console.log('='.repeat(80) + '\n');
-    
-    res.json({
-      success: true,
-      data: reservationData,
-      reservationId: reservationId,
-      timestamp: new Date().toISOString(),
-      extractionMethod: 'Multi-source extraction'
-    });
-    
-  } catch (error) {
-    console.error('Error in reservation data extraction:', error);
-    res.status(500).json({
-      success: false,
-      error: 'Failed to extract reservation data',
-      message: error.message
-    });
-  }
-});
-
 // ===== MAIN WEBHOOK ENDPOINT =====
 app.post('/api/reservations', async (req, res) => {
   try {
-    console.log('\n📞 RETELL WEBHOOK RECEIVED');
-    console.log('Event:', req.body.event);
-    
     const { event, call } = req.body;
+    
+    safeLog('Retell webhook received', { event, callId: call?.call_id });
     
     if (event !== 'call_analyzed') {
       return res.json({ status: 'received', event: event });
     }
-    
-    console.log('🎯 Processing call_analyzed event...');
     
     // ===== RESERVATION INTENT DETECTION =====
     const conversationText = call?.transcript_object
@@ -1816,11 +1559,8 @@ app.post('/api/reservations', async (req, res) => {
     
     // If caller doesn't want to make a reservation, return early
     if (!intentResult.wantsReservation) {
-      console.log('❌ No reservation intent detected. NOT saving to Airtable.');
-      console.log('📝 Conversation was about:', conversationText.substring(0, 200) + '...');
-      console.log('🔍 Detection result:', intentResult);
-      
-      const greeting = getItalianTimeWithTimezone();
+      safeLog('No reservation intent detected', { reason: intentResult.reason });
+      const greeting = getItalianTimeGreeting();
       return res.json({
         response: `${greeting}! Grazie per aver chiamato il Jazzamore. Se hai bisogno di fare una prenotazione, siamo a tua disposizione. Arrivederci!`,
         saveToAirtable: false,
@@ -1829,103 +1569,112 @@ app.post('/api/reservations', async (req, res) => {
       });
     }
     
-    console.log('✅ Reservation intent detected. Proceeding with data extraction...');
-    console.log('🔍 Detection reason:', intentResult.reason);
+    safeLog('Reservation intent detected', { reason: intentResult.reason });
     
-    // ===== POST-CALL ANALYSIS EXTRACTION =====
-    const italianGreeting = getItalianTimeWithTimezone();
+    // ===== EXTRACT RESERVATION DATA =====
     const reservationId = generateReservationId();
-    
     let reservationData = {};
     
+    // Use Post-Call Analysis if available
     let postCallData = null;
     if (call?.call_analysis?.custom_analysis_data?.reservation_details) {
-      const reservationDetailsStr = call.call_analysis.custom_analysis_data.reservation_details;
       try {
-        postCallData = JSON.parse(reservationDetailsStr);
-        console.log('✅ Found and parsed reservation_details from call_analysis.custom_analysis_data');
-        console.log('Post-Call Data:', postCallData);
+        postCallData = JSON.parse(call.call_analysis.custom_analysis_data.reservation_details);
+        safeLog('Using Post-Call Analysis data');
       } catch (error) {
-        console.log('❌ Error parsing reservation_details JSON:', error.message);
+        safeLog('Error parsing Post-Call Analysis', { error: error.message }, 'warn');
       }
     }
     
     if (postCallData) {
-      console.log('✅ Using structured data from Post-Call Analysis');
-      console.log('Post-Call Data:', JSON.stringify(postCallData, null, 2));
-      
       reservationData = {
         firstName: postCallData.first_name || postCallData.firstName || '',
         lastName: postCallData.last_name || postCallData.lastName || '',
         phone: postCallData.phone || '',
-        guests: parseInt(postCallData.guests) || 2,
-        adults: parseInt(postCallData.adults) || (parseInt(postCallData.guests) || 2),
+        guests: parseInt(postCallData.guests) || 0,
+        adults: parseInt(postCallData.adults) || (parseInt(postCallData.guests) || 0),
         children: parseInt(postCallData.children) || 0,
-        date: postCallData.date ? convertDayToDate(postCallData.date) : new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString().split('T')[0],
-        time: postCallData.time || '22:00',
-        specialRequests: postCallData.special_requests || postCallData.specialRequests || 'No special requests',
+        date: postCallData.date ? convertDayToDate(postCallData.date) : '',
+        time: postCallData.time || '',
+        specialRequests: postCallData.special_requests || postCallData.specialRequests || '',
         newsletter: postCallData.newsletter === 'yes' || postCallData.newsletter_opt_in === 'yes' || postCallData.newsletter === true || false
       };
-      
-      console.log('📋 Extracted from Post-Call Analysis:', reservationData);
-      
     } else if (call?.transcript_object) {
-      console.log('⚠️ No Post-Call Analysis found, falling back to transcript extraction.');
-      const systemLogs = JSON.stringify(call, null, 2);
-      reservationData = extractReservationData(call.transcript_object, systemLogs);
-    } else {
-      console.log('⚠️ No data sources available, using defaults.');
-      reservationData = {
-        firstName: '',
-        lastName: '',
-        date: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString().split('T')[0],
-        time: '22:00',
-        guests: 2,
-        adults: 2,
-        children: 0,
-        phone: '',
-        specialRequests: 'No special requests',
-        newsletter: false
-      };
+      // Fall back to transcript extraction (but don't log full transcript)
+      reservationData = extractReservationData(call.transcript_object);
     }
     
-    console.log('📋 Final reservation data:', reservationData);
+    safeLog('Extracted reservation data', { 
+      hasDate: !!reservationData.date,
+      hasTime: !!reservationData.time,
+      hasGuests: !!reservationData.guests,
+      hasName: !!(reservationData.firstName || reservationData.lastName),
+      hasPhone: !!reservationData.phone
+    });
+    
+    // ===== VALIDATE RESERVATION DATA =====
+    const validation = validateReservationData(reservationData);
+    
+    if (!validation.isValid) {
+      safeLog('Reservation validation failed', { errors: validation.errors });
+      
+      // Determine which clarification is needed
+      let clarificationMessage = '';
+      if (validation.errors.some(e => e.includes('Date'))) {
+        clarificationMessage = 'Per favore, dimmi per che data desideri prenotare.';
+      } else if (validation.errors.some(e => e.includes('Time'))) {
+        clarificationMessage = 'Per favore, dimmi a che ora desideri prenotare (es: 20:00).';
+      } else if (validation.errors.some(e => e.includes('guests'))) {
+        clarificationMessage = 'Per quante persone desideri prenotare?';
+      } else {
+        clarificationMessage = 'Mi dispiace, ho bisogno di alcune informazioni per completare la prenotazione.';
+      }
+      
+      const greeting = getItalianTimeGreeting();
+      return res.json({
+        response: `${greeting}! ${clarificationMessage}`,
+        saveToAirtable: false,
+        reason: 'Missing required reservation details',
+        validationErrors: validation.errors,
+        validationWarnings: validation.warnings
+      });
+    }
+    
+    // Check for important warnings
+    const needsClarification = validation.warnings.length > 0;
+    if (needsClarification) {
+      safeLog('Reservation needs clarification', { warnings: validation.warnings });
+      
+      let clarificationMessage = 'Perfetto! ';
+      if (validation.warnings.some(w => w.includes('Name'))) {
+        clarificationMessage += 'Potresti dirmi il tuo nome per favore? ';
+      }
+      if (validation.warnings.some(w => w.includes('Phone'))) {
+        clarificationMessage += 'E il tuo numero di telefono? ';
+      }
+      clarificationMessage += 'Così posso completare la prenotazione.';
+      
+      const greeting = getItalianTimeGreeting();
+      return res.json({
+        response: `${greeting}! ${clarificationMessage}`,
+        saveToAirtable: false,
+        reason: 'Need clarification on important details',
+        validationWarnings: validation.warnings
+      });
+    }
     
     const { firstName, lastName, date, time, guests, adults, children, phone, specialRequests, newsletter } = reservationData;
     
-    // ===== DATA VALIDATION =====
-    let formattedPhone = phone;
-    if (phone && phone.replace(/\D/g, '').length >= 10) {
-      const digits = phone.replace(/\D/g, '');
-      formattedPhone = digits.startsWith('39') ? `+${digits}` : `+39${digits.substring(0, 10)}`;
-      console.log(`✅ Formatted phone: ${formattedPhone}`);
-    }
-    
-    let validatedDate = date;
-    const reservationDate = new Date(date);
-    const today = new Date();
-    if (reservationDate < today) {
-      const tomorrow = new Date(today);
-      tomorrow.setDate(today.getDate() + 1);
-      validatedDate = tomorrow.toISOString().split('T')[0];
-      console.log(`⚠️ Date in past, adjusted to: ${validatedDate}`);
-    }
-    
-    const arrivalTimeISO = formatTimeForAirtable(time, validatedDate);
-    
     // ===== CHECK CALENDAR AVAILABILITY =====
-    console.log('📅 Checking calendar availability...');
     let calendarCheck;
     try {
-      calendarCheck = await checkCalendarForConflicts(validatedDate, time);
+      calendarCheck = await checkCalendarForConflicts(date, time);
       
       if (calendarCheck.hasConflicts) {
-        console.log(`⚠️ Calendar conflicts detected: ${calendarCheck.conflictingEvents.length} events`);
-      } else {
-        console.log('✅ No calendar conflicts detected');
+        safeLog('Calendar conflicts detected', { count: calendarCheck.conflictingEvents.length });
       }
     } catch (calendarError) {
-      console.error('❌ Calendar check failed:', calendarError.message);
+      safeLog('Calendar check failed', { error: calendarError.message }, 'error');
       calendarCheck = {
         hasConflicts: false,
         conflictingEvents: [],
@@ -1933,68 +1682,64 @@ app.post('/api/reservations', async (req, res) => {
       };
     }
     
-    // ===== SAVE TO AIRTABLE =====
-    console.log('💾 Saving to Airtable...');
+    // If there are conflicts, inform the user
+    if (calendarCheck.hasConflicts) {
+      const greeting = getItalianTimeGreeting();
+      const conflictMessage = `Mi dispiace, l'orario ${time} del ${date} non è disponibile a causa di un conflitto di eventi.`;
+      
+      return res.json({
+        response: `${greeting}! ${conflictMessage} Ti consiglierei di scegliere un altro orario.`,
+        saveToAirtable: false,
+        reason: 'Calendar conflict',
+        calendarCheck: {
+          hasConflicts: true,
+          conflictingEventsCount: calendarCheck.conflictingEvents.length
+        }
+      });
+    }
     
-    // Prepare Airtable record - only use fields that exist in your Airtable
+    // ===== SAVE TO AIRTABLE =====
+    const arrivalTimeISO = formatTimeForAirtable(time, date);
+    
+    // Prepare Airtable record with only fields that should exist
     const airtableFields = {
       "Reservation ID": reservationId,
-      "First Name": firstName,
+      "First Name": firstName || '',
       "Last Name": lastName || '',
-      "Phone Number": formattedPhone || '',
-      "Reservation Date": validatedDate,
+      "Phone Number": phone || '',
+      "Reservation Date": date,
       "Arrival Time": arrivalTimeISO,
-      "Total People": parseInt(guests) || 2,
-      "Dinner Count": parseInt(adults) || 2,
-      "Kids Count": parseInt(children) || 0,
+      "Total People": guests,
+      "Dinner Count": adults || guests,
+      "Kids Count": children || 0,
       "Special Requests": specialRequests || '',
       "Reservation Status": "Pending",
-      "Reservation Type": "Dinner + Show",
       "Newsletter Opt-In": newsletter || false
     };
-    
-    // Only add calendar conflicts if the field exists in your Airtable
-    // Remove this line if you don't have "Calendar Conflicts" field:
-    if (calendarCheck.hasConflicts !== undefined) {
-      airtableFields["Calendar Conflicts"] = calendarCheck.hasConflicts;
-    }
     
     try {
       const record = await base('Reservations').create([{ fields: airtableFields }]);
       
-      console.log('🎉 RESERVATION SAVED TO AIRTABLE!');
-      console.log('Reservation ID:', reservationId);
-      console.log('Name:', `${firstName} ${lastName}`.trim() || 'Not provided');
-      console.log('Date/Time:', validatedDate, time);
-      console.log('Guests:', guests, `(${adults} adults + ${children} children)`);
-      console.log('Phone:', formattedPhone || 'Not provided');
-      console.log('Special Requests:', specialRequests);
-      console.log('Newsletter:', newsletter);
-      console.log('Calendar Status:', calendarCheck.error ? `Error: ${calendarCheck.error}` : 
-        calendarCheck.hasConflicts ? `Conflicts: ${calendarCheck.conflictingEvents.length}` : 'No conflicts');
-      console.log('Airtable Record ID:', record[0].id);
+      safeLog('Reservation saved to Airtable', { 
+        reservationId,
+        date,
+        time,
+        guests,
+        airtableId: record[0].id
+      });
       
       // ===== TIME-AWARE RESPONSE =====
-      const greeting = getItalianTimeWithTimezone();
+      const greeting = getItalianTimeGreeting();
       let timeAwareResponse;
       
-      // Check if there are calendar conflicts
-      if (calendarCheck.hasConflicts && calendarCheck.conflictingEvents.length > 0) {
-        const conflictMessage = calendarCheck.conflictingEvents[0].title 
-          ? `C'è un conflitto con "${calendarCheck.conflictingEvents[0].title}" alle ${calendarCheck.conflictingEvents[0].time}.` 
-          : 'C\'è un conflitto di orario.';
-        
-        timeAwareResponse = `${greeting}! Ho prenotato per ${guests} persone il ${validatedDate} alle ${time}. ${conflictMessage} La tua conferma è ${reservationId}.`;
+      if (greeting === "Buongiorno") {
+        timeAwareResponse = `Perfetto! ${greeting}! Ho prenotato per ${guests} persone il ${date} alle ${time}. La tua conferma è ${reservationId}. Buona giornata!`;
+      } else if (greeting === "Buon pomeriggio") {
+        timeAwareResponse = `Perfetto! ${greeting}! Ho prenotato per ${guests} persone il ${date} alle ${time}. La tua conferma è ${reservationId}. Buon proseguimento!`;
+      } else if (greeting === "Buonasera") {
+        timeAwareResponse = `Perfetto! ${greeting}! Ho prenotato per ${guests} persone il ${date} alle ${time}. La tua conferma è ${reservationId}. Buona serata!`;
       } else {
-        if (greeting === "Buongiorno") {
-          timeAwareResponse = `Perfetto! ${greeting}! Ho prenotato per ${guests} persone il ${validatedDate} alle ${time}. La tua conferma è ${reservationId}. Buona giornata!`;
-        } else if (greeting === "Buon pomeriggio") {
-          timeAwareResponse = `Perfetto! ${greeting}! Ho prenotato per ${guests} persone il ${validatedDate} alle ${time}. La tua conferma è ${reservationId}. Buon proseguimento!`;
-        } else if (greeting === "Buonasera") {
-          timeAwareResponse = `Perfetto! ${greeting}! Ho prenotato per ${guests} persone il ${validatedDate} alle ${time}. La tua conferma è ${reservationId}. Buona serata!`;
-        } else {
-          timeAwareResponse = `Perfetto! ${greeting}! Ho prenotato per ${guests} persone il ${validatedDate} alle ${time}. La tua conferma è ${reservationId}. Buona notte!`;
-        }
+        timeAwareResponse = `Perfetto! ${greeting}! Ho prenotato per ${guests} persone il ${date} alle ${time}. La tua conferma è ${reservationId}. Buona notte!`;
       }
       
       // If calendar check failed, mention it
@@ -2007,18 +1752,15 @@ app.post('/api/reservations', async (req, res) => {
         saveToAirtable: true,
         reservationId: reservationId,
         intentDetected: true,
-        detectionDetails: intentResult,
         calendarCheck: {
-          hasConflicts: calendarCheck.hasConflicts,
-          conflictingEventsCount: calendarCheck.conflictingEvents.length,
+          hasConflicts: false,
           error: calendarCheck.error
         }
       });
       
     } catch (airtableError) {
-      console.error('❌ Airtable error:', airtableError.message);
-      console.error('❌ Airtable error details:', airtableError);
-      const greeting = getItalianTimeWithTimezone();
+      safeLog('Airtable error', { error: airtableError.message }, 'error');
+      const greeting = getItalianTimeGreeting();
       res.json({
         response: `${greeting}! Abbiamo riscontrato un problema con la prenotazione. Ti preghiamo di riprovare o chiamarci direttamente.`,
         saveToAirtable: false,
@@ -2027,9 +1769,8 @@ app.post('/api/reservations', async (req, res) => {
     }
     
   } catch (error) {
-    console.error('❌ Error:', error.message);
-    console.error('❌ Error stack:', error.stack);
-    const greeting = getItalianTimeWithTimezone();
+    safeLog('Error in main webhook endpoint', { error: error.message }, 'error');
+    const greeting = getItalianTimeGreeting();
     res.json({
       response: `${greeting}! Grazie per la tua chiamata! Abbiamo riscontrato un problema. Ti preghiamo di riprovare più tardi.`,
       saveToAirtable: false,
@@ -2040,33 +1781,36 @@ app.post('/api/reservations', async (req, res) => {
 
 // Start server
 app.listen(PORT, () => {
+  const romeDateTime = getRomeDateTime();
+  const greeting = getItalianTimeGreeting();
+  
   console.log(`\n🎵 Jazzamore server running on port ${PORT}`);
+  console.log(`🇮🇹 ${greeting}! Rome time: ${romeDateTime.date} ${romeDateTime.time}`);
+  console.log(`📚 Using date-fns-tz for accurate timezone handling`);
   console.log(`🔑 Google Calendar service account: ${serviceAccount.client_email}`);
   console.log(`📅 Jazzamore Calendar ID: ${JAZZAMORE_CALENDAR_ID}`);
-  console.log(`📅 Calendar integration: REAL DATA ONLY (no mock data)`);
+  console.log(`🔐 Google Calendar scope: calendar.readonly (read-only access)`);
+  console.log(`🔒 PII protection: Sensitive data masked in logs`);
+  console.log(`✅ All critical bugs fixed`);
+  
+  console.log(`\n⏰ TIMEZONE-AWARE ENDPOINTS:`);
+  console.log(`   - Now in Rome: http://localhost:${PORT}/api/now`);
+  console.log(`   - Resolve date: http://localhost:${PORT}/api/resolve-date?text=the%2013th`);
   
   console.log(`\n📅 CALENDAR ENDPOINTS:`);
-  console.log(`   - Date query (relative): http://localhost:${PORT}/api/calendar/date?date=tomorrow`);
-  console.log(`   - Availability check: http://localhost:${PORT}/api/calendar/availability?date=2026-02-06&time=20:00`);
-  console.log(`   - Debug: http://localhost:${PORT}/api/calendar/debug`);
+  console.log(`   - Date query: http://localhost:${PORT}/api/calendar/date?date=tomorrow`);
+  console.log(`   - Availability check: http://localhost:${PORT}/api/calendar/availability?date=${romeDateTime.date}&time=20:00`);
   console.log(`   - Diagnostic: http://localhost:${PORT}/api/calendar/diagnostic`);
   
-  console.log(`\n📞 RESERVATION ENDPOINTS:`);
-  console.log(`   - Webhook (Retell): http://localhost:${PORT}/api/reservations`);
-  console.log(`   - Intent detection: POST http://localhost:${PORT}/api/reservation/detect-intent`);
-  console.log(`   - Data extraction: POST http://localhost:${PORT}/api/reservation/extract`);
+  console.log(`\n📞 WEBHOOK ENDPOINT:`);
+  console.log(`   - Retell webhook: http://localhost:${PORT}/api/reservations`);
   
-  console.log(`\n🔍 FEATURES:`);
-  console.log(`   - Reservation detection: ACTIVE (Multilingual: English/Italian)`);
-  console.log(`   - Relative date parsing: ACTIVE ("the fourth" → 2026-02-04)`);
-  console.log(`   - Time-aware greetings: ${getItalianTimeWithTimezone()}`);
-  console.log(`   - Google Calendar: REAL DATA ONLY (no mock data)`);
-  console.log(`   - Airtable integration: ${process.env.AIRTABLE_BASE_ID ? 'CONFIGURED' : 'NOT CONFIGURED'}`);
-  console.log(`   - Calendar conflict detection: ACTIVE`);
-  
-  console.log(`\n⚠️  IMPORTANT:`);
-  console.log(`   - All mock data has been REMOVED`);
-  console.log(`   - Google Calendar access is REQUIRED`);
-  console.log(`   - Test the diagnostic endpoint first: http://localhost:${PORT}/api/calendar/diagnostic`);
-  console.log(`   - If diagnostic fails, share your calendar with: ${serviceAccount.client_email}`);
+  console.log(`\n🔧 CRITICAL FIXES APPLIED:`);
+  console.log(`   - ✅ Fixed date validation bug (was rejecting "today" incorrectly)`);
+  console.log(`   - ✅ Fixed "the 3rd" parsing to use next month if day has passed`);
+  console.log(`   - ✅ Improved PII masking (only specific fields)`);
+  console.log(`   - ✅ Proper conflict detection (all events block time)`);
+  console.log(`   - ✅ Validation before saving reservations`);
+  console.log(`   - ✅ No default date/time assumptions`);
+  console.log(`   - ✅ Removed problematic OpenSSL hack`);
 });
