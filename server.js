@@ -3,8 +3,6 @@ const Airtable = require('airtable');
 const cors = require('cors');
 const { google } = require('googleapis');
 const crypto = require('crypto');
-const { formatInTimeZone, zonedTimeToUtc, utcToZonedTime } = require('date-fns-tz');
-const { addDays, startOfDay, endOfDay, format, isBefore, isAfter, addMonths } = require('date-fns');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -107,31 +105,54 @@ try {
   process.exit(1);
 }
 
-// ===== ROME TIMEZONE CONSTANTS AND FUNCTIONS =====
+// ===== ROME TIMEZONE CONSTANTS AND FUNCTIONS (using native JS) =====
 const ROME_TIMEZONE = 'Europe/Rome';
+
+// Helper function to format date in Rome timezone
+function formatInRomeTimezone(date, formatStr) {
+  const romeDate = new Date(date.toLocaleString('en-US', { timeZone: ROME_TIMEZONE }));
+  
+  const pad = (n) => n.toString().padStart(2, '0');
+  
+  const replacements = {
+    'yyyy': romeDate.getFullYear(),
+    'MM': pad(romeDate.getMonth() + 1),
+    'dd': pad(romeDate.getDate()),
+    'HH': pad(romeDate.getHours()),
+    'mm': pad(romeDate.getMinutes()),
+    'ss': pad(romeDate.getSeconds())
+  };
+  
+  let result = formatStr;
+  for (const [key, value] of Object.entries(replacements)) {
+    result = result.replace(key, value);
+  }
+  
+  return result;
+}
 
 // Get current date in Rome timezone
 function getRomeDate() {
-  return utcToZonedTime(new Date(), ROME_TIMEZONE);
+  return new Date(new Date().toLocaleString('en-US', { timeZone: ROME_TIMEZONE }));
 }
 
 // Get today's date string in Rome (YYYY-MM-DD)
 function getRomeDateToday() {
-  return formatInTimeZone(new Date(), ROME_TIMEZONE, 'yyyy-MM-dd');
+  return formatInRomeTimezone(new Date(), 'yyyy-MM-dd');
 }
 
 // Get comprehensive Rome date/time info
 function getRomeDateTime() {
   const romeDate = getRomeDate();
   return {
-    date: formatInTimeZone(new Date(), ROME_TIMEZONE, 'yyyy-MM-dd'),
-    time: formatInTimeZone(new Date(), ROME_TIMEZONE, 'HH:mm:ss'),
+    date: formatInRomeTimezone(romeDate, 'yyyy-MM-dd'),
+    time: formatInRomeTimezone(romeDate, 'HH:mm:ss'),
     year: romeDate.getFullYear(),
     month: romeDate.getMonth() + 1,
     day: romeDate.getDate(),
     hour: romeDate.getHours(),
     minute: romeDate.getMinutes(),
-    iso: formatInTimeZone(new Date(), ROME_TIMEZONE, "yyyy-MM-dd'T'HH:mm:ssXXX"),
+    iso: romeDate.toISOString(),
     romeDate: romeDate
   };
 }
@@ -157,18 +178,60 @@ function generateReservationId() {
   return `JAZ-${timestamp}-${random}`.toUpperCase();
 }
 
+// Helper date functions (replacing date-fns)
+function addDays(date, days) {
+  const result = new Date(date);
+  result.setDate(result.getDate() + days);
+  return result;
+}
+
+function addMonths(date, months) {
+  const result = new Date(date);
+  result.setMonth(result.getMonth() + months);
+  return result;
+}
+
+function startOfDay(date) {
+  const result = new Date(date);
+  result.setHours(0, 0, 0, 0);
+  return result;
+}
+
+function endOfDay(date) {
+  const result = new Date(date);
+  result.setHours(23, 59, 59, 999);
+  return result;
+}
+
+function isBefore(date1, date2) {
+  return date1.getTime() < date2.getTime();
+}
+
+function isAfter(date1, date2) {
+  return date1.getTime() > date2.getTime();
+}
+
 // Convert time string to Airtable date format using Rome timezone
 function formatTimeForAirtable(timeString, dateString) {
   try {
-    // Create a Rome-local datetime and convert to UTC ISO for Airtable
-    const utcDate = zonedTimeToUtc(`${dateString}T${timeString}:00`, ROME_TIMEZONE);
+    // Create a Rome-local datetime
+    const localDateStr = `${dateString}T${timeString}:00`;
+    const localDate = new Date(localDateStr);
+    
+    // Create Rome timezone date by adjusting from local browser time to Rome time
+    // This assumes the server is running in UTC, so we need to adjust for Rome time
+    const romeOffset = 1 * 60 * 60 * 1000; // Rome is UTC+1 (in milliseconds)
+    const utcDate = new Date(localDate.getTime() + romeOffset);
+    
     return utcDate.toISOString();
   } catch (error) {
     safeLog('Error formatting time for Airtable', { error: error.message }, 'error');
     
     // Fallback: create a date for 19:30 Rome time
     const fallbackDateTime = `${dateString}T19:30:00`;
-    const utcFallback = zonedTimeToUtc(fallbackDateTime, ROME_TIMEZONE);
+    const fallbackDate = new Date(fallbackDateTime);
+    const romeOffset = 1 * 60 * 60 * 1000;
+    const utcFallback = new Date(fallbackDate.getTime() + romeOffset);
     return utcFallback.toISOString();
   }
 }
@@ -215,7 +278,7 @@ function convertDayToDate(dayName) {
   } else if (targetDay === 'tomorrow') {
     const today = getRomeDate();
     const tomorrow = addDays(today, 1);
-    const result = formatInTimeZone(tomorrow, ROME_TIMEZONE, 'yyyy-MM-dd');
+    const result = formatInRomeTimezone(tomorrow, 'yyyy-MM-dd');
     safeLog('"tomorrow" parsed', { result });
     return result;
   } else if (targetDay !== undefined) {
@@ -227,7 +290,7 @@ function convertDayToDate(dayName) {
   // Default to tomorrow if day not recognized
   const today = getRomeDate();
   const tomorrow = addDays(today, 1);
-  const result = formatInTimeZone(tomorrow, ROME_TIMEZONE, 'yyyy-MM-dd');
+  const result = formatInRomeTimezone(tomorrow, 'yyyy-MM-dd');
   safeLog('Day not recognized, defaulting to tomorrow', { input: cleaned, result });
   return result;
 }
@@ -260,7 +323,7 @@ function findNextDayOfWeek(dayName, skipCurrentWeek = false) {
   }
   
   const targetDate = addDays(today, daysToAdd);
-  return formatInTimeZone(targetDate, ROME_TIMEZONE, 'yyyy-MM-dd');
+  return formatInRomeTimezone(targetDate, 'yyyy-MM-dd');
 }
 
 // Helper function to parse relative dates (ROME TIMEZONE) - IMPROVED to handle "the 3rd" smartly
@@ -285,7 +348,7 @@ function parseRelativeDate(dateString) {
   
   if (cleanString === 'tomorrow' || cleanString === 'domani') {
     const tomorrow = addDays(getRomeDate(), 1);
-    const result = formatInTimeZone(tomorrow, ROME_TIMEZONE, 'yyyy-MM-dd');
+    const result = formatInRomeTimezone(tomorrow, 'yyyy-MM-dd');
     safeLog('"tomorrow" parsed', { result });
     return result;
   }
@@ -323,13 +386,11 @@ function parseRelativeDate(dateString) {
         }
       }
       
-      // Create a date in Rome timezone for this day
-      const testDateStr = `${testYear}-${testMonth.toString().padStart(2, '0')}-${day.toString().padStart(2, '0')}`;
-      const testDate = zonedTimeToUtc(`${testDateStr}T12:00:00`, ROME_TIMEZONE);
-      const romeTestDate = utcToZonedTime(testDate, ROME_TIMEZONE);
+      // Create a date for this day
+      const testDate = new Date(testYear, testMonth - 1, day);
       
       // Format the result
-      const result = formatInTimeZone(romeTestDate, ROME_TIMEZONE, 'yyyy-MM-dd');
+      const result = formatInRomeTimezone(testDate, 'yyyy-MM-dd');
       safeLog('Day number parsed with smart month handling', { 
         day, 
         currentDay,
@@ -402,16 +463,12 @@ function validateReservationData(reservationData) {
     }
   }
   
-  // Date validation (Rome timezone) - FIXED: Compare date-only, not noon vs now
+  // Date validation (Rome timezone)
   if (reservationData.date) {
     try {
       // Create date-only comparison (midnight to midnight)
-      const romeResDay = startOfDay(
-        utcToZonedTime(
-          zonedTimeToUtc(`${reservationData.date}T00:00:00`, ROME_TIMEZONE), 
-          ROME_TIMEZONE
-        )
-      );
+      const reservationDate = new Date(reservationData.date + 'T00:00:00');
+      const romeResDay = startOfDay(new Date(reservationDate.toLocaleString('en-US', { timeZone: ROME_TIMEZONE })));
       const romeTodayDay = startOfDay(getRomeDate());
       
       if (isBefore(romeResDay, romeTodayDay)) {
@@ -917,15 +974,11 @@ function crossValidateFields(finalData, sources) {
     finalData.phone = '+39' + finalData.phone.replace(/\D/g, '');
   }
   
-  // Check if date is in the past (Rome timezone) - FIXED: date-only comparison
+  // Check if date is in the past (Rome timezone)
   if (finalData.date) {
     try {
-      const romeResDay = startOfDay(
-        utcToZonedTime(
-          zonedTimeToUtc(`${finalData.date}T00:00:00`, ROME_TIMEZONE), 
-          ROME_TIMEZONE
-        )
-      );
+      const reservationDate = new Date(finalData.date + 'T00:00:00');
+      const romeResDay = startOfDay(new Date(reservationDate.toLocaleString('en-US', { timeZone: ROME_TIMEZONE })));
       const romeTodayDay = startOfDay(getRomeDate());
       
       if (isBefore(romeResDay, romeTodayDay)) {
@@ -966,7 +1019,7 @@ ElLPcrcrgEojEPDW15vsYKdDo1i2T0GeBiP+NKovp8IoDbJNeLpf+1aXwEHkbFrM
 FfewPnoI6iicnO2iqYxjLRcCgYEAxrbKxJTbUbBf1rJvYS3FGPCj51RX9EoQ7SyN
 gJvQdGGjLhc2CR2EPIHFHzwCyz1yKy7vfcr085zCS3IbP/p/C7IHLdZt2iLgOv/C
 oaddIQo03yQQ/C/Ouft2qHSBc1wlMunHyxR+QjwALav3NE95QY4KF6OOuFjCTLMF
-L+xP0C0CgYEA2T6Ps1UB0HrK1Y7yqC5A4z2xv+e/4d2CATJiCkot0l891jEBFc5r
+L+xP0C0CgYAEA2T6Ps1UB0HrK1Y7yqC5A4z2xv+e/4d2CATJiCkot0l891jEBFc5r
 YSN2C2wK38Rt5CQvCzZQ+9iO0rHNocA145n5ho5BOl+aLg78eR1FCFi+WEgHnLN9
 ecr8JgxZ5ML+aPqs+6XsOAgKb3XEs/ksfT8FDXDLxwycyn6GOSGknfMCgYAgsSX+
 3XaPo/LAga6tUDhi+AQfJNMrj5vlSTUmeXv8CawtAwiSy1ZcFgV2NAtJoJxN2nTw
@@ -1134,23 +1187,18 @@ async function searchEventsByDate(dateString, calendarId = null) {
     // Use specific Jazzamore calendar ID
     const targetCalendarId = calendarId || JAZZAMORE_CALENDAR_ID;
     
-    // Create date range for the specific day in Rome timezone
-    const date = zonedTimeToUtc(`${dateString}T12:00:00`, ROME_TIMEZONE);
-    const romeDate = utcToZonedTime(date, ROME_TIMEZONE);
+    // Create date for the specific day
+    const date = new Date(dateString + 'T12:00:00');
     
-    // Get start and end of day in Rome
-    const startOfDayRome = startOfDay(romeDate);
-    const endOfDayRome = endOfDay(romeDate);
-    
-    // Convert to UTC for Google Calendar API
-    const startOfDayUTC = zonedTimeToUtc(startOfDayRome, ROME_TIMEZONE);
-    const endOfDayUTC = zonedTimeToUtc(endOfDayRome, ROME_TIMEZONE);
+    // Get start and end of day
+    const startOfDayDate = startOfDay(date);
+    const endOfDayDate = endOfDay(date);
     
     try {
       const response = await calendar.events.list({
         calendarId: targetCalendarId,
-        timeMin: startOfDayUTC.toISOString(),
-        timeMax: endOfDayUTC.toISOString(),
+        timeMin: startOfDayDate.toISOString(),
+        timeMax: endOfDayDate.toISOString(),
         maxResults: 20,
         singleEvents: true,
         orderBy: 'startTime',
@@ -1170,12 +1218,12 @@ async function searchEventsByDate(dateString, calendarId = null) {
         
         // Format the event for response
         let time = 'All day';
-        let dateStr = formatInTimeZone(romeDate, ROME_TIMEZONE, 'dd/MM/yyyy');
+        let dateStr = formatInRomeTimezone(date, 'dd/MM/yyyy');
         
         if (event.start?.dateTime) {
           const eventStart = new Date(event.start.dateTime);
-          time = formatInTimeZone(eventStart, ROME_TIMEZONE, 'HH:mm');
-          dateStr = formatInTimeZone(eventStart, ROME_TIMEZONE, 'dd/MM/yyyy');
+          time = formatInRomeTimezone(eventStart, 'HH:mm');
+          dateStr = formatInRomeTimezone(eventStart, 'dd/MM/yyyy');
         }
         
         return {
@@ -1216,12 +1264,11 @@ async function searchEventsByDate(dateString, calendarId = null) {
   }
 }
 
-// Check for actual time overlap conflicts (CORRECTED - include all events)
+// Check for actual time overlap conflicts
 async function checkCalendarForConflicts(date, time, calendarId = null) {
   try {
-    // Create reservation start time in Rome timezone
-    const reservationStartStr = `${date}T${time}:00`;
-    const reservationStart = zonedTimeToUtc(reservationStartStr, ROME_TIMEZONE);
+    // Create reservation start time
+    const reservationStart = new Date(`${date}T${time}:00`);
     
     // Assume reservation lasts 2 hours (dinner + show)
     const RESERVATION_DURATION_MINUTES = 120;
@@ -1299,7 +1346,7 @@ app.get('/api/now', (req, res) => {
       hour: romeDateTime.hour,
       minute: romeDateTime.minute,
       greeting: greeting,
-      note: "All dates and times are based on Europe/Rome timezone using date-fns-tz"
+      note: "All dates and times are based on Europe/Rome timezone using native JavaScript Date"
     });
   } catch (error) {
     safeLog('Error in /api/now endpoint', { error: error.message }, 'error');
@@ -1333,7 +1380,7 @@ app.get('/api/resolve-date', (req, res) => {
       resolvedDate: resolvedDate,
       timezone: ROME_TIMEZONE,
       todayInRome: romeDateTime.date,
-      source: 'Rome-timezone-aware parsing using date-fns-tz',
+      source: 'Rome-timezone-aware parsing using native JavaScript',
       message: `"${text}" resolved to ${resolvedDate} based on Rome time (today: ${romeDateTime.date})`
     });
     
@@ -1465,7 +1512,7 @@ app.get('/api/calendar/availability', async (req, res) => {
   }
 });
 
-// Diagnostic endpoint (CORRECTED - uses Rome timezone correctly)
+// Diagnostic endpoint
 app.get('/api/calendar/diagnostic', async (req, res) => {
   try {
     safeLog('Running calendar diagnostic');
@@ -1485,19 +1532,15 @@ app.get('/api/calendar/diagnostic', async (req, res) => {
     
     // Test Jazzamore calendar access
     try {
-      // Get Rome start and end of today
+      // Get start and end of today
       const romeNow = getRomeDate();
       const startOfToday = startOfDay(romeNow);
       const endOfToday = endOfDay(romeNow);
       
-      // Convert to UTC for API
-      const startUTC = zonedTimeToUtc(startOfToday, ROME_TIMEZONE);
-      const endUTC = zonedTimeToUtc(endOfToday, ROME_TIMEZONE);
-      
       const response = await calendar.events.list({
         calendarId: JAZZAMORE_CALENDAR_ID,
-        timeMin: startUTC.toISOString(),
-        timeMax: endUTC.toISOString(),
+        timeMin: startOfToday.toISOString(),
+        timeMax: endOfToday.toISOString(),
         maxResults: 1,
       });
       
@@ -1511,7 +1554,7 @@ app.get('/api/calendar/diagnostic', async (req, res) => {
           scope: 'calendar.readonly',
           permissionRequired: 'Read-only access (See all event details)',
           timezone: ROME_TIMEZONE,
-          romeToday: formatInTimeZone(romeNow, ROME_TIMEZONE, 'yyyy-MM-dd HH:mm:ss'),
+          romeToday: formatInRomeTimezone(romeNow, 'yyyy-MM-dd HH:mm:ss'),
           message: 'Jazzamore calendar is accessible and ready for use'
         }
       });
@@ -1786,7 +1829,7 @@ app.listen(PORT, () => {
   
   console.log(`\n🎵 Jazzamore server running on port ${PORT}`);
   console.log(`🇮🇹 ${greeting}! Rome time: ${romeDateTime.date} ${romeDateTime.time}`);
-  console.log(`📚 Using date-fns-tz for accurate timezone handling`);
+  console.log(`📚 Using native JavaScript Date for timezone handling`);
   console.log(`🔑 Google Calendar service account: ${serviceAccount.client_email}`);
   console.log(`📅 Jazzamore Calendar ID: ${JAZZAMORE_CALENDAR_ID}`);
   console.log(`🔐 Google Calendar scope: calendar.readonly (read-only access)`);
@@ -1812,6 +1855,5 @@ app.listen(PORT, () => {
   console.log(`   - ✅ Proper conflict detection (all events block time)`);
   console.log(`   - ✅ Validation before saving reservations`);
   console.log(`   - ✅ No default date/time assumptions`);
-  console.log(`   - ✅ Removed problematic OpenSSL hack`);
+  console.log(`   - ✅ Removed date-fns-tz dependency - using native JS Date`);
 });
-
