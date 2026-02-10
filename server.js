@@ -139,7 +139,8 @@ function getRomeDateTime() {
   };
 }
 
-// Get Italian greeting based on Rome time
+// ===== CUSTOM TIME-BASED GREETING FUNCTION (For Retell Agent) =====
+// This function can be called by the Retell AI agent to get time-appropriate greetings
 function getItalianTimeGreeting() {
   const romeDate = getRomeDate();
   const currentHour = romeDate.getHours();
@@ -149,6 +150,48 @@ function getItalianTimeGreeting() {
   else if (currentHour >= 13 && currentHour < 18) return "Buon pomeriggio";
   else if (currentHour >= 18 && currentHour < 22) return "Buonasera";
   else return "Buonanotte";
+}
+
+// ===== ENHANCED GREETING FUNCTION WITH MORE OPTIONS =====
+function get_time_greeting(format = 'italian', timezone = 'rome') {
+  const romeDate = getRomeDate();
+  const currentHour = romeDate.getHours();
+  
+  let greeting = '';
+  
+  if (format === 'italian') {
+    if (currentHour >= 5 && currentHour < 12) greeting = "Buongiorno";
+    else if (currentHour >= 12 && currentHour < 13) greeting = "Buon pranzo";
+    else if (currentHour >= 13 && currentHour < 18) greeting = "Buon pomeriggio";
+    else if (currentHour >= 18 && currentHour < 22) greeting = "Buonasera";
+    else greeting = "Buonanotte";
+  } else if (format === 'english') {
+    if (currentHour >= 5 && currentHour < 12) greeting = "Good morning";
+    else if (currentHour >= 12 && currentHour < 13) greeting = "Good lunchtime";
+    else if (currentHour >= 13 && currentHour < 18) greeting = "Good afternoon";
+    else if (currentHour >= 18 && currentHour < 22) greeting = "Good evening";
+    else greeting = "Good night";
+  } else if (format === 'formal') {
+    if (currentHour >= 5 && currentHour < 12) greeting = "Salve, buon giorno";
+    else if (currentHour >= 12 && currentHour < 18) greeting = "Salve, buon pomeriggio";
+    else if (currentHour >= 18 && currentHour < 22) greeting = "Salve, buona sera";
+    else greeting = "Salve, buona notte";
+  } else if (format === 'casual') {
+    if (currentHour >= 5 && currentHour < 12) greeting = "Ciao, buongiorno";
+    else if (currentHour >= 12 && currentHour < 18) greeting = "Ciao, buon pomeriggio";
+    else if (currentHour >= 18 && currentHour < 22) greeting = "Ciao, buonasera";
+    else greeting = "Ciao, buonanotte";
+  }
+  
+  return {
+    greeting: greeting,
+    hour: currentHour,
+    timezone: ROME_TIMEZONE,
+    localTime: formatInTimeZone(new Date(), ROME_TIMEZONE, 'HH:mm:ss'),
+    date: getRomeDateToday(),
+    format: format,
+    fullGreeting: `${greeting}! Benvenuti al Jazzamore. Come posso aiutarvi?`
+  };
 }
 
 // Generate unique reservation ID
@@ -1077,6 +1120,79 @@ app.get('/api/calendar/availability', async (req, res) => {
   }
 });
 
+// ===== NEW: CUSTOM TIME-BASED GREETING ENDPOINT (For Retell Agent) =====
+// This endpoint can be called by the Retell AI agent to get appropriate greetings
+app.get('/api/time-greeting', (req, res) => {
+  try {
+    const { format } = req.query;
+    
+    const greetingResult = get_time_greeting(format || 'italian');
+    
+    res.json({
+      success: true,
+      greeting: greetingResult.greeting,
+      fullGreeting: greetingResult.fullGreeting,
+      hour: greetingResult.hour,
+      timezone: greetingResult.timezone,
+      localTime: greetingResult.localTime,
+      date: greetingResult.date,
+      format: greetingResult.format,
+      suggestedUse: "Use this greeting at the beginning of conversations or when welcoming callers",
+      examples: {
+        opening: `${greetingResult.fullGreeting}`,
+        confirmation: `Perfetto! ${greetingResult.greeting}! Ho prenotato per voi...`,
+        farewell: `Grazie per aver chiamato! ${greetingResult.greeting} e arrivederci!`
+      }
+    });
+    
+  } catch (error) {
+    safeLog('Error in /api/time-greeting endpoint', { error: error.message }, 'error');
+    res.status(500).json({
+      success: false,
+      error: 'Failed to generate time greeting',
+      message: error.message
+    });
+  }
+});
+
+// ===== NEW: POST ENDPOINT FOR TIME GREETING =====
+// This endpoint works with Retell's webhook format
+app.post('/api/time-greeting', (req, res) => {
+  try {
+    const { format, context } = req.body;
+    
+    safeLog('Retell agent requesting time greeting', { format, context });
+    
+    const greetingResult = get_time_greeting(format || 'italian');
+    
+    // If it's from a call context, provide more conversational response
+    let responseText;
+    if (context === 'call_opening') {
+      responseText = `${greetingResult.fullGreeting}`;
+    } else if (context === 'confirmation') {
+      responseText = `Perfetto! ${greetingResult.greeting}!`;
+    } else {
+      responseText = `${greetingResult.greeting}!`;
+    }
+    
+    res.json({
+      response: responseText,
+      greeting: greetingResult.greeting,
+      hour: greetingResult.hour,
+      timezone: greetingResult.timezone,
+      success: true
+    });
+    
+  } catch (error) {
+    safeLog('Error in POST /api/time-greeting endpoint', { error: error.message }, 'error');
+    res.status(500).json({
+      response: "Buongiorno! Benvenuti al Jazzamore.",
+      success: false,
+      error: error.message
+    });
+  }
+});
+
 // E) Diagnostic endpoint
 app.get('/api/calendar/diagnostic', async (req, res) => {
   try {
@@ -1440,16 +1556,23 @@ app.listen(PORT, () => {
   console.log(`   • Resolve Date: http://localhost:${PORT}/api/resolve-date?text=tomorrow`);
   console.log(`   • Calendar Events: http://localhost:${PORT}/api/calendar/date?date=tomorrow`);
   console.log(`   • Availability: http://localhost:${PORT}/api/calendar/availability?date=tomorrow&time=20:00`);
+  console.log(`   • Time Greeting (NEW): http://localhost:${PORT}/api/time-greeting`);
+  console.log(`   • Time Greeting POST: http://localhost:${PORT}/api/time-greeting (POST with format parameter)`);
   console.log(`   • Diagnostic: http://localhost:${PORT}/api/calendar/diagnostic`);
   console.log(`   • Test: http://localhost:${PORT}/api/test/google-calendar`);
   console.log(`   • Webhook: http://localhost:${PORT}/api/reservations`);
   console.log(`\n📋 Key Features:`);
   console.log(`   ✅ Google Calendar as ONLY source of truth`);
+  console.log(`   ✅ Custom time-greeting function for Retell agent`);
   console.log(`   ✅ No assumptions or manual mappings`);
   console.log(`   ✅ Real-time event checking`);
   console.log(`   ✅ Rome timezone-aware (Europe/Rome)`);
   console.log(`   ✅ Reservation intent detection`);
   console.log(`   ✅ Airtable integration for storage`);
   console.log(`   ✅ PII protection in logs`);
+  console.log(`\n🤖 Retell Agent Custom Functions:`);
+  console.log(`   • get_time_greeting(format='italian') - Returns time-appropriate greeting`);
+  console.log(`   • get_events_by_date(date) - Returns events for specific date`);
+  console.log(`   • resolve_date(text) - Resolves relative dates to YYYY-MM-DD`);
   console.log(`\n🚀 System ready! Google Calendar is now the authoritative source for all events.`);
 });
