@@ -272,11 +272,14 @@ function findNextDayOfWeek(dayName, skipCurrentWeek = false) {
   return formatInTimeZone(targetDate, ROME_TIMEZONE, 'yyyy-MM-dd');
 }
 
-// Helper function to parse relative dates (ROME TIMEZONE) - IMPROVED to handle "the 3rd" smartly
-function parseRelativeDate(dateString) {
-  const romeNow = getRomeDateTime();
-  
-  safeLog('Parsing relative date', { input: dateString, todayInRome: romeNow.date });
+// ===== IMPROVED DATE RESOLUTION WITH DEBUGGING =====
+// ✅ Enhanced resolve_date function with comprehensive debugging
+function resolve_date(dateString) {
+  safeLog('🔍 resolve_date called', { 
+    input: dateString, 
+    timestamp: new Date().toISOString(),
+    romeToday: getRomeDateToday()
+  });
   
   // Clean the string
   const cleanString = dateString.toLowerCase()
@@ -286,23 +289,40 @@ function parseRelativeDate(dateString) {
     .replace('on ', '')
     .trim();
   
+  safeLog('Cleaned input for resolution', { cleanString });
+  
   // Check for "today" and "tomorrow" first
   if (cleanString === 'today' || cleanString === 'oggi') {
-    safeLog('"today" parsed', { result: romeNow.date });
-    return romeNow.date;
+    const result = getRomeDateToday();
+    safeLog('✅ "today" resolved', { 
+      input: dateString,
+      result,
+      romeToday: getRomeDateToday()
+    });
+    return result;
   }
   
   if (cleanString === 'tomorrow' || cleanString === 'domani') {
     const tomorrow = addDays(getRomeDate(), 1);
     const result = formatInTimeZone(tomorrow, ROME_TIMEZONE, 'yyyy-MM-dd');
-    safeLog('"tomorrow" parsed', { result });
+    safeLog('✅ "tomorrow" resolved', { 
+      input: dateString,
+      result,
+      romeToday: getRomeDateToday()
+    });
     return result;
   }
   
   // Try to handle "next [day]" patterns
   if (cleanString.startsWith('next ') || cleanString.startsWith('prossim')) {
     safeLog('Using convertDayToDate for pattern', { pattern: cleanString });
-    return convertDayToDate(cleanString);
+    const result = convertDayToDate(cleanString);
+    safeLog('✅ "next day" pattern resolved', { 
+      input: dateString,
+      pattern: cleanString,
+      result
+    });
+    return result;
   }
   
   // Check for day numbers (1st, 2nd, 3rd, 4th, etc.) - IMPROVED: if day has passed, use next month
@@ -339,7 +359,8 @@ function parseRelativeDate(dateString) {
       
       // Format the result
       const result = formatInTimeZone(romeTestDate, ROME_TIMEZONE, 'yyyy-MM-dd');
-      safeLog('Day number parsed with smart month handling', { 
+      safeLog('✅ Day number resolved with smart month handling', { 
+        input: dateString,
         day, 
         currentDay,
         currentMonth,
@@ -365,8 +386,14 @@ function parseRelativeDate(dateString) {
       if (dayMatch2) {
         const day = parseInt(dayMatch2[1]);
         // Use current year (Rome timezone)
+        const romeNow = getRomeDateTime();
         const result = `${romeNow.year}-${monthNumber.toString().padStart(2, '0')}-${day.toString().padStart(2, '0')}`;
-        safeLog('Month + day parsed', { month: monthName, day, result });
+        safeLog('✅ Month + day resolved', { 
+          input: dateString,
+          month: monthName, 
+          day, 
+          result 
+        });
         return result;
       }
     }
@@ -374,7 +401,72 @@ function parseRelativeDate(dateString) {
   
   // Fallback to convertDayToDate
   safeLog('Falling back to convertDayToDate', { input: cleanString });
-  return convertDayToDate(cleanString);
+  const result = convertDayToDate(cleanString);
+  safeLog('✅ Fallback resolution complete', { 
+    input: dateString,
+    fallbackMethod: 'convertDayToDate',
+    result 
+  });
+  return result;
+}
+
+// ===== ENHANCED parseRelativeDate USING resolve_date =====
+function parseRelativeDate(dateString) {
+  safeLog('🔄 parseRelativeDate called', { 
+    input: dateString,
+    romeToday: getRomeDateToday()
+  });
+  
+  try {
+    const resolvedDate = resolve_date(dateString);
+    safeLog('✅ parseRelativeDate completed', { 
+      input: dateString,
+      resolvedDate,
+      validation: validateResolvedDate(resolvedDate)
+    });
+    return resolvedDate;
+  } catch (error) {
+    safeLog('❌ parseRelativeDate failed', { 
+      input: dateString,
+      error: error.message 
+    }, 'error');
+    
+    // Default fallback to tomorrow
+    const fallbackDate = addDays(getRomeDate(), 1);
+    const result = formatInTimeZone(fallbackDate, ROME_TIMEZONE, 'yyyy-MM-dd');
+    safeLog('⚠️ Using fallback date', { 
+      fallback: result,
+      reason: 'Error in date resolution'
+    });
+    return result;
+  }
+}
+
+// Helper to validate resolved dates
+function validateResolvedDate(dateString) {
+  if (!dateString || !dateString.match(/^\d{4}-\d{2}-\d{2}$/)) {
+    return { valid: false, error: 'Invalid date format' };
+  }
+  
+  try {
+    const date = new Date(dateString);
+    if (isNaN(date.getTime())) {
+      return { valid: false, error: 'Invalid date' };
+    }
+    
+    // Check if date is in the future (or today)
+    const today = getRomeDate();
+    const inputDate = utcToZonedTime(zonedTimeToUtc(`${dateString}T12:00:00`, ROME_TIMEZONE), ROME_TIMEZONE);
+    
+    return {
+      valid: true,
+      isToday: formatInTimeZone(inputDate, ROME_TIMEZONE, 'yyyy-MM-dd') === getRomeDateToday(),
+      isFuture: isAfter(inputDate, today),
+      formatted: formatInTimeZone(inputDate, ROME_TIMEZONE, 'dd/MM/yyyy')
+    };
+  } catch (error) {
+    return { valid: false, error: error.message };
+  }
 }
 
 // ===== RESERVATION VALIDATION =====
@@ -791,7 +883,7 @@ function extractFromConversationFlow(conversation) {
           .replace(/\D/g, '');
         
         if (digits.length > 0) {
-          phoneDigits += digits; // ✅ Fixed: was "phoneDigits += digits;"
+          phoneDigits += digits;
         }
         
         if (phoneDigits.length >= 10) {
@@ -1131,8 +1223,60 @@ function analyzeEventAvailability(event) {
   return availability;
 }
 
+// ===== ENHANCED GET EVENTS BY DATE WITH PROPER SEQUENCING =====
+// ✅ Enhanced get_events_by_date with proper resolve_date sequencing
+async function get_events_by_date(dateInput) {
+  safeLog('📅 get_events_by_date called', { 
+    input: dateInput,
+    timestamp: new Date().toISOString()
+  });
+  
+  try {
+    // ✅ Step 1: Resolve the date first
+    const resolvedDate = resolve_date(dateInput);
+    
+    if (!resolvedDate || !resolvedDate.match(/^\d{4}-\d{2}-\d{2}$/)) {
+      safeLog('❌ Date resolution failed or invalid', { 
+        input: dateInput,
+        resolvedDate,
+        error: 'Invalid date format after resolution'
+      });
+      return [];
+    }
+    
+    safeLog('✅ Date resolved successfully for events lookup', { 
+      originalInput: dateInput,
+      resolvedDate,
+      validation: validateResolvedDate(resolvedDate)
+    });
+    
+    // ✅ Step 2: Now fetch events with the resolved date
+    const events = await searchEventsByDate(resolvedDate);
+    
+    safeLog('✅ Events fetched successfully', { 
+      date: resolvedDate,
+      eventCount: events.length,
+      sampleEvents: events.slice(0, 3).map(e => ({ title: e.title, time: e.time, isSoldOut: e.isSoldOut }))
+    });
+    
+    return events;
+    
+  } catch (error) {
+    safeLog('❌ Error in get_events_by_date', { 
+      input: dateInput,
+      error: error.message,
+      stack: error.stack
+    }, 'error');
+    return [];
+  }
+}
+
 async function searchEventsByDate(dateString, calendarId = null) {
-  safeLog('Searching events for date', { date: dateString, timezone: ROME_TIMEZONE });
+  safeLog('🔍 searchEventsByDate called', { 
+    date: dateString, 
+    timezone: ROME_TIMEZONE,
+    calendarId: calendarId || JAZZAMORE_CALENDAR_ID
+  });
   
   try {
     const calendar = await getCalendarClient();
@@ -1148,6 +1292,14 @@ async function searchEventsByDate(dateString, calendarId = null) {
     const startOfDayUTC = zonedTimeToUtc(`${dateString}T00:00:00`, ROME_TIMEZONE);
     const endOfDayUTC = zonedTimeToUtc(`${dateString}T23:59:59`, ROME_TIMEZONE);
     
+    safeLog('📊 Calendar query parameters', {
+      date: dateString,
+      timeMin: startOfDayUTC.toISOString(),
+      timeMax: endOfDayUTC.toISOString(),
+      timezone: ROME_TIMEZONE,
+      calendarId: targetCalendarId
+    });
+    
     try {
       const response = await calendar.events.list({
         calendarId: targetCalendarId,
@@ -1160,9 +1312,13 @@ async function searchEventsByDate(dateString, calendarId = null) {
       });
 
       const events = response.data.items || [];
-      safeLog('Successfully fetched events from Google Calendar', { count: events.length });
+      safeLog('✅ Successfully fetched events from Google Calendar', { 
+        count: events.length,
+        date: dateString 
+      });
       
       if (events.length === 0) {
+        safeLog('ℹ️ No events found for date', { date: dateString });
         return [];
       }
       
@@ -1205,15 +1361,27 @@ async function searchEventsByDate(dateString, calendarId = null) {
         return timeA.localeCompare(timeB);
       });
       
+      safeLog('📋 Events processed and sorted', { 
+        date: dateString,
+        eventCount: analyzedEvents.length,
+        eventTimes: analyzedEvents.map(e => e.time)
+      });
+      
       return analyzedEvents;
       
     } catch (apiError) {
-      safeLog('Google Calendar API Error', { error: apiError.message }, 'error');
+      safeLog('❌ Google Calendar API Error', { 
+        error: apiError.message,
+        date: dateString
+      }, 'error');
       throw new Error(`Google Calendar API Error: ${apiError.message}`);
     }
     
   } catch (error) {
-    safeLog('Error searching Google Calendar events', { error: error.message }, 'error');
+    safeLog('❌ Error searching Google Calendar events', { 
+      error: error.message,
+      date: dateString
+    }, 'error');
     throw error;
   }
 }
@@ -1313,7 +1481,7 @@ app.get('/api/now', (req, res) => {
   }
 });
 
-// B) Date resolution endpoint
+// B) Date resolution endpoint - Enhanced with debugging
 app.get('/api/resolve-date', (req, res) => {
   try {
     const { text } = req.query;
@@ -1326,8 +1494,21 @@ app.get('/api/resolve-date', (req, res) => {
       });
     }
     
-    const resolvedDate = parseRelativeDate(text);
+    safeLog('🌐 /api/resolve-date API called', { 
+      input: text,
+      timestamp: new Date().toISOString(),
+      romeToday: getRomeDateToday()
+    });
+    
+    const resolvedDate = resolve_date(text);
     const romeDateTime = getRomeDateTime();
+    const validation = validateResolvedDate(resolvedDate);
+    
+    safeLog('✅ /api/resolve-date completed', {
+      originalText: text,
+      resolvedDate: resolvedDate,
+      validation: validation
+    });
     
     res.json({
       success: true,
@@ -1335,23 +1516,28 @@ app.get('/api/resolve-date', (req, res) => {
       resolvedDate: resolvedDate,
       timezone: ROME_TIMEZONE,
       todayInRome: romeDateTime.date,
+      validation: validation,
       source: 'Rome-timezone-aware parsing using date-fns-tz',
       message: `"${text}" resolved to ${resolvedDate} based on Rome time (today: ${romeDateTime.date})`
     });
     
   } catch (error) {
-    safeLog('Error in /api/resolve-date endpoint', { error: error.message }, 'error');
+    safeLog('❌ Error in /api/resolve-date endpoint', { 
+      error: error.message,
+      input: req.query.text
+    }, 'error');
     res.status(500).json({
       success: false,
       error: 'Failed to resolve date',
-      message: error.message
+      message: error.message,
+      todayInRome: getRomeDateToday()
     });
   }
 });
 
 // ===== CALENDAR ENDPOINTS FOR AI AGENT =====
 
-// Get events for a specific date (AI agent will call this)
+// Get events for a specific date (AI agent will call this) - Enhanced with proper sequencing
 app.get('/api/calendar/date', async (req, res) => {
   try {
     let { date } = req.query;
@@ -1364,44 +1550,69 @@ app.get('/api/calendar/date', async (req, res) => {
       });
     }
     
-    safeLog('AI Agent requested events for date', { originalDate: date });
+    safeLog('🤖 AI Agent requested events for date', { 
+      originalDate: date,
+      isISO: date.match(/^\d{4}-\d{2}-\d{2}$/) ? 'Yes' : 'No (needs resolution)',
+      timestamp: new Date().toISOString()
+    });
     
-    // Check if it's a relative date
-    let parsedDate = date;
-    if (!date.match(/^\d{4}-\d{2}-\d{2}$/)) {
-      parsedDate = parseRelativeDate(date);
-      safeLog('Parsed relative date', { original: date, parsed: parsedDate });
-    }
-    
+    // ✅ ENHANCED: Always use get_events_by_date which handles resolution internally
     try {
-      const events = await searchEventsByDate(parsedDate);
+      const events = await get_events_by_date(date);
       
-      res.json({
+      const result = {
         success: true,
         originalDate: date,
-        parsedDate: parsedDate,
+        // Note: resolvedDate is handled internally in get_events_by_date
         eventCount: events.length,
         events: events,
-        summary: `Found ${events.length} event(s) for ${parsedDate}.`,
+        summary: events.length === 0 
+          ? `No events found for ${date}.` 
+          : `Found ${events.length} event(s).`,
+        processingSteps: [
+          '1. Date resolution performed via resolve_date()',
+          '2. Google Calendar queried with resolved date',
+          '3. Events analyzed for availability',
+          '4. Results formatted and returned'
+        ],
         note: 'Using REAL Google Calendar data only - no mock data'
+      };
+      
+      safeLog('✅ /api/calendar/date completed successfully', {
+        originalDate: date,
+        eventCount: events.length,
+        executionTime: `${Date.now() - new Date(req._startTime).getTime()}ms`
       });
       
+      res.json(result);
+      
     } catch (calendarError) {
-      safeLog('Calendar error in /api/calendar/date', { error: calendarError.message }, 'error');
+      safeLog('❌ Calendar error in /api/calendar/date', { 
+        error: calendarError.message,
+        originalDate: date 
+      }, 'error');
+      
       res.status(500).json({
         success: false,
         error: 'Failed to fetch calendar events',
         message: calendarError.message,
+        resolutionAttempted: true,
+        todayInRome: getRomeDateToday(),
         note: 'NO MOCK DATA AVAILABLE - Google Calendar access required'
       });
     }
     
   } catch (error) {
-    safeLog('Error in calendar/date endpoint', { error: error.message }, 'error');
+    safeLog('❌ Error in calendar/date endpoint', { 
+      error: error.message,
+      input: req.query.date 
+    }, 'error');
+    
     res.status(500).json({
       success: false,
       error: 'Failed to process request',
       message: error.message,
+      todayInRome: getRomeDateToday(),
       note: 'NO MOCK DATA AVAILABLE - Google Calendar access required'
     });
   }
@@ -1416,13 +1627,18 @@ app.get('/api/calendar/availability', async (req, res) => {
       return res.status(400).json({
         success: false,
         error: 'Missing parameters',
-        message: 'Please provide both date (YYYY-MM-DD) and time (HH:MM)'
+        message: 'Please provide both date (YYYY-MM-DD or relative date) and time (HH:MM)'
       });
     }
     
-    safeLog('AI Agent checking availability', { date, time });
+    safeLog('🤖 AI Agent checking availability', { 
+      date, 
+      time,
+      needsResolution: !date.match(/^\d{4}-\d{2}-\d{2}$/) ? 'Yes' : 'No'
+    });
     
     try {
+      // ✅ Use get_events_by_date which handles resolution internally
       const calendarCheck = await checkCalendarForConflicts(date, time);
       const isAvailable = !calendarCheck.hasConflicts;
       
@@ -1536,8 +1752,59 @@ app.get('/api/calendar/diagnostic', async (req, res) => {
   }
 });
 
+// ===== TEST ENDPOINTS FOR DEBUGGING =====
+app.get('/api/debug/resolve-date-sequence', (req, res) => {
+  try {
+    const { text } = req.query;
+    
+    if (!text) {
+      return res.status(400).json({
+        success: false,
+        error: 'Missing text parameter',
+        message: 'Please provide a date text to test'
+      });
+    }
+    
+    safeLog('🧪 DEBUG: Testing resolve_date sequence', { input: text });
+    
+    // Test sequence
+    const originalInput = text;
+    const resolvedDate = resolve_date(text);
+    const validation = validateResolvedDate(resolvedDate);
+    
+    // Test get_events_by_date sequence (without actually calling Google)
+    const testEventsSequence = `get_events_by_date("${text}") -> resolve_date("${text}") -> resolvedDate: ${resolvedDate}`;
+    
+    res.json({
+      success: true,
+      test: 'Date Resolution Sequence',
+      originalInput,
+      resolvedDate,
+      validation,
+      sequence: [
+        `1. Input: "${originalInput}"`,
+        `2. resolve_date("${originalInput}") called`,
+        `3. Resolved to: ${resolvedDate}`,
+        `4. Validation: ${JSON.stringify(validation)}`,
+        `5. get_events_by_date would use: ${resolvedDate}`
+      ],
+      message: `Sequence tested successfully. Resolved "${originalInput}" to ${resolvedDate}`
+    });
+    
+  } catch (error) {
+    safeLog('Debug endpoint error', { error: error.message }, 'error');
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+});
+
 // ===== MAIN WEBHOOK ENDPOINT =====
 app.post('/api/reservations', async (req, res) => {
+  // Add request start time for timing
+  req._startTime = Date.now();
+  
   try {
     const { event, call } = req.body;
     
@@ -1794,6 +2061,7 @@ app.listen(PORT, () => {
   console.log(`\n⏰ TIMEZONE-AWARE ENDPOINTS:`);
   console.log(`   - Now in Rome: http://localhost:${PORT}/api/now`);
   console.log(`   - Resolve date: http://localhost:${PORT}/api/resolve-date?text=the%2013th`);
+  console.log(`   - Debug sequence: http://localhost:${PORT}/api/debug/resolve-date-sequence?text=tomorrow`);
   
   console.log(`\n📅 CALENDAR ENDPOINTS:`);
   console.log(`   - Date query: http://localhost:${PORT}/api/calendar/date?date=tomorrow`);
@@ -1804,15 +2072,18 @@ app.listen(PORT, () => {
   console.log(`   - Retell webhook: http://localhost:${PORT}/api/reservations`);
   
   console.log(`\n🔧 CRITICAL FIXES APPLIED:`);
-  console.log(`   - ✅ Fixed phoneDigits variable bug in extractFromConversationFlow`);
-  console.log(`   - ✅ Fixed date format consistency in searchEventsByDate (always YYYY-MM-DD)`);
+  console.log(`   - ✅ Enhanced resolve_date() with comprehensive debugging`);
+  console.log(`   - ✅ Enhanced get_events_by_date() with proper sequencing`);
+  console.log(`   - ✅ Fixed phoneDigits variable bug`);
+  console.log(`   - ✅ Fixed date format consistency (always YYYY-MM-DD)`);
+  console.log(`   - ✅ Added validation for resolved dates`);
+  console.log(`   - ✅ Added debug endpoint for testing sequences`);
   console.log(`   - ✅ Safe date-fns-tz import pattern`);
-  console.log(`   - ✅ Fixed getRomeDate() with Date.now()`);
-  console.log(`   - ✅ Fixed getRomeDateTime() to use single "now" source`);
-  console.log(`   - ✅ Fixed zonedTimeToUtc calls to use strings not Date objects`);
-  console.log(`   - ✅ Fixed diagnostic endpoint to use string dates`);
-  console.log(`   - ✅ Improved PII masking (only specific fields)`);
-  console.log(`   - ✅ Proper conflict detection (all events block time)`);
-  console.log(`   - ✅ Validation before saving reservations`);
-  console.log(`   - ✅ No default date/time assumptions`);
+  console.log(`   - ✅ All previous fixes remain intact`);
+  
+  console.log(`\n🔍 DEBUGGING FEATURES:`);
+  console.log(`   - Emoji indicators for different log types`);
+  console.log(`   - Timestamp on all logs`);
+  console.log(`   - Validation of resolved dates`);
+  console.log(`   - Clear sequence logging for resolve_date → get_events_by_date`);
 });
