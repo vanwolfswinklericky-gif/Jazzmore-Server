@@ -140,7 +140,6 @@ function getRomeDateTime() {
 }
 
 // ===== CUSTOM TIME-BASED GREETING FUNCTION (For Retell Agent) =====
-// This function can be called by the Retell AI agent to get time-appropriate greetings
 function getItalianTimeGreeting() {
   const romeDate = getRomeDate();
   const currentHour = romeDate.getHours();
@@ -288,35 +287,36 @@ async function getCalendarClient() {
   }
 }
 
-// ===== DATE RESOLUTION FUNCTIONS =====
-function findNextDayOfWeek(dayName, skipCurrentWeek = false) {
-  const dayMap = {
-    'sunday': 0, 'monday': 1, 'tuesday': 2, 'wednesday': 3,
-    'thursday': 4, 'friday': 5, 'saturday': 6,
-    'domenica': 0, 'lunedì': 1, 'lunedi': 1, 'martedì': 2, 'martedi': 2,
-    'mercoledì': 3, 'mercoledi': 3, 'giovedì': 4, 'giovedi': 4, 
-    'venerdì': 5, 'venerdi': 5, 'sabato': 6
+// ===== HELPER FUNCTIONS FOR DATE RESOLUTION =====
+function detectExplicitMonth(cleanedDate) {
+  const monthMap = {
+    // English
+    'january': 1, 'february': 2, 'march': 3, 'april': 4, 'may': 5, 'june': 6,
+    'july': 7, 'august': 8, 'september': 9, 'october': 10, 'november': 11, 'december': 12,
+    // Italian
+    'gennaio': 1, 'febbraio': 2, 'marzo': 3, 'aprile': 4, 'maggio': 5, 'giugno': 6,
+    'luglio': 7, 'agosto': 8, 'settembre': 9, 'ottobre': 10, 'novembre': 11, 'dicembre': 12
   };
   
-  const targetDayNum = dayMap[dayName];
-  if (targetDayNum === undefined) {
-    throw new Error(`Unknown day name: ${dayName}`);
+  for (const [monthName, monthIndex] of Object.entries(monthMap)) {
+    if (cleanedDate.includes(monthName)) {
+      return monthIndex;
+    }
   }
-  
-  const today = getRomeDate();
-  const todayDayNum = today.getDay();
-  
-  let daysToAdd = (targetDayNum - todayDayNum + 7) % 7;
-  
-  if (daysToAdd === 0 && skipCurrentWeek) {
-    daysToAdd = 7;
-  }
-  
-  const targetDate = addDays(today, daysToAdd);
-  return formatInTimeZone(targetDate, ROME_TIMEZONE, 'yyyy-MM-dd');
+  return null;
 }
 
-// ✅ Resolve date from relative inputs (like "tomorrow", "next Friday")
+function isValidDayForMonth(day, month, year) {
+  const lastDayOfMonth = new Date(year, month, 0).getDate();
+  return day <= lastDayOfMonth;
+}
+
+function getLastDayOfMonth(year, month) {
+  return new Date(year, month, 0).getDate();
+}
+
+// ===== ENHANCED DATE RESOLUTION FUNCTION =====
+// Resolve date from relative inputs (like "12", "the 14th", "next Friday", "March 15")
 function resolveDate(dateString) {
   safeLog('🔍 resolveDate called', { 
     input: dateString,
@@ -374,69 +374,146 @@ function resolveDate(dateString) {
     return result;
   }
   
-  // Handle ordinal numbers (1st, 2nd, 3rd, etc.) - ENHANCED
-  const ordinalMatch = cleanedDate.match(/(?:the\s+)?(\d{1,2})(?:st|nd|rd|th)?(?:\s+of)?(?:\s+this\s+month)?/i);
-  if (ordinalMatch) {
-    const day = parseInt(ordinalMatch[1]);
+  // ===== ENHANCED: Handle BARE DAY NUMBERS (MOST IMPORTANT) =====
+  // This handles cases where caller just says "12", "14", "21" without "th/st/nd/rd"
+  const bareDayNumberMatch = cleanedDate.match(/^(\d{1,2})$/);
+  if (bareDayNumberMatch) {
+    const day = parseInt(bareDayNumberMatch[1]);
     if (day >= 1 && day <= 31) {
       const today = getRomeDate();
       const currentYear = today.getFullYear();
       const currentMonth = today.getMonth() + 1;
-      const currentDay = today.getDate();
       
-      let testMonth = currentMonth;
-      let testYear = currentYear;
-      
-      // If day has passed, use next month
-      if (day < currentDay) {
-        testMonth++;
-        if (testMonth > 12) {
-          testMonth = 1;
-          testYear++;
-        }
-      }
-      
-      // Check if the day exists in the month
-      const lastDayOfMonth = new Date(testYear, testMonth, 0).getDate();
+      // Check if the day exists in the current month
+      const lastDayOfMonth = getLastDayOfMonth(currentYear, currentMonth);
       const validDay = Math.min(day, lastDayOfMonth);
       
-      const result = `${testYear}-${testMonth.toString().padStart(2, '0')}-${validDay.toString().padStart(2, '0')}`;
-      safeLog('✅ Ordinal date resolved', { input: dateString, day, month: testMonth, year: testYear, result });
+      const result = `${currentYear}-${currentMonth.toString().padStart(2, '0')}-${validDay.toString().padStart(2, '0')}`;
+      safeLog('✅ BARE DAY NUMBER resolved to CURRENT month', { 
+        input: dateString, 
+        day, 
+        month: currentMonth, 
+        year: currentYear, 
+        result,
+        note: 'Using current month even if date is in the past'
+      });
       return result;
     }
   }
   
-  // Handle "the 13th", "26th", etc. (without "of this month")
-  const simpleOrdinalMatch = cleanedDate.match(/^(\d{1,2})(?:st|nd|rd|th)$/);
-  if (simpleOrdinalMatch) {
-    const day = parseInt(simpleOrdinalMatch[1]);
+  // ===== ENHANCED: Handle "the 12th", "12th" with ordinal indicators =====
+  const ordinalWithTheMatch = cleanedDate.match(/^(?:the\s+)?(\d{1,2})(?:st|nd|rd|th)$/);
+  if (ordinalWithTheMatch) {
+    const day = parseInt(ordinalWithTheMatch[1]);
     if (day >= 1 && day <= 31) {
       const today = getRomeDate();
       const currentYear = today.getFullYear();
       const currentMonth = today.getMonth() + 1;
-      const currentDay = today.getDate();
       
-      let testMonth = currentMonth;
-      let testYear = currentYear;
-      
-      if (day < currentDay) {
-        testMonth++;
-        if (testMonth > 12) {
-          testMonth = 1;
-          testYear++;
-        }
-      }
-      
-      const lastDayOfMonth = new Date(testYear, testMonth, 0).getDate();
+      const lastDayOfMonth = getLastDayOfMonth(currentYear, currentMonth);
       const validDay = Math.min(day, lastDayOfMonth);
       
-      const result = `${testYear}-${testMonth.toString().padStart(2, '0')}-${validDay.toString().padStart(2, '0')}`;
-      safeLog('✅ Simple ordinal resolved', { input: dateString, day, result });
+      const result = `${currentYear}-${currentMonth.toString().padStart(2, '0')}-${validDay.toString().padStart(2, '0')}`;
+      safeLog('✅ ORDINAL resolved to CURRENT month', { 
+        input: dateString, 
+        day, 
+        month: currentMonth, 
+        year: currentYear, 
+        result 
+      });
       return result;
     }
   }
   
-  // Handle "twenty sixth", "twenty-sixth", "twenty sixth of this month"
+  // ===== Handle "this month" explicit =====
+  const ordinalWithThisMonthMatch = cleanedDate.match(/(?:the\s+)?(\d{1,2})(?:st|nd|rd|th)?(?:\s+of)?\s+this\s+month/i);
+  if (ordinalWithThisMonthMatch) {
+    const day = parseInt(ordinalWithThisMonthMatch[1]);
+    if (day >= 1 && day <= 31) {
+      const today = getRomeDate();
+      const currentYear = today.getFullYear();
+      const currentMonth = today.getMonth() + 1;
+      
+      const lastDayOfMonth = getLastDayOfMonth(currentYear, currentMonth);
+      const validDay = Math.min(day, lastDayOfMonth);
+      
+      const result = `${currentYear}-${currentMonth.toString().padStart(2, '0')}-${validDay.toString().padStart(2, '0')}`;
+      safeLog('✅ "this month" ordinal resolved', { input: dateString, day, result });
+      return result;
+    }
+  }
+  
+  // ===== Handle "next month" explicit =====
+  const nextMonthMatch = cleanedDate.match(/(?:the\s+)?(\d{1,2})(?:st|nd|rd|th)?(?:\s+of)?\s+next\s+month/i);
+  if (nextMonthMatch) {
+    const day = parseInt(nextMonthMatch[1]);
+    if (day >= 1 && day <= 31) {
+      const today = getRomeDate();
+      let nextMonth = today.getMonth() + 2;
+      let nextYear = today.getFullYear();
+      
+      if (nextMonth > 12) {
+        nextMonth = 1;
+        nextYear++;
+      }
+      
+      const lastDayOfMonth = getLastDayOfMonth(nextYear, nextMonth);
+      const validDay = Math.min(day, lastDayOfMonth);
+      
+      const result = `${nextYear}-${nextMonth.toString().padStart(2, '0')}-${validDay.toString().padStart(2, '0')}`;
+      safeLog('✅ "next month" ordinal resolved', { input: dateString, day, month: nextMonth, year: nextYear, result });
+      return result;
+    }
+  }
+  
+  // ===== ENHANCED: Handle explicit month mentions (e.g., "March 15", "15th of March") =====
+  const explicitMonth = detectExplicitMonth(cleanedDate);
+  if (explicitMonth !== null) {
+    // Extract the day number
+    let day = null;
+    
+    // Try different patterns for day extraction
+    const dayPatterns = [
+      /(\d{1,2})(?:st|nd|rd|th)?(?:\s+of)?\s+/i,  // 15th of, 15 of
+      /\s+(\d{1,2})(?:st|nd|rd|th)?$/i,           // March 15, March 15th
+      /^(\d{1,2})(?:st|nd|rd|th)?\s+/i            // 15 March, 15th March
+    ];
+    
+    for (const pattern of dayPatterns) {
+      const match = cleanedDate.match(pattern);
+      if (match) {
+        day = parseInt(match[1]);
+        break;
+      }
+    }
+    
+    if (day && day >= 1 && day <= 31) {
+      const today = getRomeDate();
+      let year = today.getFullYear();
+      const currentMonth = today.getMonth() + 1;
+      
+      // If this month has already passed this year, use next year
+      if (explicitMonth < currentMonth) {
+        year++;
+      }
+      
+      // Validate day exists in month
+      const lastDayOfMonth = getLastDayOfMonth(year, explicitMonth);
+      const validDay = Math.min(day, lastDayOfMonth);
+      
+      const result = `${year}-${explicitMonth.toString().padStart(2, '0')}-${validDay.toString().padStart(2, '0')}`;
+      safeLog('✅ Explicit month resolved', { 
+        input: dateString, 
+        day, 
+        month: explicitMonth, 
+        year, 
+        result 
+      });
+      return result;
+    }
+  }
+  
+  // ===== Handle word ordinals (e.g., "twenty sixth", "twenty-sixth") =====
   const wordNumberMap = {
     'first': 1, 'second': 2, 'third': 3, 'fourth': 4, 'fifth': 5,
     'sixth': 6, 'seventh': 7, 'eighth': 8, 'ninth': 9, 'tenth': 10,
@@ -449,35 +526,33 @@ function resolveDate(dateString) {
     'twenty-ninth': 29, 'twenty ninth': 29, 'thirtieth': 30, 'thirty-first': 31, 'thirty first': 31
   };
   
-  // Check for word-based ordinals
   for (const [word, day] of Object.entries(wordNumberMap)) {
-    if (cleanedDate.includes(word)) {
+    if (cleanedDate.includes(word) && 
+        !cleanedDate.includes('next') && 
+        !cleanedDate.includes('prossimo') &&
+        !detectExplicitMonth(cleanedDate)) {
+      
       const today = getRomeDate();
       const currentYear = today.getFullYear();
       const currentMonth = today.getMonth() + 1;
-      const currentDay = today.getDate();
       
-      let testMonth = currentMonth;
-      let testYear = currentYear;
-      
-      if (day < currentDay) {
-        testMonth++;
-        if (testMonth > 12) {
-          testMonth = 1;
-          testYear++;
-        }
-      }
-      
-      const lastDayOfMonth = new Date(testYear, testMonth, 0).getDate();
+      const lastDayOfMonth = getLastDayOfMonth(currentYear, currentMonth);
       const validDay = Math.min(day, lastDayOfMonth);
       
-      const result = `${testYear}-${testMonth.toString().padStart(2, '0')}-${validDay.toString().padStart(2, '0')}`;
-      safeLog('✅ Word ordinal resolved', { input: dateString, word, day, result });
+      const result = `${currentYear}-${currentMonth.toString().padStart(2, '0')}-${validDay.toString().padStart(2, '0')}`;
+      safeLog('✅ Word ordinal resolved to CURRENT month', { 
+        input: dateString, 
+        word, 
+        day, 
+        month: currentMonth, 
+        year: currentYear, 
+        result 
+      });
       return result;
     }
   }
   
-  // Handle day numbers (1st, 2nd, 3rd, etc.) - fallback
+  // ===== Handle generic day number extraction (fallback) =====
   const dayMatch = cleanedDate.match(/(\d+)(?:st|nd|rd|th)?/);
   if (dayMatch) {
     const day = parseInt(dayMatch[1]);
@@ -485,22 +560,20 @@ function resolveDate(dateString) {
       const today = getRomeDate();
       const currentYear = today.getFullYear();
       const currentMonth = today.getMonth() + 1;
-      const currentDay = today.getDate();
       
-      let testMonth = currentMonth;
-      let testYear = currentYear;
+      // Always use current month unless explicitly specified otherwise
+      const lastDayOfMonth = getLastDayOfMonth(currentYear, currentMonth);
+      const validDay = Math.min(day, lastDayOfMonth);
       
-      // If day has passed, use next month
-      if (day < currentDay) {
-        testMonth++;
-        if (testMonth > 12) {
-          testMonth = 1;
-          testYear++;
-        }
-      }
-      
-      const result = `${testYear}-${testMonth.toString().padStart(2, '0')}-${day.toString().padStart(2, '0')}`;
-      safeLog('✅ Day number resolved', { input: dateString, day, result });
+      const result = `${currentYear}-${currentMonth.toString().padStart(2, '0')}-${validDay.toString().padStart(2, '0')}`;
+      safeLog('✅ Day number resolved to CURRENT month', { 
+        input: dateString, 
+        day, 
+        month: currentMonth, 
+        year: currentYear, 
+        result,
+        note: 'Using current month even if date is in the past'
+      });
       return result;
     }
   }
@@ -517,6 +590,33 @@ function resolveDate(dateString) {
   const result = formatInTimeZone(tomorrow, ROME_TIMEZONE, 'yyyy-MM-dd');
   safeLog('⚠️ Defaulting to tomorrow', { input: dateString, result });
   return result;
+}
+
+function findNextDayOfWeek(dayName, skipCurrentWeek = false) {
+  const dayMap = {
+    'sunday': 0, 'monday': 1, 'tuesday': 2, 'wednesday': 3,
+    'thursday': 4, 'friday': 5, 'saturday': 6,
+    'domenica': 0, 'lunedì': 1, 'lunedi': 1, 'martedì': 2, 'martedi': 2,
+    'mercoledì': 3, 'mercoledi': 3, 'giovedì': 4, 'giovedi': 4, 
+    'venerdì': 5, 'venerdi': 5, 'sabato': 6
+  };
+  
+  const targetDayNum = dayMap[dayName];
+  if (targetDayNum === undefined) {
+    throw new Error(`Unknown day name: ${dayName}`);
+  }
+  
+  const today = getRomeDate();
+  const todayDayNum = today.getDay();
+  
+  let daysToAdd = (targetDayNum - todayDayNum + 7) % 7;
+  
+  if (daysToAdd === 0 && skipCurrentWeek) {
+    daysToAdd = 7;
+  }
+  
+  const targetDate = addDays(today, daysToAdd);
+  return formatInTimeZone(targetDate, ROME_TIMEZONE, 'yyyy-MM-dd');
 }
 
 // ===== GOOGLE CALENDAR AS ONLY SOURCE OF TRUTH =====
@@ -1341,7 +1441,6 @@ app.get('/api/calendar/availability', async (req, res) => {
 });
 
 // ===== NEW: CUSTOM TIME-BASED GREETING ENDPOINT (For Retell Agent) =====
-// This endpoint can be called by the Retell AI agent to get appropriate greetings
 app.get('/api/time-greeting', (req, res) => {
   try {
     const { format } = req.query;
@@ -1376,7 +1475,6 @@ app.get('/api/time-greeting', (req, res) => {
 });
 
 // ===== NEW: POST ENDPOINT FOR TIME GREETING =====
-// This endpoint works with Retell's webhook format
 app.post('/api/time-greeting', (req, res) => {
   try {
     const { format, context } = req.body;
@@ -1385,7 +1483,6 @@ app.post('/api/time-greeting', (req, res) => {
     
     const greetingResult = get_time_greeting(format || 'italian');
     
-    // If it's from a call context, provide more conversational response
     let responseText;
     if (context === 'call_opening') {
       responseText = `${greetingResult.fullGreeting}`;
@@ -1432,7 +1529,6 @@ app.get('/api/calendar/diagnostic', async (req, res) => {
       });
     }
     
-    // Test Jazzamore calendar access
     try {
       const todayRome = getRomeDateToday();
       const startUTC = zonedTimeToUtc(`${todayRome}T00:00:00`, ROME_TIMEZONE);
@@ -1538,7 +1634,6 @@ app.post('/api/reservations', async (req, res) => {
     
     const intentResult = detectReservationIntent(conversationText, call?.transcript_object || []);
     
-    // If caller doesn't want to make a reservation, return early
     if (!intentResult.wantsReservation) {
       safeLog('No reservation intent detected', { reason: intentResult.reason });
       const greeting = getItalianTimeGreeting();
@@ -1556,7 +1651,6 @@ app.post('/api/reservations', async (req, res) => {
     const reservationId = generateReservationId();
     let reservationData = {};
     
-    // Use Post-Call Analysis if available
     let postCallData = null;
     if (call?.call_analysis?.custom_analysis_data?.reservation_details) {
       try {
@@ -1575,13 +1669,12 @@ app.post('/api/reservations', async (req, res) => {
         guests: parseInt(postCallData.guests) || 0,
         adults: parseInt(postCallData.adults) || (parseInt(postCallData.guests) || 0),
         children: parseInt(postCallData.children) || 0,
-        date: postCallData.date ? resolveDate(postCallData.date) : '', // Use resolveDate here
+        date: postCallData.date ? resolveDate(postCallData.date) : '',
         time: postCallData.time || '',
         specialRequests: postCallData.special_requests || postCallData.specialRequests || '',
         newsletter: postCallData.newsletter === 'yes' || postCallData.newsletter_opt_in === 'yes' || postCallData.newsletter === true || false
       };
     } else if (call?.transcript_object) {
-      // Fall back to transcript extraction
       reservationData = extractReservationData(call.transcript_object);
     }
     
@@ -1620,7 +1713,6 @@ app.post('/api/reservations', async (req, res) => {
       });
     }
     
-    // Check for important warnings
     const needsClarification = validation.warnings.length > 0;
     if (needsClarification) {
       safeLog('Reservation needs clarification', { warnings: validation.warnings });
@@ -1662,7 +1754,6 @@ app.post('/api/reservations', async (req, res) => {
       };
     }
     
-    // If there are conflicts, inform the user
     if (calendarCheck.hasConflicts) {
       const greeting = getItalianTimeGreeting();
       const conflictMessage = `Mi dispiace, l'orario ${time} del ${date} non è disponibile a causa di un conflitto di eventi nel calendario.`;
@@ -1707,7 +1798,6 @@ app.post('/api/reservations', async (req, res) => {
         airtableId: record[0].id
       });
       
-      // ===== TIME-AWARE RESPONSE =====
       const greeting = getItalianTimeGreeting();
       let timeAwareResponse;
       
@@ -1721,7 +1811,6 @@ app.post('/api/reservations', async (req, res) => {
         timeAwareResponse = `Perfetto! ${greeting}! Ho prenotato per ${guests} persone il ${date} alle ${time}. La tua conferma è ${reservationId}. Buona notte!`;
       }
       
-      // If calendar check failed, mention it
       if (calendarCheck.error) {
         timeAwareResponse += ` (Nota: Non è stato possibile verificare la disponibilità del calendario)`;
       }
@@ -1785,6 +1874,12 @@ app.listen(PORT, () => {
   console.log(`   • Webhook: http://localhost:${PORT}/api/reservations`);
   console.log(`\n📋 Key Features:`);
   console.log(`   ✅ Google Calendar as ONLY source of truth`);
+  console.log(`   ✅ Enhanced date resolution:`);
+  console.log(`      • "12" → February 12, 2026 (current month, even if past)`);
+  console.log(`      • "14th" → February 14, 2026 (current month)`);
+  console.log(`      • "twenty sixth" → February 26, 2026 (current month)`);
+  console.log(`      • "March 15" → March 15, 2026 (explicit month)`);
+  console.log(`      • "next month 14th" → March 14, 2026 (explicit next month)`);
   console.log(`   ✅ Custom time-greeting function for Retell agent`);
   console.log(`   ✅ No assumptions or manual mappings`);
   console.log(`   ✅ Real-time event checking`);
@@ -1796,5 +1891,5 @@ app.listen(PORT, () => {
   console.log(`   • get_time_greeting(format='italian') - Returns time-appropriate greeting`);
   console.log(`   • get_events_by_date(date) - Returns events for specific date (POST endpoint)`);
   console.log(`   • resolve_date(text) - Resolves relative dates to YYYY-MM-DD (POST endpoint)`);
-  console.log(`\n🚀 System ready! Google Calendar is now the authoritative source for all events.`);
+  console.log(`\n🚀 System ready! Google Calendar is the authoritative source for all events.`);
 });
