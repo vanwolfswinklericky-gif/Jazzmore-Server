@@ -1108,7 +1108,8 @@ app.post('/api/resolve_date', (req, res) => {
   }
 });
 
-// ===== LEGACY GET ENDPOINT (Keep for backward compatibility) =====
+// ===== LEGACY GET ENDPOINT FOR DATE RESOLUTION =====
+// Keep for backward compatibility
 app.get('/api/resolve-date', (req, res) => {
   try {
     const { text } = req.query;
@@ -1145,7 +1146,76 @@ app.get('/api/resolve-date', (req, res) => {
   }
 });
 
-// C) Get events for a specific date (AI agent will call this)
+// ===== RETELL POST ENDPOINT FOR CALENDAR EVENTS =====
+// This endpoint is designed for Retell AI agent's function calling
+app.post('/api/calendar/date', async (req, res) => {
+  try {
+    // Handle both direct {date: "..."} and Retell's {args: {date: "..."}} formats
+    const date = req.body.date || req.body.args?.date;
+    
+    console.log('📅 Calendar events for date input:', date);
+    
+    if (!date) {
+      console.log('❌ No date parameter provided');
+      return res.status(400).json({
+        success: false,
+        error: 'Missing date parameter',
+        message: 'Please provide a date (YYYY-MM-DD or relative date like "tomorrow", "the fourth", etc.)'
+      });
+    }
+    
+    safeLog('🤖 Retell AI agent requesting events via POST', { 
+      originalDate: date,
+      source: 'Google Calendar only'
+    });
+    
+    try {
+      const result = await get_events_by_date(date);
+      
+      console.log('✅ Events found:', result.events?.length || 0, 'for date:', result.resolvedDate);
+      
+      // Return in format expected by Retell AI agent
+      res.json({
+        success: result.success,
+        date: result.resolvedDate,
+        originalDate: date,
+        eventCount: result.events?.length || 0,
+        events: result.events || [],
+        message: result.message,
+        source: result.source
+      });
+      
+    } catch (calendarError) {
+      safeLog('Calendar error in POST /api/calendar/date', { error: calendarError.message }, 'error');
+      console.log('❌ Calendar error:', calendarError.message);
+      
+      res.status(500).json({
+        success: false,
+        error: 'Failed to fetch events from Google Calendar',
+        message: calendarError.message,
+        date: date,
+        eventCount: 0,
+        events: []
+      });
+    }
+    
+  } catch (error) {
+    safeLog('Error in POST /api/calendar/date endpoint', { error: error.message }, 'error');
+    console.log('❌ Error:', error.message);
+    
+    res.status(500).json({
+      success: false,
+      error: 'Failed to process request',
+      message: error.message,
+      date: req.body.date || req.body.args?.date,
+      eventCount: 0,
+      events: []
+    });
+  }
+});
+
+// ===== LEGACY GET ENDPOINT FOR CALENDAR EVENTS =====
+// Keep for backward compatibility
 app.get('/api/calendar/date', async (req, res) => {
   try {
     let { date } = req.query;
@@ -1158,7 +1228,7 @@ app.get('/api/calendar/date', async (req, res) => {
       });
     }
     
-    safeLog('🤖 AI Agent requested events for date', { 
+    safeLog('🤖 AI Agent requested events for date via GET', { 
       originalDate: date,
       source: 'Google Calendar only'
     });
@@ -1181,7 +1251,7 @@ app.get('/api/calendar/date', async (req, res) => {
       });
       
     } catch (calendarError) {
-      safeLog('Calendar error in /api/calendar/date', { error: calendarError.message }, 'error');
+      safeLog('Calendar error in GET /api/calendar/date', { error: calendarError.message }, 'error');
       
       res.status(500).json({
         success: false,
@@ -1193,7 +1263,7 @@ app.get('/api/calendar/date', async (req, res) => {
     }
     
   } catch (error) {
-    safeLog('Error in calendar/date endpoint', { error: error.message }, 'error');
+    safeLog('Error in GET calendar/date endpoint', { error: error.message }, 'error');
     
     res.status(500).json({
       success: false,
@@ -1705,9 +1775,10 @@ app.listen(PORT, () => {
   console.log(`   • Time in Rome: http://localhost:${PORT}/api/now`);
   console.log(`   • Resolve Date (GET): http://localhost:${PORT}/api/resolve-date?text=tomorrow`);
   console.log(`   • Resolve Date (POST): http://localhost:${PORT}/api/resolve_date (Retell format)`);
-  console.log(`   • Calendar Events: http://localhost:${PORT}/api/calendar/date?date=tomorrow`);
+  console.log(`   • Calendar Events (GET): http://localhost:${PORT}/api/calendar/date?date=tomorrow`);
+  console.log(`   • Calendar Events (POST): http://localhost:${PORT}/api/calendar/date (Retell format)`);
   console.log(`   • Availability: http://localhost:${PORT}/api/calendar/availability?date=tomorrow&time=20:00`);
-  console.log(`   • Time Greeting (NEW): http://localhost:${PORT}/api/time-greeting`);
+  console.log(`   • Time Greeting: http://localhost:${PORT}/api/time-greeting`);
   console.log(`   • Time Greeting POST: http://localhost:${PORT}/api/time-greeting (POST with format parameter)`);
   console.log(`   • Diagnostic: http://localhost:${PORT}/api/calendar/diagnostic`);
   console.log(`   • Test: http://localhost:${PORT}/api/test/google-calendar`);
@@ -1723,7 +1794,7 @@ app.listen(PORT, () => {
   console.log(`   ✅ PII protection in logs`);
   console.log(`\n🤖 Retell Agent Custom Functions:`);
   console.log(`   • get_time_greeting(format='italian') - Returns time-appropriate greeting`);
-  console.log(`   • get_events_by_date(date) - Returns events for specific date`);
+  console.log(`   • get_events_by_date(date) - Returns events for specific date (POST endpoint)`);
   console.log(`   • resolve_date(text) - Resolves relative dates to YYYY-MM-DD (POST endpoint)`);
   console.log(`\n🚀 System ready! Google Calendar is now the authoritative source for all events.`);
 });
