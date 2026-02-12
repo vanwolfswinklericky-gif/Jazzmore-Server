@@ -374,7 +374,110 @@ function resolveDate(dateString) {
     return result;
   }
   
-  // Handle day numbers (1st, 2nd, 3rd, etc.)
+  // Handle ordinal numbers (1st, 2nd, 3rd, etc.) - ENHANCED
+  const ordinalMatch = cleanedDate.match(/(?:the\s+)?(\d{1,2})(?:st|nd|rd|th)?(?:\s+of)?(?:\s+this\s+month)?/i);
+  if (ordinalMatch) {
+    const day = parseInt(ordinalMatch[1]);
+    if (day >= 1 && day <= 31) {
+      const today = getRomeDate();
+      const currentYear = today.getFullYear();
+      const currentMonth = today.getMonth() + 1;
+      const currentDay = today.getDate();
+      
+      let testMonth = currentMonth;
+      let testYear = currentYear;
+      
+      // If day has passed, use next month
+      if (day < currentDay) {
+        testMonth++;
+        if (testMonth > 12) {
+          testMonth = 1;
+          testYear++;
+        }
+      }
+      
+      // Check if the day exists in the month
+      const lastDayOfMonth = new Date(testYear, testMonth, 0).getDate();
+      const validDay = Math.min(day, lastDayOfMonth);
+      
+      const result = `${testYear}-${testMonth.toString().padStart(2, '0')}-${validDay.toString().padStart(2, '0')}`;
+      safeLog('✅ Ordinal date resolved', { input: dateString, day, month: testMonth, year: testYear, result });
+      return result;
+    }
+  }
+  
+  // Handle "the 13th", "26th", etc. (without "of this month")
+  const simpleOrdinalMatch = cleanedDate.match(/^(\d{1,2})(?:st|nd|rd|th)$/);
+  if (simpleOrdinalMatch) {
+    const day = parseInt(simpleOrdinalMatch[1]);
+    if (day >= 1 && day <= 31) {
+      const today = getRomeDate();
+      const currentYear = today.getFullYear();
+      const currentMonth = today.getMonth() + 1;
+      const currentDay = today.getDate();
+      
+      let testMonth = currentMonth;
+      let testYear = currentYear;
+      
+      if (day < currentDay) {
+        testMonth++;
+        if (testMonth > 12) {
+          testMonth = 1;
+          testYear++;
+        }
+      }
+      
+      const lastDayOfMonth = new Date(testYear, testMonth, 0).getDate();
+      const validDay = Math.min(day, lastDayOfMonth);
+      
+      const result = `${testYear}-${testMonth.toString().padStart(2, '0')}-${validDay.toString().padStart(2, '0')}`;
+      safeLog('✅ Simple ordinal resolved', { input: dateString, day, result });
+      return result;
+    }
+  }
+  
+  // Handle "twenty sixth", "twenty-sixth", "twenty sixth of this month"
+  const wordNumberMap = {
+    'first': 1, 'second': 2, 'third': 3, 'fourth': 4, 'fifth': 5,
+    'sixth': 6, 'seventh': 7, 'eighth': 8, 'ninth': 9, 'tenth': 10,
+    'eleventh': 11, 'twelfth': 12, 'thirteenth': 13, 'fourteenth': 14, 'fifteenth': 15,
+    'sixteenth': 16, 'seventeenth': 17, 'eighteenth': 18, 'nineteenth': 19, 'twentieth': 20,
+    'twenty-first': 21, 'twenty first': 21, 'twenty-second': 22, 'twenty second': 22,
+    'twenty-third': 23, 'twenty third': 23, 'twenty-fourth': 24, 'twenty fourth': 24,
+    'twenty-fifth': 25, 'twenty fifth': 25, 'twenty-sixth': 26, 'twenty sixth': 26,
+    'twenty-seventh': 27, 'twenty seventh': 27, 'twenty-eighth': 28, 'twenty eighth': 28,
+    'twenty-ninth': 29, 'twenty ninth': 29, 'thirtieth': 30, 'thirty-first': 31, 'thirty first': 31
+  };
+  
+  // Check for word-based ordinals
+  for (const [word, day] of Object.entries(wordNumberMap)) {
+    if (cleanedDate.includes(word)) {
+      const today = getRomeDate();
+      const currentYear = today.getFullYear();
+      const currentMonth = today.getMonth() + 1;
+      const currentDay = today.getDate();
+      
+      let testMonth = currentMonth;
+      let testYear = currentYear;
+      
+      if (day < currentDay) {
+        testMonth++;
+        if (testMonth > 12) {
+          testMonth = 1;
+          testYear++;
+        }
+      }
+      
+      const lastDayOfMonth = new Date(testYear, testMonth, 0).getDate();
+      const validDay = Math.min(day, lastDayOfMonth);
+      
+      const result = `${testYear}-${testMonth.toString().padStart(2, '0')}-${validDay.toString().padStart(2, '0')}`;
+      safeLog('✅ Word ordinal resolved', { input: dateString, word, day, result });
+      return result;
+    }
+  }
+  
+  // Handle day numbers (1st, 2nd, 3rd, etc.) - fallback
   const dayMatch = cleanedDate.match(/(\d+)(?:st|nd|rd|th)?/);
   if (dayMatch) {
     const day = parseInt(dayMatch[1]);
@@ -958,7 +1061,54 @@ app.get('/api/now', (req, res) => {
   }
 });
 
-// B) Date resolution endpoint
+// ===== RETELL POST ENDPOINT FOR DATE RESOLUTION =====
+// This endpoint is designed for Retell AI agent's function calling
+app.post('/api/resolve_date', (req, res) => {
+  try {
+    // Handle both direct {text: "..."} and Retell's {args: {text: "..."}} formats
+    const text = req.body.text || req.body.args?.text || req.body.date || req.body.args?.date;
+    
+    console.log('✅ resolve_date input:', text);
+    
+    if (!text) {
+      console.log('❌ No text parameter provided');
+      return res.status(400).json({
+        error: 'Missing text parameter',
+        message: 'Please provide a date text like "the 13th", "tomorrow", "next friday", etc.'
+      });
+    }
+    
+    // Get current Rome date for context
+    const todayInRome = getRomeDateToday();
+    console.log('📍 Rome today:', todayInRome);
+    
+    // Resolve the date using our existing resolveDate function
+    const resolvedDate = resolveDate(text);
+    
+    console.log('✅ Resolved:', text, '→', resolvedDate);
+    
+    // Return in format expected by Retell AI agent
+    res.json({ 
+      resolvedDate: resolvedDate,
+      // Additional helpful fields for debugging
+      originalText: text,
+      todayInRome: todayInRome,
+      timezone: ROME_TIMEZONE
+    });
+    
+  } catch (error) {
+    safeLog('Error in /api/resolve_date endpoint', { error: error.message }, 'error');
+    console.log('❌ Error:', error.message);
+    
+    res.status(500).json({
+      error: 'Failed to resolve date',
+      message: error.message,
+      resolvedDate: getRomeDateToday() // Fallback to today
+    });
+  }
+});
+
+// ===== LEGACY GET ENDPOINT (Keep for backward compatibility) =====
 app.get('/api/resolve-date', (req, res) => {
   try {
     const { text } = req.query;
@@ -1553,7 +1703,8 @@ app.listen(PORT, () => {
   console.log(`   • Status: ✅ ACTIVE - SINGLE SOURCE OF TRUTH`);
   console.log(`\n🌐 API Endpoints:`);
   console.log(`   • Time in Rome: http://localhost:${PORT}/api/now`);
-  console.log(`   • Resolve Date: http://localhost:${PORT}/api/resolve-date?text=tomorrow`);
+  console.log(`   • Resolve Date (GET): http://localhost:${PORT}/api/resolve-date?text=tomorrow`);
+  console.log(`   • Resolve Date (POST): http://localhost:${PORT}/api/resolve_date (Retell format)`);
   console.log(`   • Calendar Events: http://localhost:${PORT}/api/calendar/date?date=tomorrow`);
   console.log(`   • Availability: http://localhost:${PORT}/api/calendar/availability?date=tomorrow&time=20:00`);
   console.log(`   • Time Greeting (NEW): http://localhost:${PORT}/api/time-greeting`);
@@ -1573,6 +1724,6 @@ app.listen(PORT, () => {
   console.log(`\n🤖 Retell Agent Custom Functions:`);
   console.log(`   • get_time_greeting(format='italian') - Returns time-appropriate greeting`);
   console.log(`   • get_events_by_date(date) - Returns events for specific date`);
-  console.log(`   • resolve_date(text) - Resolves relative dates to YYYY-MM-DD`);
+  console.log(`   • resolve_date(text) - Resolves relative dates to YYYY-MM-DD (POST endpoint)`);
   console.log(`\n🚀 System ready! Google Calendar is now the authoritative source for all events.`);
 });
