@@ -2310,7 +2310,7 @@ app.post('/api/reservations', async (req, res) => {
       "Show-Only Count": 0,
       "Kids Count": parseInt(children) || 0,
       "Special Requests": reservationData.specialRequests || '',
-      "Reservation Status": "Pending",
+      "Reservation Status": "Confirmed",
       "Reservation Type": "Dinner + Show",
       "Newsletter Opt-In": newsletter || false
     };
