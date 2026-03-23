@@ -13,6 +13,9 @@ const { addDays, startOfDay, endOfDay, format, isBefore, isAfter, addMonths } = 
 const app = express();
 const PORT = process.env.PORT || 3000;
 
+// ===== MAKE.COM WEBHOOK URL =====
+const MAKE_WEBHOOK_URL = 'https://hook.eu1.make.com/6u8gmb2j7s84gtpqw5j8o6es9u8l7mu6';
+
 // ===== ENVIRONMENT VALIDATION =====
 function validateEnvironment() {
   const requiredEnvVars = [
@@ -210,6 +213,49 @@ function formatTimeForAirtable(timeString, dateString) {
     const fallbackDateTime = `${dateString}T19:30:00`;
     const utcFallback = zonedTimeToUtc(fallbackDateTime, ROME_TIMEZONE);
     return utcFallback.toISOString();
+  }
+}
+
+// ===== FUNCTION TO SEND WEBHOOK TO MAKE.COM =====
+async function sendToMakeWebhook(reservationData, reservationId) {
+  try {
+    const payload = {
+      reservationId: reservationId,
+      firstName: reservationData.firstName || '',
+      lastName: reservationData.lastName || '',
+      phone: reservationData.phone || '',
+      date: reservationData.date,
+      time: reservationData.time,
+      guests: reservationData.guests,
+      adults: reservationData.adults || reservationData.guests,
+      children: reservationData.children || 0,
+      specialRequests: reservationData.specialRequests || 'No special requests',
+      newsletter: reservationData.newsletter || false,
+      whatsappConfirmation: reservationData.whatsapp_confirmation || false
+    };
+
+    const response = await fetch(MAKE_WEBHOOK_URL, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify(payload)
+    });
+
+    if (response.ok) {
+      safeLog('✅ Webhook sent to Make.com successfully', { reservationId });
+    } else {
+      safeLog('⚠️ Webhook to Make.com failed', { 
+        reservationId, 
+        status: response.status,
+        statusText: response.statusText 
+      }, 'warn');
+    }
+  } catch (error) {
+    safeLog('❌ Error sending webhook to Make.com', { 
+      reservationId, 
+      error: error.message 
+    }, 'error');
   }
 }
 
@@ -2214,7 +2260,8 @@ app.post('/api/reservations', async (req, res) => {
         date: postCallData.date ? convertDayToDate(postCallData.date) : new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString().split('T')[0],
         time: postCallData.time || '22:00',
         specialRequests: postCallData.special_requests || postCallData.specialRequests || 'No special requests',
-        newsletter: postCallData.newsletter === 'yes' || postCallData.newsletter_opt_in === 'yes' || postCallData.newsletter === true || false
+        newsletter: postCallData.newsletter === 'yes' || postCallData.newsletter_opt_in === 'yes' || postCallData.newsletter === true || false,
+        whatsapp_confirmation: postCallData.whatsapp_confirmation === 'yes' || postCallData.whatsapp === 'yes' || false
       };
       
       console.log('📋 Extracted from Post-Call Analysis:', reservationData);
@@ -2235,13 +2282,14 @@ app.post('/api/reservations', async (req, res) => {
         children: 0,
         phone: '',
         specialRequests: 'No special requests',
-        newsletter: false
+        newsletter: false,
+        whatsapp_confirmation: false
       };
     }
     
     console.log('📋 Final reservation data:', reservationData);
     
-    const { firstName, lastName, date, time, guests, adults, children, phone, specialRequests, newsletter } = reservationData;
+    const { firstName, lastName, date, time, guests, adults, children, phone, specialRequests, newsletter, whatsapp_confirmation } = reservationData;
     
     // ===== DATA VALIDATION =====
     let formattedPhone = phone;
@@ -2312,7 +2360,8 @@ app.post('/api/reservations', async (req, res) => {
       "Special Requests": reservationData.specialRequests || '',
       "Reservation Status": "Confirmed",
       "Reservation Type": "Dinner + Show",
-      "Newsletter Opt-In": newsletter || false
+      "Newsletter Opt-In": newsletter || false,
+      "WhatsApp Confirmation": whatsapp_confirmation || false
     };
     
     try {
@@ -2326,7 +2375,28 @@ app.post('/api/reservations', async (req, res) => {
       console.log('Phone:', formattedPhone || 'Not provided');
       console.log('Special Requests:', reservationData.specialRequests);
       console.log('Newsletter:', newsletter);
+      console.log('WhatsApp Confirmation:', whatsapp_confirmation);
       console.log('Airtable Record ID:', record[0].id);
+      
+      // ===== SEND WEBHOOK TO MAKE.COM FOR INSTANT WHATSAPP =====
+      // Only send if user opted in for WhatsApp confirmation
+      if (whatsapp_confirmation === true || whatsapp_confirmation === 'yes') {
+        await sendToMakeWebhook({
+          firstName: firstName,
+          lastName: lastName,
+          phone: formattedPhone,
+          date: validatedDate,
+          time: time,
+          guests: guests,
+          adults: adults,
+          children: children,
+          specialRequests: reservationData.specialRequests,
+          newsletter: newsletter,
+          whatsapp_confirmation: whatsapp_confirmation
+        }, reservationId);
+      } else {
+        console.log('ℹ️ WhatsApp confirmation not requested, skipping webhook');
+      }
       
       const greeting = getItalianTimeGreeting();
       let timeAwareResponse;
@@ -2441,10 +2511,12 @@ app.listen(PORT, () => {
   console.log(`   ✅ Rome timezone-aware (Europe/Rome)`);
   console.log(`   ✅ Airtable integration for storage`);
   console.log(`   ✅ PII protection in logs`);
+  console.log(`   ✅ MAKE.COM WEBHOOK INTEGRATION for instant WhatsApp`);
   console.log(`\n🤖 Retell Agent Custom Functions:`);
   console.log(`   • get_time_greeting(format='italian') - Returns time-appropriate greeting`);
   console.log(`   • get_events_by_date(date) - Returns events for specific date (POST endpoint)`);
   console.log(`   • resolve_date(text) - Resolves relative dates to YYYY-MM-DD (POST endpoint)`);
   console.log(`\n🚀 System ready! Google Calendar is the authoritative source for all events.`);
   console.log(`🎯 Enhanced reservation detection and extraction is ACTIVE!`);
+  console.log(`📨 Webhook will send to Make.com when WhatsApp confirmation is YES`);
 });
