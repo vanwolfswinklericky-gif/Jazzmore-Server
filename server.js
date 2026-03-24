@@ -218,6 +218,11 @@ function formatTimeForAirtable(timeString, dateString) {
 
 // ===== FUNCTION TO SEND WEBHOOK TO MAKE.COM =====
 async function sendToMakeWebhook(reservationData, reservationId) {
+  // DEBUG: Log what's being received
+  console.log('🔵 sendToMakeWebhook RECEIVED:');
+  console.log('reservationId:', reservationId);
+  console.log('reservationData:', JSON.stringify(reservationData, null, 2));
+  
   try {
     const payload = {
       reservationId: reservationId,
@@ -233,6 +238,42 @@ async function sendToMakeWebhook(reservationData, reservationId) {
       newsletter: reservationData.newsletter || false,
       whatsappConfirmation: reservationData.whatsapp_confirmation || false
     };
+
+    // DEBUG: Log what's being sent
+    console.log('📤 SENDING TO MAKE.COM:');
+    console.log('Payload size:', JSON.stringify(payload).length, 'bytes');
+    console.log('Payload:', JSON.stringify(payload, null, 2));
+
+    const response = await fetch(MAKE_WEBHOOK_URL, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify(payload)
+    });
+
+    const responseText = await response.text();
+    console.log('📨 MAKE.COM RESPONSE:', response.status, responseText);
+
+    if (response.ok) {
+      safeLog('✅ Webhook sent to Make.com successfully', { reservationId });
+    } else {
+      safeLog('⚠️ Webhook to Make.com failed', { 
+        reservationId, 
+        status: response.status,
+        statusText: response.statusText,
+        responseBody: responseText
+      }, 'warn');
+    }
+  } catch (error) {
+    console.error('❌ Webhook error:', error.message);
+    safeLog('❌ Error sending webhook to Make.com', { 
+      reservationId, 
+      error: error.message,
+      stack: error.stack
+    }, 'error');
+  }
+}
 
     const response = await fetch(MAKE_WEBHOOK_URL, {
       method: 'POST',
