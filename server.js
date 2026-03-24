@@ -2346,6 +2346,18 @@ app.post('/api/reservations', async (req, res) => {
     console.log('💾 Saving to Airtable...');
     const arrivalTimeISO = formatTimeForAirtable(time, validatedDate);
     
+    // Convert boolean values to "Yes"/"No" for Airtable Single Select fields
+    const whatsappValue = (whatsapp_confirmation === true || 
+                           whatsapp_confirmation === 'yes' || 
+                           whatsapp_confirmation === 'true') ? "Yes" : "No";
+    
+    const newsletterValue = (newsletter === true || 
+                             newsletter === 'yes' || 
+                             newsletter === 'true') ? "Yes" : "No";
+    
+    console.log('📝 WhatsApp Value for Airtable:', whatsappValue);
+    console.log('📝 Newsletter Value for Airtable:', newsletterValue);
+    
     const airtableFields = {
       "Reservation ID": reservationId,
       "First Name": firstName || '',
@@ -2360,8 +2372,8 @@ app.post('/api/reservations', async (req, res) => {
       "Special Requests": reservationData.specialRequests || '',
       "Reservation Status": "Confirmed",
       "Reservation Type": "Dinner + Show",
-      "Newsletter Opt-In": newsletter || false,
-      "Whatsapp Confirmation": whatsapp_confirmation === true ? true : false
+      "Newsletter Opt-In": newsletterValue,
+      "Whatsapp Confirmation": whatsappValue
     };
     
     try {
@@ -2374,9 +2386,11 @@ app.post('/api/reservations', async (req, res) => {
       console.log('Guests:', guests, `(${adults} adults + ${children} children)`);
       console.log('Phone:', formattedPhone || 'Not provided');
       console.log('Special Requests:', reservationData.specialRequests);
-      console.log('Newsletter:', newsletter);
-      console.log('Whatsapp Confirmation:', whatsapp_confirmation);
+      console.log('Newsletter:', newsletterValue);
+      console.log('Whatsapp Confirmation:', whatsappValue);
       console.log('Airtable Record ID:', record[0].id);
+      
+      
       
       // ===== SEND WEBHOOK TO MAKE.COM FOR INSTANT WHATSAPP =====
       // Send webhook if user opted in for WhatsApp confirmation
