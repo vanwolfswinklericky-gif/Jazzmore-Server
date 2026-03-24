@@ -256,50 +256,24 @@ async function sendToMakeWebhook(reservationData, reservationId) {
     console.log('📨 MAKE.COM RESPONSE:', response.status, responseText);
 
     if (response.ok) {
-      safeLog('✅ Webhook sent to Make.com successfully', { reservationId });
+      console.log('✅ Webhook sent to Make.com successfully', { reservationId });
     } else {
-      safeLog('⚠️ Webhook to Make.com failed', { 
+      console.log('⚠️ Webhook to Make.com failed', { 
         reservationId, 
         status: response.status,
         statusText: response.statusText,
         responseBody: responseText
-      }, 'warn');
+      });
     }
   } catch (error) {
     console.error('❌ Webhook error:', error.message);
-    safeLog('❌ Error sending webhook to Make.com', { 
+    console.error('❌ Error sending webhook to Make.com', { 
       reservationId, 
       error: error.message,
       stack: error.stack
-    }, 'error');
-  }
-}
-
-    const response = await fetch(MAKE_WEBHOOK_URL, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify(payload)
     });
-
-    if (response.ok) {
-      safeLog('✅ Webhook sent to Make.com successfully', { reservationId });
-    } else {
-      safeLog('⚠️ Webhook to Make.com failed', { 
-        reservationId, 
-        status: response.status,
-        statusText: response.statusText 
-      }, 'warn');
-    }
-  } catch (error) {
-    safeLog('❌ Error sending webhook to Make.com', { 
-      reservationId, 
-      error: error.message 
-    }, 'error');
   }
 }
-
 // ===== GOOGLE CALENDAR INTEGRATION =====
 const SCOPES = ['https://www.googleapis.com/auth/calendar.readonly'];
 const JAZZAMORE_CALENDAR_ID = 'jazzamorecesena@gmail.com'; // ONLY SOURCE OF TRUTH
