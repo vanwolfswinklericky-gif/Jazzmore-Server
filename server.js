@@ -2361,7 +2361,7 @@ app.post('/api/reservations', async (req, res) => {
       "Reservation Status": "Confirmed",
       "Reservation Type": "Dinner + Show",
       "Newsletter Opt-In": newsletter || false,
-      "WhatsApp Confirmation": whatsapp_confirmation || false
+      "Whatsapp Confirmation": whatsapp_confirmation === true ? true : false
     };
     
     try {
@@ -2375,12 +2375,13 @@ app.post('/api/reservations', async (req, res) => {
       console.log('Phone:', formattedPhone || 'Not provided');
       console.log('Special Requests:', reservationData.specialRequests);
       console.log('Newsletter:', newsletter);
-      console.log('WhatsApp Confirmation:', whatsapp_confirmation);
+      console.log('Whatsapp Confirmation:', whatsapp_confirmation);
       console.log('Airtable Record ID:', record[0].id);
       
       // ===== SEND WEBHOOK TO MAKE.COM FOR INSTANT WHATSAPP =====
-      // Only send if user opted in for WhatsApp confirmation
+      // Send webhook if user opted in for WhatsApp confirmation
       if (whatsapp_confirmation === true || whatsapp_confirmation === 'yes') {
+        console.log('📨 Sending webhook to Make.com for WhatsApp confirmation');
         await sendToMakeWebhook({
           firstName: firstName,
           lastName: lastName,
