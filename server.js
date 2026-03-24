@@ -2342,21 +2342,22 @@ app.post('/api/reservations', async (req, res) => {
       };
     }
     
-    // ===== SAVE TO AIRTABLE =====
+   // ===== SAVE TO AIRTABLE =====
     console.log('💾 Saving to Airtable...');
     const arrivalTimeISO = formatTimeForAirtable(time, validatedDate);
     
-    // Convert boolean values to "Yes"/"No" for Airtable Single Select fields
+    // Convert WhatsApp confirmation to "Yes"/"No" for Single Select field
     const whatsappValue = (whatsapp_confirmation === true || 
                            whatsapp_confirmation === 'yes' || 
                            whatsapp_confirmation === 'true') ? "Yes" : "No";
     
+    // Newsletter Opt-In is a checkbox, keep as boolean
     const newsletterValue = (newsletter === true || 
                              newsletter === 'yes' || 
-                             newsletter === 'true') ? "Yes" : "No";
+                             newsletter === 'true') ? true : false;
     
-    console.log('📝 WhatsApp Value for Airtable:', whatsappValue);
-    console.log('📝 Newsletter Value for Airtable:', newsletterValue);
+    console.log('📝 WhatsApp Value for Airtable (Single Select):', whatsappValue);
+    console.log('📝 Newsletter Value for Airtable (Checkbox):', newsletterValue);
     
     const airtableFields = {
       "Reservation ID": reservationId,
@@ -2372,8 +2373,8 @@ app.post('/api/reservations', async (req, res) => {
       "Special Requests": reservationData.specialRequests || '',
       "Reservation Status": "Confirmed",
       "Reservation Type": "Dinner + Show",
-      "Newsletter Opt-In": newsletterValue,
-      "Whatsapp Confirmation": whatsappValue
+      "Newsletter Opt-In": newsletterValue,        // Checkbox → boolean
+      "Whatsapp Confirmation": whatsappValue       // Single Select → "Yes"/"No"
     };
     
     try {
@@ -2386,8 +2387,8 @@ app.post('/api/reservations', async (req, res) => {
       console.log('Guests:', guests, `(${adults} adults + ${children} children)`);
       console.log('Phone:', formattedPhone || 'Not provided');
       console.log('Special Requests:', reservationData.specialRequests);
-      console.log('Newsletter:', newsletterValue);
-      console.log('Whatsapp Confirmation:', whatsappValue);
+      console.log('Newsletter Opt-In (Checkbox):', newsletterValue);
+      console.log('Whatsapp Confirmation (Single Select):', whatsappValue);
       console.log('Airtable Record ID:', record[0].id);
       
       
@@ -2403,11 +2404,7 @@ app.post('/api/reservations', async (req, res) => {
           date: validatedDate,
           time: time,
           guests: guests,
-          adults: adults,
-          children: children,
-          specialRequests: reservationData.specialRequests,
-          newsletter: newsletter,
-          whatsapp_confirmation: whatsapp_confirmation
+          specialRequests: reservationData.specialRequests, 
         }, reservationId);
       } else {
         console.log('ℹ️ WhatsApp confirmation not requested, skipping webhook');
