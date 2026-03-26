@@ -224,12 +224,20 @@ async function sendToMakeWebhook(reservationData, reservationId) {
   console.log('reservationData:', JSON.stringify(reservationData, null, 2));
   
   try {
+    // Convert date from YYYY-MM-DD to DD-MM-YYYY for WhatsApp
+    let formattedDate = reservationData.date;
+    if (reservationData.date && reservationData.date.match(/^\d{4}-\d{2}-\d{2}$/)) {
+      const [year, month, day] = reservationData.date.split('-');
+      formattedDate = `${day}-${month}-${year}`;
+      console.log('📅 Date format converted:', reservationData.date, '→', formattedDate);
+    }
+    
     const payload = {
       reservationId: reservationId,
       firstName: reservationData.firstName || '',
       lastName: reservationData.lastName || '',
       phone: reservationData.phone || '',
-      date: reservationData.date,
+      date: formattedDate, // Now in DD-MM-YYYY format
       time: reservationData.time,
       guests: reservationData.guests,
       adults: reservationData.adults || reservationData.guests,
