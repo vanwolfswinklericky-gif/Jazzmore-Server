@@ -2414,12 +2414,24 @@ app.post('/api/reservations', async (req, res) => {
     console.log('📝 WhatsApp Value for Airtable (Single Select):', whatsappValue);
     console.log('📝 Newsletter Value for Airtable (Checkbox):', newsletterValue);
     
+    // ✅ CRITICAL FIX: Convert date from DD-MM-YYYY to YYYY-MM-DD for Airtable
+    let airtableDate = validatedDate;
+    if (validatedDate && validatedDate.match(/^\d{2}-\d{2}-\d{4}$/)) {
+      const [day, month, year] = validatedDate.split('-');
+      airtableDate = `${year}-${month}-${day}`;
+      console.log('📅 Date converted for Airtable:', validatedDate, '→', airtableDate);
+    } else if (validatedDate && validatedDate.match(/^\d{4}-\d{2}-\d{2}$/)) {
+      // If already in YYYY-MM-DD, keep as is
+      airtableDate = validatedDate;
+      console.log('📅 Date already in Airtable format:', airtableDate);
+    }
+    
     const airtableFields = {
       "Reservation ID": reservationId,
       "First Name": firstName || '',
       "Last Name": lastName || '',
       "Phone Number": formattedPhone || '',
-      "Reservation Date": validatedDate,
+      "Reservation Date": airtableDate,  // ✅ Now in YYYY-MM-DD format for Airtable
       "Arrival Time": arrivalTimeISO,
       "Total People": parseInt(guests) || 2,
       "Dinner Count": parseInt(adults) || 2,
