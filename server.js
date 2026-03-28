@@ -1528,36 +1528,52 @@ function extractFromConversationFlow(conversation) {
         }
       }
       
+      // ===== FIXED PHONE NUMBER EXTRACTION =====
       // Capture phone number with comprehensive digit conversion
       if (phoneAsked) {
-        const digits = content
-          .replace(/zero/gi, '0')
-          .replace(/one/gi, '1')
-          .replace(/two/gi, '2')
-          .replace(/three/gi, '3')
-          .replace(/four/gi, '4')
-          .replace(/five/gi, '5')
-          .replace(/six/gi, '6')
-          .replace(/seven/gi, '7')
-          .replace(/eight/gi, '8')
-          .replace(/nine/gi, '9')
-          .replace(/uno/gi, '1')
-          .replace(/due/gi, '2')
-          .replace(/tre/gi, '3')
-          .replace(/quattro/gi, '4')
-          .replace(/cinque/gi, '5')
-          .replace(/sei/gi, '6')
-          .replace(/sette/gi, '7')
-          .replace(/otto/gi, '8')
-          .replace(/nove/gi, '9')
-          .replace(/\D/g, '');
+        // Split into words to catch each spoken number individually
+        const words = lowerContent.split(/\s+/);
         
-        if (digits.length > 0) {
-          phoneDigits += digits;
-          console.log(`📞 Phone digits collected: ${phoneDigits}`);
+        let foundDigits = '';
+        
+        for (const word of words) {
+          // Italian number words
+          if (word === 'zero' || word === '0') foundDigits += '0';
+          else if (word === 'uno' || word === '1') foundDigits += '1';
+          else if (word === 'due' || word === '2') foundDigits += '2';
+          else if (word === 'tre' || word === '3') foundDigits += '3';
+          else if (word === 'quattro' || word === '4') foundDigits += '4';
+          else if (word === 'cinque' || word === '5') foundDigits += '5';
+          else if (word === 'sei' || word === '6') foundDigits += '6';
+          else if (word === 'sette' || word === '7') foundDigits += '7';
+          else if (word === 'otto' || word === '8') foundDigits += '8';
+          else if (word === 'nove' || word === '9') foundDigits += '9';
+          
+          // English number words (for mixed language)
+          else if (word === 'one') foundDigits += '1';
+          else if (word === 'two') foundDigits += '2';
+          else if (word === 'three') foundDigits += '3';
+          else if (word === 'four') foundDigits += '4';
+          else if (word === 'five') foundDigits += '5';
+          else if (word === 'six') foundDigits += '6';
+          else if (word === 'seven') foundDigits += '7';
+          else if (word === 'eight') foundDigits += '8';
+          else if (word === 'nine') foundDigits += '9';
         }
         
-        if (phoneDigits.length >= 10) {
+        // Also check for consecutive digits in the raw content (like "3351340532")
+        const rawDigits = content.replace(/\D/g, '');
+        if (rawDigits.length > foundDigits.length) {
+          foundDigits = rawDigits;
+        }
+        
+        if (foundDigits.length > 0) {
+          phoneDigits += foundDigits;
+          console.log(`📞 Phone digits collected: ${phoneDigits} (from: "${content}")`);
+        }
+        
+        // Stop asking after collecting 9-12 digits (Italian numbers are 9-10 digits after country code)
+        if (phoneDigits.length >= 9) {
           phoneAsked = false;
         }
       }
@@ -1586,8 +1602,9 @@ function extractFromConversationFlow(conversation) {
     }
   }
   
-  if (phoneDigits.length >= 7) {
-    data.phone = '+39' + phoneDigits.substring(0, 10);
+  // ===== FIXED: Keep ALL digits, don't truncate =====
+  if (phoneDigits.length >= 9) {
+    data.phone = '+39' + phoneDigits;
     console.log(`✅ Processed phone number: ${data.phone}`);
   }
   
@@ -2348,11 +2365,17 @@ app.post('/api/reservations', async (req, res) => {
     
     const { firstName, lastName, date, time, guests, adults, children, phone, specialRequests, newsletter, whatsapp_confirmation } = reservationData;
     
+    // ===== FIXED PHONE NUMBER FORMATTING - KEEP ALL DIGITS =====
     let formattedPhone = phone;
-    if (phone && phone.replace(/\D/g, '').length >= 10) {
-        const digits = phone.replace(/\D/g, '');
-        formattedPhone = digits.startsWith('39') ? `+${digits}` : `+39${digits.substring(0, 10)}`;
-        console.log(`✅ Formatted phone: ${formattedPhone}`);
+    if (phone && phone.replace(/\D/g, '').length >= 9) {
+      const digits = phone.replace(/\D/g, '');
+      // Keep ALL digits, don't truncate
+      if (digits.startsWith('39')) {
+        formattedPhone = `+${digits}`;
+      } else {
+        formattedPhone = `+39${digits}`;
+      }
+      console.log(`✅ Formatted phone: ${formattedPhone}`);
     }
     
     let validatedDate = date;
@@ -2414,14 +2437,13 @@ app.post('/api/reservations', async (req, res) => {
     console.log('📝 WhatsApp Value for Airtable (Single Select):', whatsappValue);
     console.log('📝 Newsletter Value for Airtable (Checkbox):', newsletterValue);
     
-    // ✅ CRITICAL FIX: Convert date from DD-MM-YYYY to YYYY-MM-DD for Airtable
+    // Convert date from DD-MM-YYYY to YYYY-MM-DD for Airtable
     let airtableDate = validatedDate;
     if (validatedDate && validatedDate.match(/^\d{2}-\d{2}-\d{4}$/)) {
       const [day, month, year] = validatedDate.split('-');
       airtableDate = `${year}-${month}-${day}`;
       console.log('📅 Date converted for Airtable:', validatedDate, '→', airtableDate);
     } else if (validatedDate && validatedDate.match(/^\d{4}-\d{2}-\d{2}$/)) {
-      // If already in YYYY-MM-DD, keep as is
       airtableDate = validatedDate;
       console.log('📅 Date already in Airtable format:', airtableDate);
     }
@@ -2431,7 +2453,7 @@ app.post('/api/reservations', async (req, res) => {
       "First Name": firstName || '',
       "Last Name": lastName || '',
       "Phone Number": formattedPhone || '',
-      "Reservation Date": airtableDate,  // ✅ Now in YYYY-MM-DD format for Airtable
+      "Reservation Date": airtableDate,
       "Arrival Time": arrivalTimeISO,
       "Total People": parseInt(guests) || 2,
       "Dinner Count": parseInt(adults) || 2,
@@ -2458,8 +2480,18 @@ app.post('/api/reservations', async (req, res) => {
       console.log('Whatsapp Confirmation (Single Select):', whatsappValue);
       console.log('Airtable Record ID:', record[0].id);
       
+      // ===== SEND WEBHOOK TO MAKE.COM WITH CLEAN SPECIAL REQUESTS =====
       if (whatsapp_confirmation === true || whatsapp_confirmation === 'yes') {
         console.log('📨 Sending webhook to Make.com for WhatsApp confirmation');
+        
+        // Clean special requests for WhatsApp (remove internal calendar note)
+        let cleanSpecialRequests = reservationData.specialRequests || 'No special requests';
+        if (cleanSpecialRequests.includes('Calendar Note:')) {
+          cleanSpecialRequests = cleanSpecialRequests.split('Calendar Note:')[0].trim();
+          if (!cleanSpecialRequests) cleanSpecialRequests = 'No special requests';
+        }
+        console.log('📝 Clean special requests for WhatsApp:', cleanSpecialRequests);
+        
         await sendToMakeWebhook({
           firstName: firstName,
           lastName: lastName,
@@ -2467,7 +2499,8 @@ app.post('/api/reservations', async (req, res) => {
           date: validatedDate,
           time: time,
           guests: guests,
-          specialRequests: reservationData.specialRequests, 
+          specialRequests: cleanSpecialRequests,
+          whatsapp_confirmation: whatsapp_confirmation
         }, reservationId);
       } else {
         console.log('ℹ️ WhatsApp confirmation not requested, skipping webhook');
@@ -2552,48 +2585,13 @@ app.listen(PORT, () => {
   console.log(`\n📋 Key Features:`);
   console.log(`   ✅ Google Calendar as ONLY source of truth`);
   console.log(`   ✅ All dates in DD-MM-YYYY format for WhatsApp`);
-  console.log(`   ✅ Enhanced date resolution returning DD-MM-YYYY:`);
-  console.log(`      • "12" → 12-02-2026 (current month, even if past)`);
-  console.log(`      • "14th" → 14-02-2026 (current month)`);
-  console.log(`      • "twenty sixth" → 26-02-2026 (current month)`);
-  console.log(`      • "March 15" → 15-03-2026 (explicit month)`);
-  console.log(`      • "next month 14th" → 14-03-2026 (explicit next month)`);
-  console.log(`   ✅ ENHANCED RESERVATION DETECTION:`);
-  console.log(`      • Multilingual keyword detection (English/Italian)`);
-  console.log(`      • Pattern-based intent detection`);
-  console.log(`      • Agent question tracking`);
-  console.log(`      • User detail analysis`);
-  console.log(`   ✅ COMPREHENSIVE DATA EXTRACTION:`);
-  console.log(`      • Structured data blocks`);
-  console.log(`      • Conversation flow analysis`);
-  console.log(`      • System log extraction`);
-  console.log(`      • Multi-source conflict resolution`);
-  console.log(`      • Cross-validation of all fields`);
-  console.log(`   ✅ BILINGUAL SUPPORT:`);
-  console.log(`      • Full Italian and English day names`);
-  console.log(`      • Italian/English keyword matching`);
-  console.log(`      • Accent-insensitive matching`);
-  console.log(`   ✅ PHONE NUMBER PROCESSING:`);
-  console.log(`      • Spoken number conversion (zero → 0, uno → 1, etc.)`);
-  console.log(`      • Italian country code formatting (+39)`);
-  console.log(`      • Digit collection and validation`);
-  console.log(`   ✅ COMPREHENSIVE LOGGING:`);
-  console.log(`      • Detailed extraction process logs`);
-  console.log(`      • Source tracking for each field`);
-  console.log(`      • Validation and cross-validation logs`);
-  console.log(`   ✅ Custom time-greeting function for Retell agent`);
-  console.log(`   ✅ No assumptions or manual mappings`);
-  console.log(`   ✅ Real-time event checking`);
-  console.log(`   ✅ Rome timezone-aware (Europe/Rome)`);
-  console.log(`   ✅ Airtable integration for storage`);
-  console.log(`   ✅ PII protection in logs`);
-  console.log(`   ✅ MAKE.COM WEBHOOK INTEGRATION for instant WhatsApp`);
-  console.log(`\n🤖 Retell Agent Custom Functions:`);
-  console.log(`   • get_time_greeting(format='italian') - Returns time-appropriate greeting`);
-  console.log(`   • get_events_by_date(date) - Returns events for specific date (POST endpoint)`);
-  console.log(`   • resolve_date(text) - Resolves relative dates to DD-MM-YYYY (POST endpoint)`);
+  console.log(`   ✅ Enhanced date resolution returning DD-MM-YYYY`);
+  console.log(`   ✅ Fixed phone number extraction for Italian calls`);
+  console.log(`   ✅ Calendar note removed from WhatsApp messages`);
+  console.log(`   ✅ All digits preserved in phone numbers`);
   console.log(`\n🚀 System ready! Google Calendar is the authoritative source for all events.`);
   console.log(`🎯 Enhanced reservation detection and extraction is ACTIVE!`);
   console.log(`📨 Webhook will send to Make.com when WhatsApp confirmation is YES`);
   console.log(`📅 All dates are now in DD-MM-YYYY format for WhatsApp messages!`);
+  console.log(`📞 Phone numbers now preserve all digits from Italian calls!`);
 });
