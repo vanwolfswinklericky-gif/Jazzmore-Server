@@ -231,69 +231,91 @@ function convertToISODate(dateString) {
   return dateString;
 }
 
-// ===== FUNCTION TO EXTRACT PHONE NUMBER FROM TRANSCRIPT =====
+/**
+ * BILINGUAL GENERIC PHONE EXTRACTION
+ * Captures 10-digit numbers from Italian or English transcripts.
+ * Forces +39 prefix and uses user confirmation as a "lock-in" anchor.
+ */
 function extractPhoneFromTranscript(transcript) {
   if (!transcript || !Array.isArray(transcript)) return null;
   
-  // Italian number word to digit mapping
+  // Mapping for both Italian and English number words
   const numberMap = {
+    // Italian
     'zero': '0', 'uno': '1', 'due': '2', 'tre': '3', 'quattro': '4',
-    'cinque': '5', 'sei': '6', 'sette': '7', 'otto': '8', 'nove': '9'
+    'cinque': '5', 'sei': '6', 'sette': '7', 'otto': '8', 'nove': '9',
+    // English
+    'one': '1', 'two': '2', 'three': '3', 'four': '4', 'five': '5',
+    'six': '6', 'seven': '7', 'eight': '8', 'nine': '9'
   };
-  
-  // Look for agent's final confirmation that user agreed to
-  for (let i = transcript.length - 1; i >= 0; i--) {
-    const msg = transcript[i];
-    const content = msg.content || '';
+
+  /**
+   * Helper to convert mixed words and digits into a pure digit string.
+   * Handles: "tre tre cinque 1 2 3" -> "335123"
+   */
+  const convertToDigits = (text) => {
+    if (!text) return '';
+    const cleanText = text.toLowerCase();
+    // Regex matches Italian/English number words OR actual digits
+    const segments = cleanText.match(/[a-zàèìòù]+|\d+/g) || [];
     
-    if (msg.role === 'agent' && 
-        (content.includes('tre tre cinque') || content.includes('335')) &&
-        (content.includes('uno tre quattro') || content.includes('134')) &&
-        (content.includes('zero cinque tre due') || content.includes('0532'))) {
-      
-      const words = content.toLowerCase().split(/\s+/);
-      let phoneDigits = '';
-      
-      for (const word of words) {
-        if (numberMap[word]) {
-          phoneDigits += numberMap[word];
+    let result = '';
+    for (const segment of segments) {
+      if (numberMap[segment]) {
+        result += numberMap[segment];
+      } else if (/\d+/.test(segment)) {
+        result += segment;
+      }
+    }
+    // Remove any accidental non-digit characters
+    return result.replace(/\D/g, '');
+  };
+
+  // --- STRATEGY 1: LOOK FOR CONFIRMED NUMBER (BACKWARDS SCAN) ---
+  // We scan from the end of the call to find the most recent confirmation.
+  for (let i = transcript.length - 1; i >= 1; i--) {
+    const currentMsg = transcript[i];
+    const content = (currentMsg.content || '').toLowerCase();
+
+    // Bilingual confirmation check (Common Italian & English positive responses)
+    const isConfirmation = 
+      content === 'sì' || content === 'si' || 
+      content === 'yes' || content === 'correct' || 
+      content === 'ok' || content === 'va bene' ||
+      content.includes('corretto') || content.includes('exactly') ||
+      content.includes('esatto') || content.includes('perfetto');
+
+    if (currentMsg.role === 'user' && isConfirmation) {
+      // Check the agent message immediately preceding the user's "Yes"
+      const agentMsg = transcript[i - 1];
+      if (agentMsg.role === 'agent') {
+        const rawDigits = convertToDigits(agentMsg.content);
+        
+        // Target standard 10-digit Italian mobile length
+        if (rawDigits.length === 10) {
+          const finalNumber = `+39${rawDigits}`;
+          console.log(`✅ SUCCESS: Extracted confirmed number: ${finalNumber}`);
+          return finalNumber;
         }
       }
-      
-      const rawDigits = content.replace(/\D/g, '');
-      if (rawDigits.length === 10 && rawDigits.length > phoneDigits.length) {
-        phoneDigits = rawDigits;
-      }
-      
-      if (phoneDigits.length === 10) {
-        const fullNumber = `+39${phoneDigits}`;
-        console.log(`📞 Extracted phone from agent confirmation: ${fullNumber}`);
-        return fullNumber;
+    }
+  }
+
+  // --- STRATEGY 2: FALLBACK (SCAN ALL AGENT MESSAGES) ---
+  // If no "Sì/Yes" anchor was found, we look for any valid 10-digit sequence.
+  for (let i = transcript.length - 1; i >= 0; i--) {
+    const msg = transcript[i];
+    if (msg.role === 'agent') {
+      const rawDigits = convertToDigits(msg.content);
+      if (rawDigits.length === 10) {
+        const finalNumber = `+39${rawDigits}`;
+        console.log(`⚠️ WARNING: Extracted unconfirmed fallback: ${finalNumber}`);
+        return finalNumber;
       }
     }
   }
   
-  for (let i = transcript.length - 1; i >= 0; i--) {
-    const msg = transcript[i];
-    const content = msg.content || '';
-    
-    if (msg.role === 'user' && (content.includes('sì') || content.includes('si') || content.includes('yes'))) {
-      for (let j = i - 1; j >= 0; j--) {
-        const prevMsg = transcript[j];
-        if (prevMsg.role === 'agent') {
-          const prevContent = prevMsg.content || '';
-          const rawDigits = prevContent.replace(/\D/g, '');
-          if (rawDigits.length === 10) {
-            const fullNumber = `+39${rawDigits}`;
-            console.log(`📞 Extracted phone from agent message before user confirmation: ${fullNumber}`);
-            return fullNumber;
-          }
-        }
-      }
-    }
-  }
-  
-  return null;
+  return null; // Return null if no 10-digit number is found
 }
 
 // ===== FUNCTION TO SEND WEBHOOK TO MAKE.COM =====
