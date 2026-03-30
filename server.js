@@ -231,6 +231,124 @@ function convertToISODate(dateString) {
   return dateString;
 }
 
+// ===== CLOSURE CHECK FOR MONDAYS & TUESDAYS =====
+const CLOSED_DAYS = {
+  monday: 1,
+  tuesday: 2,
+  lunedì: 1,
+  lunedi: 1,
+  martedì: 2,
+  martedi: 2
+};
+
+const CLOSED_DAY_NAMES = {
+  'monday': 'Monday',
+  'tuesday': 'Tuesday',
+  'lunedì': 'Monday (Lunedì)',
+  'lunedi': 'Monday (Lunedì)',
+  'martedì': 'Tuesday (Martedì)',
+  'martedi': 'Tuesday (Martedì)'
+};
+
+/**
+ * Check if a date falls on a closed day (Monday or Tuesday)
+ * Returns object with closure status and helpful message
+ */
+function checkIfClosed(dateInput) {
+  const resolvedDate = resolveDate(dateInput);
+  
+  if (!resolvedDate || !resolvedDate.match(/^\d{2}-\d{2}-\d{4}$/)) {
+    return {
+      isClosed: false,
+      error: `Invalid date: ${dateInput}`,
+      message: "I couldn't understand that date. Could you please specify another day?"
+    };
+  }
+  
+  const [day, month, year] = resolvedDate.split('-');
+  const dateObj = new Date(`${year}-${month}-${day}`);
+  const dayOfWeek = dateObj.getDay(); // 0 = Sunday, 1 = Monday, 2 = Tuesday, etc.
+  
+  // Monday = 1, Tuesday = 2
+  const isClosed = (dayOfWeek === 1 || dayOfWeek === 2);
+  
+  const dayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+  const dayNameItalian = ['Domenica', 'Lunedì', 'Martedì', 'Mercoledì', 'Giovedì', 'Venerdì', 'Sabato'];
+  const dayNameEn = dayNames[dayOfWeek];
+  const dayNameIt = dayNameItalian[dayOfWeek];
+  
+  let message = '';
+  if (isClosed) {
+    message = `I'm sorry, but Jazzamore is closed on ${dayNameEn} (${dayNameIt}). We are open from Wednesday to Sunday. Could you please choose a different day between Wednesday and Sunday?`;
+  }
+  
+  return {
+    isClosed,
+    date: resolvedDate,
+    dayOfWeek,
+    dayName: dayNameEn,
+    dayNameItalian: dayNameIt,
+    message,
+    closedDays: ['Monday', 'Tuesday', 'Lunedì', 'Martedì'],
+    openDays: 'Wednesday to Sunday (Mercoledì a Domenica)'
+  };
+}
+
+/**
+ * Check if a date string mentions a closed day by name
+ * Useful for catching "next monday" before resolving the date
+ */
+function isClosedDayByName(dateInput) {
+  const lowerInput = dateInput.toLowerCase().trim();
+  
+  // Check for explicit Monday/Tuesday references
+  const closedDayPatterns = [
+    /^monday$/i, /^tuesday$/i,
+    /^luned[iì]$/i, /^marted[iì]$/i,
+    /next\s+monday/i, /next\s+tuesday/i,
+    /next\s+luned[iì]/i, /next\s+marted[iì]/i,
+    /this\s+monday/i, /this\s+tuesday/i,
+    /prossim[oa]\s+luned[iì]/i, /prossim[oa]\s+marted[iì]/i
+  ];
+  
+  for (const pattern of closedDayPatterns) {
+    if (pattern.test(lowerInput)) {
+      return true;
+    }
+  }
+  
+  return false;
+}
+
+/**
+ * Get a helpful response for closed day requests
+ */
+function getClosedDayResponse(dateInput) {
+  const lowerInput = dateInput.toLowerCase().trim();
+  
+  // Determine which day they asked for
+  let requestedDay = '';
+  if (lowerInput.includes('monday') || lowerInput.includes('lunedì') || lowerInput.includes('lunedi')) {
+    requestedDay = 'Monday (Lunedì)';
+  } else if (lowerInput.includes('tuesday') || lowerInput.includes('martedì') || lowerInput.includes('martedi')) {
+    requestedDay = 'Tuesday (Martedì)';
+  } else {
+    const check = checkIfClosed(dateInput);
+    if (check.isClosed) {
+      requestedDay = check.dayName;
+    }
+  }
+  
+  return {
+    success: false,
+    isClosed: true,
+    message: `I'm sorry, but Jazzamore is closed on ${requestedDay}. We are open Wednesday through Sunday (Mercoledì a Domenica). Would you like to book for Wednesday, Thursday, Friday, Saturday, or Sunday instead?`,
+    suggestedAlternatives: ['Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'],
+    suggestedAlternativesItalian: ['Mercoledì', 'Giovedì', 'Venerdì', 'Sabato', 'Domenica']
+  };
+}
+
+// ===== PHONE EXTRACTION FROM TRANSCRIPT =====
 function extractPhoneFromTranscript(transcript) {
   if (!transcript || !Array.isArray(transcript)) {
     console.log('❌ Invalid transcript provided');
@@ -2919,6 +3037,112 @@ app.get('/api/test/google-calendar', async (req, res) => {
 });
 
 // ===================================================================
+// ===== CLOSURE CHECK ENDPOINTS
+// ===================================================================
+
+// J) Check if a date is closed (POST - for Retell agent)
+app.post('/api/check-closure', (req, res) => {
+  try {
+    const date = req.body.date || req.body.args?.date;
+    
+    if (!date) {
+      return res.status(400).json({
+        success: false,
+        error: 'Missing date parameter',
+        message: 'Please provide a date to check'
+      });
+    }
+    
+    // First check if they explicitly asked for a closed day by name
+    if (isClosedDayByName(date)) {
+      const closedResponse = getClosedDayResponse(date);
+      return res.json({
+        success: false,
+        isClosed: true,
+        ...closedResponse,
+        originalDate: date
+      });
+    }
+    
+    // Otherwise resolve the date and check
+    const closureCheck = checkIfClosed(date);
+    
+    if (closureCheck.isClosed) {
+      return res.json({
+        success: false,
+        isClosed: true,
+        date: closureCheck.date,
+        dayOfWeek: closureCheck.dayOfWeek,
+        dayName: closureCheck.dayName,
+        dayNameItalian: closureCheck.dayNameItalian,
+        message: closureCheck.message,
+        suggestedAlternatives: ['Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'],
+        suggestedAlternativesItalian: ['Mercoledì', 'Giovedì', 'Venerdì', 'Sabato', 'Domenica'],
+        originalDate: date
+      });
+    }
+    
+    // Not closed - return success
+    return res.json({
+      success: true,
+      isClosed: false,
+      date: closureCheck.date,
+      dayOfWeek: closureCheck.dayOfWeek,
+      dayName: closureCheck.dayName,
+      dayNameItalian: closureCheck.dayNameItalian,
+      message: `Jazzamore is open on ${closureCheck.dayName} (${closureCheck.dayNameItalian}). Would you like to make a reservation for ${closureCheck.date}?`,
+      originalDate: date
+    });
+    
+  } catch (error) {
+    safeLog('Error in /api/check-closure endpoint', { error: error.message }, 'error');
+    res.status(500).json({
+      success: false,
+      error: 'Failed to check closure status',
+      message: 'I had trouble checking if we are open that day. Could you please try another date?'
+    });
+  }
+});
+
+// J2) Check if a date is closed (GET - for testing)
+app.get('/api/check-closure', (req, res) => {
+  try {
+    const { date } = req.query;
+    
+    if (!date) {
+      return res.status(400).json({
+        success: false,
+        error: 'Missing date parameter',
+        message: 'Please provide a date to check (e.g., "tomorrow", "next monday", "15-04-2026")'
+      });
+    }
+    
+    const closureCheck = checkIfClosed(date);
+    
+    res.json({
+      success: true,
+      input: date,
+      resolvedDate: closureCheck.date,
+      isClosed: closureCheck.isClosed,
+      dayOfWeek: closureCheck.dayOfWeek,
+      dayName: closureCheck.dayName,
+      dayNameItalian: closureCheck.dayNameItalian,
+      message: closureCheck.message,
+      openDays: closureCheck.openDays,
+      closedDays: closureCheck.closedDays
+    });
+    
+  } catch (error) {
+    safeLog('Error in GET /api/check-closure endpoint', { error: error.message }, 'error');
+    res.status(500).json({
+      success: false,
+      error: 'Failed to check closure status',
+      message: error.message
+    });
+  }
+});
+
+// ===================================================================
 // ===== MAIN WEBHOOK ENDPOINT
 // ===================================================================
 app.post('/api/reservations', async (req, res) => {
@@ -2996,6 +3220,49 @@ app.post('/api/reservations', async (req, res) => {
         time: '22:00', guests: 2, adults: 2, children: 0,
         phone: '', specialRequests: 'No special requests', newsletter: false, whatsapp_confirmation: false
       };
+    }
+    
+    // ===== CLOSURE CHECK - BLOCK MONDAYS & TUESDAYS =====
+    console.log('🔒 Checking if date is on a closed day...');
+    
+    let reservationDate = reservationData.date;
+    
+    // First, check if the date is a closed day by name or resolution
+    if (reservationDate) {
+      // Check by name first (for "monday", "tuesday", etc.)
+      if (isClosedDayByName(reservationDate)) {
+        const closedResponse = getClosedDayResponse(reservationDate);
+        console.log(`🚫 CLOSED DAY DETECTED: ${reservationDate} is a closed day`);
+        
+        const greeting = getItalianTimeGreeting();
+        return res.json({
+          response: `${greeting}! ${closedResponse.message}`,
+          saveToAirtable: false,
+          reason: 'Restaurant closed on Monday/Tuesday',
+          closureDetails: closedResponse,
+          requiresNewDate: true
+        });
+      }
+      
+      // Otherwise resolve and check the actual date
+      const closureCheck = checkIfClosed(reservationDate);
+      
+      if (closureCheck.isClosed) {
+        console.log(`🚫 CLOSED DAY DETECTED: ${reservationDate} resolves to ${closureCheck.dayName} (${closureCheck.date})`);
+        
+        const greeting = getItalianTimeGreeting();
+        return res.json({
+          response: `${greeting}! ${closureCheck.message}`,
+          saveToAirtable: false,
+          reason: 'Restaurant closed on Monday/Tuesday',
+          closureDetails: closureCheck,
+          requiresNewDate: true
+        });
+      }
+      
+      console.log(`✅ Date is valid: ${reservationDate} is on ${closureCheck.dayName}`);
+    } else {
+      console.log('⚠️ No date found in reservation data for closure check');
     }
     
     // Override phone number with transcript-extracted number (more reliable)
@@ -3167,6 +3434,9 @@ app.listen(PORT, () => {
   console.log(`\n   ── CUSTOM RANGE (get_events_for_date_range) ── NEW`);
   console.log(`   • Date Range Events (POST):    POST /api/calendar/range`);
   console.log(`   • Date Range Events (GET):     GET  /api/calendar/range?startDate=01-04-2026&endDate=07-04-2026`);
+  console.log(`\n   ── CLOSURE CHECK (NEW) ──`);
+  console.log(`   • Check Closure (POST):        POST /api/check-closure`);
+  console.log(`   • Check Closure (GET):         GET  /api/check-closure?date=monday`);
   console.log(`\n   ── OTHER ──`);
   console.log(`   • Availability:                GET  /api/calendar/availability?date=tomorrow&time=20:00`);
   console.log(`   • Time Greeting (GET):         GET  /api/time-greeting`);
@@ -3185,6 +3455,8 @@ app.listen(PORT, () => {
   console.log(`   ✅ Fixed phone number extraction from transcript`);
   console.log(`   ✅ Calendar note removed from WhatsApp messages`);
   console.log(`   ✅ Full week view (7 days, all slots initialised)`);
-  console.log(`   ✅ Custom date range view (up to 31 days) — NEW`);
+  console.log(`   ✅ Custom date range view (up to 31 days)`);
+  console.log(`   ✅ CLOSURE CHECK - Blocks reservations on Mondays & Tuesdays`);
   console.log(`\n🚀 System ready! Google Calendar is the authoritative source for all events.`);
+  console.log(`\n🔒 CLOSURE RULE: Restaurant is CLOSED on Mondays and Tuesdays (Lunedì e Martedì)`);
 });
