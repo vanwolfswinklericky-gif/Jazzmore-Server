@@ -925,6 +925,109 @@ function extractPhoneFromTranscript(transcript) {
   return null;
 }
 
+// ===== EXTRACT WHATSAPP CONFIRMATION FROM TRANSCRIPT =====
+function extractWhatsappConfirmation(transcript) {
+  if (!transcript || !Array.isArray(transcript)) {
+    return false;
+  }
+  
+  console.log('🔍 Extracting WhatsApp confirmation from transcript...');
+  
+  // Look for the WhatsApp question and user's response
+  for (let i = 0; i < transcript.length; i++) {
+    const msg = transcript[i];
+    const content = (msg.content || '').toLowerCase();
+    
+    // Check if this is the agent asking about WhatsApp confirmation
+    if (msg.role === 'agent' && 
+        (content.includes('desidera ricevere il messaggio di conferma') ||
+         content.includes('ricevere il messaggio di conferma su whatsapp') ||
+         content.includes('conferma su whatsapp'))) {
+      
+      console.log(`📱 Found WhatsApp question at index ${i}: "${msg.content}"`);
+      
+      // Look at the next few messages for user's response
+      for (let j = i + 1; j < Math.min(i + 5, transcript.length); j++) {
+        const userMsg = transcript[j];
+        if (userMsg.role === 'user') {
+          const userContent = (userMsg.content || '').toLowerCase();
+          
+          // Check for affirmative response
+          if (userContent.includes('sì') || userContent.includes('si') || 
+              userContent.includes('yes') || userContent.includes('ok') ||
+              userContent.includes('va bene') || userContent.includes('certo') ||
+              userContent.includes('gracias')) {
+            console.log(`✅ User confirmed WhatsApp: "${userMsg.content}"`);
+            return true;
+          }
+          
+          // Check for negative response
+          if (userContent.includes('no') || userContent.includes('non') ||
+              userContent.includes('grazie no')) {
+            console.log(`❌ User declined WhatsApp: "${userMsg.content}"`);
+            return false;
+          }
+        }
+      }
+    }
+  }
+  
+  console.log('⚠️ No WhatsApp confirmation found in transcript');
+  return false;
+}
+
+// ===== EXTRACT NEWSLETTER/EVENTS PROGRAM CONFIRMATION =====
+function extractNewsletterConfirmation(transcript) {
+  if (!transcript || !Array.isArray(transcript)) {
+    return false;
+  }
+  
+  console.log('🔍 Extracting events program confirmation from transcript...');
+  
+  // Look for the events program question and user's response
+  for (let i = 0; i < transcript.length; i++) {
+    const msg = transcript[i];
+    const content = (msg.content || '').toLowerCase();
+    
+    // Check if this is the agent asking about events program
+    if (msg.role === 'agent' && 
+        (content.includes('programma eventi') ||
+         content.includes('ricevere anche il nostro programma eventi') ||
+         content.includes('eventi via whatsapp'))) {
+      
+      console.log(`📅 Found events program question at index ${i}: "${msg.content}"`);
+      
+      // Look at the next few messages for user's response
+      for (let j = i + 1; j < Math.min(i + 5, transcript.length); j++) {
+        const userMsg = transcript[j];
+        if (userMsg.role === 'user') {
+          const userContent = (userMsg.content || '').toLowerCase();
+          
+          // Check for affirmative response
+          if (userContent.includes('sì') || userContent.includes('si') || 
+              userContent.includes('yes') || userContent.includes('ok') ||
+              userContent.includes('va bene') || userContent.includes('certo') ||
+              userContent.includes('gracias')) {
+            console.log(`✅ User confirmed events program: "${userMsg.content}"`);
+            return true;
+          }
+          
+          // Check for negative response
+          if (userContent.includes('no') || userContent.includes('non') ||
+              userContent.includes('grazie no')) {
+            console.log(`❌ User declined events program: "${userMsg.content}"`);
+            return false;
+          }
+        }
+      }
+    }
+  }
+  
+  console.log('⚠️ No events program confirmation found in transcript');
+  return false;
+}
+
+
 // ===== FUNCTION TO SEND WEBHOOK TO MAKE.COM =====
 async function sendToMakeWebhook(reservationData, reservationId) {
   console.log('🔵 sendToMakeWebhook RECEIVED:');
