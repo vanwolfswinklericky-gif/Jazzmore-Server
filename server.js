@@ -1027,6 +1027,34 @@ function extractNewsletterConfirmation(transcript) {
   return false;
 }
 
+// Final safety check - if we have a confirmed phone number but no WhatsApp confirmation,
+// check if the user ever said "sì" after the WhatsApp question
+if (whatsapp_confirmation === false && call?.transcript_object) {
+  // Scan the transcript for the WhatsApp question pattern
+  for (let i = 0; i < call.transcript_object.length; i++) {
+    const msg = call.transcript_object[i];
+    if (msg.role === 'agent' && 
+        msg.content && 
+        msg.content.toLowerCase().includes('whatsapp')) {
+      
+      // Look at the next 3 messages for a "sì" or "si"
+      for (let j = i + 1; j < Math.min(i + 4, call.transcript_object.length); j++) {
+        const userMsg = call.transcript_object[j];
+        if (userMsg.role === 'user' && userMsg.content) {
+          const response = userMsg.content.toLowerCase();
+          if (response.includes('sì') || response.includes('si') || 
+              response.includes('yes') || response.includes('gracias')) {
+            console.log('🔧 FALLBACK: Found affirmative response to WhatsApp question');
+            whatsapp_confirmation = true;
+            reservationData.whatsapp_confirmation = true;
+            break;
+          }
+        }
+      }
+      break;
+    }
+  }
+}
 
 // ===== FUNCTION TO SEND WEBHOOK TO MAKE.COM =====
 async function sendToMakeWebhook(reservationData, reservationId) {
