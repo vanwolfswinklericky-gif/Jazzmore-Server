@@ -348,6 +348,160 @@ function getClosedDayResponse(dateInput) {
   };
 }
 
+// ===================================================================
+// ===== CLOSURE CHECK TOOL FOR RETELL AGENT =====
+// ===================================================================
+
+/**
+ * Check if Jazzamore is closed on a given date
+ * Returns: { isClosed, dayName, date, message, suggestedAlternatives }
+ */
+app.post('/api/check-closure', async (req, res) => {
+  try {
+    const { date } = req.body;
+    const dateArg = req.body.args?.date || date;
+    
+    if (!dateArg) {
+      return res.status(400).json({
+        success: false,
+        error: 'Missing date parameter',
+        message: 'Please provide a date to check'
+      });
+    }
+    
+    console.log(`🔍 Closure check requested for: "${dateArg}"`);
+    
+    // Step 1: Resolve the date using your existing resolve_date function
+    let resolvedDate;
+    try {
+      // First try to resolve the date
+      resolvedDate = resolveDate(dateArg);
+      console.log(`📅 Resolved date: ${resolvedDate}`);
+    } catch (error) {
+      console.log(`❌ Date resolution failed: ${error.message}`);
+      return res.status(400).json({
+        success: false,
+        isClosed: false,
+        error: 'Invalid date',
+        message: 'I could not understand that date. Could you please specify a different date?'
+      });
+    }
+    
+    // Step 2: Parse the resolved date (DD-MM-YYYY)
+    if (!resolvedDate || !resolvedDate.match(/^\d{2}-\d{2}-\d{4}$/)) {
+      return res.status(400).json({
+        success: false,
+        isClosed: false,
+        error: 'Invalid date format',
+        message: 'I could not understand that date format. Please try another date.'
+      });
+    }
+    
+    const [day, month, year] = resolvedDate.split('-');
+    const dateObj = new Date(`${year}-${month}-${day}`);
+    
+    // Step 3: Get day of week (0 = Sunday, 1 = Monday, 2 = Tuesday, etc.)
+    const dayOfWeek = dateObj.getDay();
+    const isClosed = (dayOfWeek === 1 || dayOfWeek === 2); // Monday or Tuesday
+    
+    const dayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+    const dayNamesItalian = ['Domenica', 'Lunedì', 'Martedì', 'Mercoledì', 'Giovedì', 'Venerdì', 'Sabato'];
+    
+    const dayName = dayNames[dayOfWeek];
+    const dayNameItalian = dayNamesItalian[dayOfWeek];
+    
+    // Step 4: Build response
+    const response = {
+      success: true,
+      isClosed: isClosed,
+      date: resolvedDate,
+      dayOfWeek: dayOfWeek,
+      dayName: dayName,
+      dayNameItalian: dayNameItalian,
+      originalRequest: dateArg
+    };
+    
+    if (isClosed) {
+      response.message = `Jazzamore is closed on ${dayName}s (${dayNameItalian}). We are open Wednesday through Sunday.`;
+      response.rejectionPhrase = {
+        english: "I'm sorry, Jazzamore is closed on Mondays and Tuesdays. We are open Wednesday through Sunday. Which day would you prefer between Wednesday, Thursday, Friday, Saturday, or Sunday?",
+        italian: "Mi dispiace, il Jazzamore è chiuso il Lunedì e il Martedì. Siamo aperti da Mercoledì a Domenica. Che giorno preferisce tra Mercoledì, Giovedì, Venerdì, Sabato o Domenica?"
+      };
+      response.suggestedAlternatives = ['Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
+      response.suggestedAlternativesItalian = ['Mercoledì', 'Giovedì', 'Venerdì', 'Sabato', 'Domenica'];
+    } else {
+      response.message = `Jazzamore is open on ${dayName} (${dayNameItalian}).`;
+      response.confirmationPhrase = {
+        english: `Jazzamore is open on ${dayName}. Would you like to make a reservation?`,
+        italian: `Il Jazzamore è aperto ${dayNameItalian}. Desidera fare una prenotazione?`
+      };
+    }
+    
+    console.log(`📤 Closure check response: isClosed=${isClosed}, day=${dayName}`);
+    res.json(response);
+    
+  } catch (error) {
+    console.error('❌ Error in /api/check-closure:', error.message);
+    res.status(500).json({
+      success: false,
+      isClosed: false,
+      error: 'Internal server error',
+      message: 'I had trouble checking if we are open that day. Could you please try another date?'
+    });
+  }
+});
+
+// GET endpoint for testing (optional)
+app.get('/api/check-closure', async (req, res) => {
+  try {
+    const { date } = req.query;
+    
+    if (!date) {
+      return res.status(400).json({
+        success: false,
+        error: 'Missing date parameter',
+        message: 'Please provide a date to check (e.g., "today", "tomorrow", "monday", "15-04-2025")'
+      });
+    }
+    
+    // Reuse the same logic as POST
+    const resolvedDate = resolveDate(date);
+    
+    if (!resolvedDate || !resolvedDate.match(/^\d{2}-\d{2}-\d{4}$/)) {
+      return res.status(400).json({
+        success: false,
+        error: 'Invalid date',
+        message: 'Could not understand that date'
+      });
+    }
+    
+    const [day, month, year] = resolvedDate.split('-');
+    const dateObj = new Date(`${year}-${month}-${day}`);
+    const dayOfWeek = dateObj.getDay();
+    const isClosed = (dayOfWeek === 1 || dayOfWeek === 2);
+    
+    const dayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+    const dayNamesItalian = ['Domenica', 'Lunedì', 'Martedì', 'Mercoledì', 'Giovedì', 'Venerdì', 'Sabato'];
+    
+    res.json({
+      success: true,
+      input: date,
+      resolvedDate: resolvedDate,
+      isClosed: isClosed,
+      dayOfWeek: dayOfWeek,
+      dayName: dayNames[dayOfWeek],
+      dayNameItalian: dayNamesItalian[dayOfWeek],
+      message: isClosed 
+        ? `Jazzamore is closed on ${dayNames[dayOfWeek]}s. Open Wednesday through Sunday.`
+        : `Jazzamore is open on ${dayNames[dayOfWeek]}.`
+    });
+    
+  } catch (error) {
+    console.error('❌ Error in GET /api/check-closure:', error.message);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
 // ===== PHONE EXTRACTION FROM TRANSCRIPT =====
 function extractPhoneFromTranscript(transcript) {
   if (!transcript || !Array.isArray(transcript)) {
