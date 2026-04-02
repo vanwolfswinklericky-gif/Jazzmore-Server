@@ -1184,6 +1184,34 @@ function getLastDayOfMonth(year, month) {
   return new Date(year, month, 0).getDate();
 }
 
+// ===== HELPER: Find next occurrence of a specific day of week =====
+function findNextDayOfWeek(dayName, skipCurrentWeek = false) {
+  const dayMap = {
+    'sunday': 0, 'monday': 1, 'tuesday': 2, 'wednesday': 3,
+    'thursday': 4, 'friday': 5, 'saturday': 6,
+    'domenica': 0, 'lunedì': 1, 'lunedi': 1, 'martedì': 2, 'martedi': 2,
+    'mercoledì': 3, 'mercoledi': 3, 'giovedì': 4, 'giovedi': 4, 
+    'venerdì': 5, 'venerdi': 5, 'sabato': 6
+  };
+  
+  const targetDayNum = dayMap[dayName];
+  if (targetDayNum === undefined) {
+    throw new Error(`Unknown day name: ${dayName}`);
+  }
+  
+  const today = getRomeDate();
+  const todayDayNum = today.getDay();
+  
+  let daysToAdd = (targetDayNum - todayDayNum + 7) % 7;
+  
+  if (daysToAdd === 0 && skipCurrentWeek) {
+    daysToAdd = 7;
+  }
+  
+  const targetDate = addDays(today, daysToAdd);
+  return formatInTimeZone(targetDate, ROME_TIMEZONE, 'dd-MM-yyyy');
+}
+
 // ===== ENHANCED DATE RESOLUTION FUNCTION (FIXED FOR SATURDAY APRIL 4) =====
 function resolveDate(dateString) {
   safeLog('🔍 resolveDate called', { 
