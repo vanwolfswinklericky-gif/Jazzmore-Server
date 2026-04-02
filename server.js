@@ -654,6 +654,67 @@ function extractPhoneFromTranscript(transcript) {
   return null;
 }
 
+// PHONE NUMBER NORMALIZATION OF 10 DIGITS//
+
+const normalizePhoneNumber = (digits) => {
+  if (!digits) return null;
+  
+  // Remove any non-digit characters
+  const cleanDigits = digits.replace(/\D/g, '');
+  
+  debugLog('Normalizing phone number', { original: digits, clean: cleanDigits });
+  
+  // Italian mobile numbers MUST be 10 digits after country code
+  // Reject anything less than 10 digits
+  if (cleanDigits.length < 10) {
+    console.log(`❌ Phone number rejected: ${cleanDigits.length} digits (minimum required: 10)`);
+    return null;
+  }
+  
+  // Perfect: 10 digits
+  if (cleanDigits.length === 10) {
+    const normalized = `+39${cleanDigits}`;
+    debugLog('Normalized 10-digit number', { normalized });
+    return normalized;
+  }
+  
+  // Already has country code (39 prefix + 10 digits = 12 total)
+  if (cleanDigits.length === 12 && cleanDigits.startsWith('39')) {
+    const normalized = `+${cleanDigits}`;
+    debugLog('Normalized number with country code', { normalized });
+    return normalized;
+  }
+  
+  // Has country code but missing the + (11 digits starting with 39)
+  if (cleanDigits.length === 11 && cleanDigits.startsWith('39')) {
+    const normalized = `+${cleanDigits}`;
+    debugLog('Normalized 11-digit number with country code', { normalized });
+    return normalized;
+  }
+  
+  // 11 digits without country code - take last 10
+  if (cleanDigits.length === 11 && !cleanDigits.startsWith('39')) {
+    const lastTen = cleanDigits.slice(-10);
+    const normalized = `+39${lastTen}`;
+    debugLog('Normalized 11-digit number (took last 10)', { normalized });
+    return normalized;
+  }
+  
+  // More than 10 digits, take last 10
+  if (cleanDigits.length > 10) {
+    const lastTen = cleanDigits.slice(-10);
+    const normalized = `+39${lastTen}`;
+    debugLog('Normalized number (took last 10 digits)', { 
+      original: cleanDigits, 
+      lastTen, 
+      normalized 
+    });
+    return normalized;
+  }
+  
+  console.log(`❌ Invalid phone number length: ${cleanDigits.length} digits (minimum 10 required)`);
+  return null;
+};
 // ===== EXTRACT WHATSAPP CONFIRMATION FROM TRANSCRIPT =====
 function extractWhatsappConfirmation(transcript) {
   if (!transcript || !Array.isArray(transcript)) {
