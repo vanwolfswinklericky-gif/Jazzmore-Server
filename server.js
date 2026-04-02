@@ -4186,7 +4186,7 @@ app.post('/api/reservations', async (req, res) => {
   }
 });
 
-// ===== SERVER STARTUP =====
+// ===== SERVER STARTUP ====
 app.listen(PORT, () => {
   const romeDateTime = getRomeDateTime();
   const greeting = getItalianTimeGreeting();
