@@ -1,3 +1,4 @@
+
 const express = require('express');
 const Airtable = require('airtable');
 const cors = require('cors');
@@ -231,109 +232,6 @@ function convertToISODate(dateString) {
   return dateString;
 }
 
-
-  extractPhoneFromTranscript
-// ===== EXTRACT WHATSAPP CONFIRMATION FROM TRANSCRIPT =====
-function extractWhatsappConfirmation(transcript) {
-  if (!transcript || !Array.isArray(transcript)) {
-    return false;
-  }
-  
-  console.log('🔍 Extracting WhatsApp confirmation from transcript...');
-  
-  // Look for the WhatsApp question and user's response
-  for (let i = 0; i < transcript.length; i++) {
-    const msg = transcript[i];
-    const content = (msg.content || '').toLowerCase();
-    
-    // Check if this is the agent asking about WhatsApp confirmation
-    if (msg.role === 'agent' && 
-        (content.includes('desidera ricevere il messaggio di conferma') ||
-         content.includes('ricevere il messaggio di conferma su whatsapp') ||
-         content.includes('conferma su whatsapp'))) {
-      
-      console.log(`📱 Found WhatsApp question at index ${i}: "${msg.content}"`);
-      
-      // Look at the next few messages for user's response
-      for (let j = i + 1; j < Math.min(i + 5, transcript.length); j++) {
-        const userMsg = transcript[j];
-        if (userMsg.role === 'user') {
-          const userContent = (userMsg.content || '').toLowerCase();
-          
-          // Check for affirmative response
-          if (userContent.includes('sì') || userContent.includes('si') || 
-              userContent.includes('yes') || userContent.includes('ok') ||
-              userContent.includes('va bene') || userContent.includes('certo') ||
-              userContent.includes('gracias')) {
-            console.log(`✅ User confirmed WhatsApp: "${userMsg.content}"`);
-            return true;
-          }
-          
-          // Check for negative response
-          if (userContent.includes('no') || userContent.includes('non') ||
-              userContent.includes('grazie no')) {
-            console.log(`❌ User declined WhatsApp: "${userMsg.content}"`);
-            return false;
-          }
-        }
-      }
-    }
-  }
-  
-  console.log('⚠️ No WhatsApp confirmation found in transcript');
-  return false;
-}
-
-// ===== EXTRACT NEWSLETTER/EVENTS PROGRAM CONFIRMATION =====
-function extractNewsletterConfirmation(transcript) {
-  if (!transcript || !Array.isArray(transcript)) {
-    return false;
-  }
-  
-  console.log('🔍 Extracting events program confirmation from transcript...');
-  
-  // Look for the events program question and user's response
-  for (let i = 0; i < transcript.length; i++) {
-    const msg = transcript[i];
-    const content = (msg.content || '').toLowerCase();
-    
-    // Check if this is the agent asking about events program
-    if (msg.role === 'agent' && 
-        (content.includes('programma eventi') ||
-         content.includes('ricevere anche il nostro programma eventi') ||
-         content.includes('eventi via whatsapp'))) {
-      
-      console.log(`📅 Found events program question at index ${i}: "${msg.content}"`);
-      
-      // Look at the next few messages for user's response
-      for (let j = i + 1; j < Math.min(i + 5, transcript.length); j++) {
-        const userMsg = transcript[j];
-        if (userMsg.role === 'user') {
-          const userContent = (userMsg.content || '').toLowerCase();
-          
-          // Check for affirmative response
-          if (userContent.includes('sì') || userContent.includes('si') || 
-              userContent.includes('yes') || userContent.includes('ok') ||
-              userContent.includes('va bene') || userContent.includes('certo') ||
-              userContent.includes('gracias')) {
-            console.log(`✅ User confirmed events program: "${userMsg.content}"`);
-            return true;
-          }
-          
-          // Check for negative response
-          if (userContent.includes('no') || userContent.includes('non') ||
-              userContent.includes('grazie no')) {
-            console.log(`❌ User declined events program: "${userMsg.content}"`);
-            return false;
-          }
-        }
-      }
-    }
-  }
-  
-  console.log('⚠️ No events program confirmation found in transcript');
-  return false;
-}
 // ===== CLOSURE CHECK FOR MONDAYS & TUESDAYS =====
 const CLOSED_DAYS = {
   monday: 1,
@@ -449,6 +347,695 @@ function getClosedDayResponse(dateInput) {
     suggestedAlternatives: ['Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'],
     suggestedAlternativesItalian: ['Mercoledì', 'Giovedì', 'Venerdì', 'Sabato', 'Domenica']
   };
+}
+
+// ===================================================================
+// ===== CLOSURE CHECK TOOL FOR RETELL AGENT =====
+// ===================================================================
+
+/**
+ * Check if Jazzamore is closed on a given date
+ * Returns: { isClosed, dayName, date, message, suggestedAlternatives }
+ */
+app.post('/api/check-closure', async (req, res) => {
+  try {
+    const { date } = req.body;
+    const dateArg = req.body.args?.date || date;
+    
+    if (!dateArg) {
+      return res.status(400).json({
+        success: false,
+        error: 'Missing date parameter',
+        message: 'Please provide a date to check'
+      });
+    }
+    
+    console.log(`🔍 Closure check requested for: "${dateArg}"`);
+    
+    // Step 1: Resolve the date using your existing resolve_date function
+    let resolvedDate;
+    try {
+      resolvedDate = resolveDate(dateArg);
+      console.log(`📅 Resolved date: ${resolvedDate}`);
+    } catch (error) {
+      console.log(`❌ Date resolution failed: ${error.message}`);
+      return res.status(400).json({
+        success: false,
+        isClosed: false,
+        error: 'Invalid date',
+        message: 'I could not understand that date. Could you please specify a different date?'
+      });
+    }
+    
+    // Step 2: Parse the resolved date (DD-MM-YYYY)
+    if (!resolvedDate || !resolvedDate.match(/^\d{2}-\d{2}-\d{4}$/)) {
+      return res.status(400).json({
+        success: false,
+        isClosed: false,
+        error: 'Invalid date format',
+        message: 'I could not understand that date format. Please try another date.'
+      });
+    }
+    
+    const [day, month, year] = resolvedDate.split('-');
+    const dateObj = new Date(`${year}-${month}-${day}`);
+    
+    // Step 3: Get day of week (0 = Sunday, 1 = Monday, 2 = Tuesday, etc.)
+    const dayOfWeek = dateObj.getDay();
+    const isClosed = (dayOfWeek === 1 || dayOfWeek === 2); // Monday or Tuesday
+    
+    const dayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+    const dayNamesItalian = ['Domenica', 'Lunedì', 'Martedì', 'Mercoledì', 'Giovedì', 'Venerdì', 'Sabato'];
+    
+    const dayName = dayNames[dayOfWeek];
+    const dayNameItalian = dayNamesItalian[dayOfWeek];
+    
+    // Step 4: Build response
+    const response = {
+      success: true,
+      isClosed: isClosed,
+      date: resolvedDate,
+      dayOfWeek: dayOfWeek,
+      dayName: dayName,
+      dayNameItalian: dayNameItalian,
+      originalRequest: dateArg
+    };
+    
+    if (isClosed) {
+      response.message = `Jazzamore is closed on ${dayName}s (${dayNameItalian}). We are open Wednesday through Sunday.`;
+      response.rejectionPhrase = {
+        english: "I'm sorry, Jazzamore is closed on Mondays and Tuesdays. We are open Wednesday through Sunday. Which day would you prefer between Wednesday, Thursday, Friday, Saturday, or Sunday?",
+        italian: "Mi dispiace, il Jazzamore è chiuso il Lunedì e il Martedì. Siamo aperti da Mercoledì a Domenica. Che giorno preferisce tra Mercoledì, Giovedì, Venerdì, Sabato o Domenica?"
+      };
+      response.suggestedAlternatives = ['Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
+      response.suggestedAlternativesItalian = ['Mercoledì', 'Giovedì', 'Venerdì', 'Sabato', 'Domenica'];
+    } else {
+      response.message = `Jazzamore is open on ${dayName} (${dayNameItalian}).`;
+      response.confirmationPhrase = {
+        english: `Jazzamore is open on ${dayName}. Would you like to make a reservation?`,
+        italian: `Il Jazzamore è aperto ${dayNameItalian}. Desidera fare una prenotazione?`
+      };
+    }
+    
+    console.log(`📤 Closure check response: isClosed=${isClosed}, day=${dayName}`);
+    res.json(response);
+    
+  } catch (error) {
+    console.error('❌ Error in /api/check-closure:', error.message);
+    res.status(500).json({
+      success: false,
+      isClosed: false,
+      error: 'Internal server error',
+      message: 'I had trouble checking if we are open that day. Could you please try another date?'
+    });
+  }
+});
+
+// GET endpoint for testing (optional)
+app.get('/api/check-closure', async (req, res) => {
+  try {
+    const { date } = req.query;
+    
+    if (!date) {
+      return res.status(400).json({
+        success: false,
+        error: 'Missing date parameter',
+        message: 'Please provide a date to check (e.g., "today", "tomorrow", "monday", "15-04-2025")'
+      });
+    }
+    
+    // Reuse the same logic as POST
+    const resolvedDate = resolveDate(date);
+    
+    if (!resolvedDate || !resolvedDate.match(/^\d{2}-\d{2}-\d{4}$/)) {
+      return res.status(400).json({
+        success: false,
+        error: 'Invalid date',
+        message: 'Could not understand that date'
+      });
+    }
+    
+    const [day, month, year] = resolvedDate.split('-');
+    const dateObj = new Date(`${year}-${month}-${day}`);
+    const dayOfWeek = dateObj.getDay();
+    const isClosed = (dayOfWeek === 1 || dayOfWeek === 2);
+    
+    const dayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+    const dayNamesItalian = ['Domenica', 'Lunedì', 'Martedì', 'Mercoledì', 'Giovedì', 'Venerdì', 'Sabato'];
+    
+    res.json({
+      success: true,
+      input: date,
+      resolvedDate: resolvedDate,
+      isClosed: isClosed,
+      dayOfWeek: dayOfWeek,
+      dayName: dayNames[dayOfWeek],
+      dayNameItalian: dayNamesItalian[dayOfWeek],
+      message: isClosed 
+        ? `Jazzamore is closed on ${dayNames[dayOfWeek]}s. Open Wednesday through Sunday.`
+        : `Jazzamore is open on ${dayNames[dayOfWeek]}.`
+    });
+    
+  } catch (error) {
+    console.error('❌ Error in GET /api/check-closure:', error.message);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// ===== PHONE EXTRACTION FROM TRANSCRIPT =====
+function extractPhoneFromTranscript(transcript) {
+  if (!transcript || !Array.isArray(transcript)) {
+    console.log('❌ Invalid transcript provided');
+    return null;
+  }
+  
+  const DEBUG = true; // Set to false in production to reduce logs
+  
+  function debugLog(message, data = null) {
+    if (DEBUG) {
+      console.log(`[PhoneExtract] ${message}`, data ? JSON.stringify(data, null, 2) : '');
+    }
+  }
+  
+  // Complete number mapping for Italian and English
+  const numberMap = {
+    // Italian single digits
+    'zero': '0', 'uno': '1', 'due': '2', 'tre': '3', 'quattro': '4',
+    'cinque': '5', 'sei': '6', 'sette': '7', 'otto': '8', 'nove': '9',
+    
+    // English single digits
+    'one': '1', 'two': '2', 'three': '3', 'four': '4', 'five': '5',
+    'six': '6', 'seven': '7', 'eight': '8', 'nine': '9',
+    
+    // Italian short forms
+    'un': '1', 'due': '2', 'tre': '3', 'quattro': '4', 'cinque': '5',
+    'sei': '6', 'sette': '7', 'otto': '8', 'nove': '9',
+    
+    // Italian teens
+    'dieci': '10', 'undici': '11', 'dodici': '12', 'tredici': '13',
+    'quattordici': '14', 'quindici': '15', 'sedici': '16', 'diciassette': '17',
+    'diciotto': '18', 'diciannove': '19',
+    
+    // Italian tens
+    'venti': '20', 'trenta': '30', 'quaranta': '40', 'cinquanta': '50',
+    'sessanta': '60', 'settanta': '70', 'ottanta': '80', 'novanta': '90',
+    
+    // Italian hundreds
+    'cento': '100', 'duecento': '200', 'trecento': '300', 'quattrocento': '400',
+    'cinquecento': '500', 'seicento': '600', 'settecento': '700', 'ottocento': '800',
+    'novecento': '900',
+    
+    // Italian thousands (1,000 - 10,000)
+    'mille': '1000',
+    'millecento': '1100',
+    'milleduecento': '1200',
+    'milletrecento': '1300',
+    'millequattrocento': '1400',
+    'millecinquecento': '1500',
+    'milleseicento': '1600',
+    'millesettecento': '1700',
+    'milleottocento': '1800',
+    'millenovecento': '1900',
+    'duemila': '2000',
+    'tremila': '3000',
+    'quattromila': '4000',
+    'cinquemila': '5000',
+    'seimila': '6000',
+    'settemila': '7000',
+    'ottomila': '8000',
+    'novemila': '9000',
+    'diecimila': '10000'
+  };
+  
+  // Compound Italian numbers (e.g., ventuno = 21, trentadue = 32)
+  const compoundMap = {
+    'ventuno': '21', 'ventidue': '22', 'ventitre': '23', 'ventiquattro': '24',
+    'venticinque': '25', 'ventisei': '26', 'ventisette': '27', 'ventotto': '28',
+    'ventinove': '29', 'trentuno': '31', 'trentadue': '32', 'trentatre': '33',
+    'trentaquattro': '34', 'trentacinque': '35', 'trentasei': '36', 'trentasette': '37',
+    'trentotto': '38', 'trentanove': '39', 'quarantuno': '41', 'quarantadue': '42',
+    'quarantatre': '43', 'quarantaquattro': '44', 'quarantacinque': '45', 'quarantasei': '46',
+    'quarantasette': '47', 'quarantotto': '48', 'quarantanove': '49', 'cinquantuno': '51',
+    'cinquantadue': '52', 'cinquantatre': '53', 'cinquantaquattro': '54', 'cinquantacinque': '55',
+    'cinquantasei': '56', 'cinquantasette': '57', 'cinquantotto': '58', 'cinquantanove': '59',
+    'sessantuno': '61', 'sessantadue': '62', 'sessantatre': '63', 'sessantaquattro': '64',
+    'sessantacinque': '65', 'sessantasei': '66', 'sessantasette': '67', 'sessantotto': '68',
+    'sessantanove': '69', 'settantuno': '71', 'settantadue': '72', 'settantatre': '73',
+    'settantaquattro': '74', 'settantacinque': '75', 'settantasei': '76', 'settantasette': '77',
+    'settantotto': '78', 'settantanove': '79', 'ottantuno': '81', 'ottantadue': '82',
+    'ottantatre': '83', 'ottantaquattro': '84', 'ottantacinque': '85', 'ottantasei': '86',
+    'ottantasette': '87', 'ottantotto': '88', 'ottantanove': '89', 'novantuno': '91',
+    'novantadue': '92', 'novantatre': '93', 'novantaquattro': '94', 'novantacinque': '95',
+    'novantasei': '96', 'novantasette': '97', 'novantotto': '98', 'novantanove': '99'
+  };
+  
+  // Italian confirmation phrases (expanded)
+  const confirmationPhrases = [
+    'sì', 'si', 'yes', 'yep', 'yeah', 'correct', 'ok', 'okay', 'va bene',
+    'corretto', 'esatto', 'perfetto', 'giusto', 'giustissimo', 'esattamente',
+    'sì corretto', 'si corretto', 'sì esatto', 'si esatto', 'sì è corretto',
+    'si è corretto', 'sì sì', 'si si', 'certamente', 'sicuro', 'assolutamente'
+  ];
+  
+  /**
+   * Convert any text to digits only, handling Italian number words comprehensively
+   */
+  const convertToDigits = (text) => {
+    if (!text) return '';
+    
+    debugLog('Converting text to digits', { original: text });
+    
+    // Remove common punctuation and normalize spaces
+    let cleanText = text.toLowerCase()
+      .replace(/[.,\-/()]/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+    
+    debugLog('Cleaned text', { cleaned: cleanText });
+    
+    // Split into words and number segments
+    const words = cleanText.split(/\s+/);
+    let result = '';
+    let i = 0;
+    
+    while (i < words.length) {
+      const word = words[i];
+      
+      // Check for compound numbers first
+      if (compoundMap[word]) {
+        result += compoundMap[word];
+        debugLog('Found compound number', { word, value: compoundMap[word] });
+        i++;
+        continue;
+      }
+      
+      // Check if it's a mapped number word
+      if (numberMap[word]) {
+        result += numberMap[word];
+        debugLog('Found number word', { word, value: numberMap[word] });
+        i++;
+        continue;
+      }
+      
+      // Check for numeric segment
+      if (/\d+/.test(word)) {
+        const digits = word.replace(/\D/g, '');
+        result += digits;
+        debugLog('Found numeric segment', { word, digits });
+        i++;
+        continue;
+      }
+      
+      // Check for "e" conjunction in numbers (e.g., "venti e tre" for 23)
+      if (word === 'e' && i > 0 && i < words.length - 1) {
+        const prevWord = words[i - 1];
+        const nextWord = words[i + 1];
+        
+        // Check if previous is a tens and next is a single digit
+        if (numberMap[prevWord] && numberMap[prevWord].length === 2 && 
+            numberMap[nextWord] && numberMap[nextWord].length === 1) {
+          const tensValue = parseInt(numberMap[prevWord]);
+          const unitValue = parseInt(numberMap[nextWord]);
+          const combined = tensValue + unitValue;
+          result = result.slice(0, -2) + combined.toString(); // Replace the tens part
+          debugLog('Combined number with "e"', { tens: tensValue, unit: unitValue, combined });
+          i += 2;
+          continue;
+        }
+      }
+      
+      i++;
+    }
+    
+    // If result is empty, try to extract digits directly
+    if (result === '') {
+      result = text.replace(/\D/g, '');
+      debugLog('Fallback: extracted digits directly', { result });
+    }
+    
+    debugLog('Final digit conversion result', { result });
+    return result;
+  };
+  
+  /**
+   * Normalize phone number to standard Italian format (+39XXXXXXXXXX)
+   * NOW REQUIRES MINIMUM 10 DIGITS
+   */
+  const normalizePhoneNumber = (digits) => {
+    if (!digits) return null;
+    
+    // Remove any non-digit characters
+    const cleanDigits = digits.replace(/\D/g, '');
+    
+    debugLog('Normalizing phone number', { original: digits, clean: cleanDigits });
+    
+    // Italian mobile numbers MUST be 10 digits after country code
+    // Reject anything less than 10 digits
+    if (cleanDigits.length < 10) {
+      console.log(`❌ Phone number rejected: ${cleanDigits.length} digits (minimum required: 10)`);
+      return null;
+    }
+    
+    // Perfect: 10 digits
+    if (cleanDigits.length === 10) {
+      const normalized = `+39${cleanDigits}`;
+      debugLog('Normalized 10-digit number', { normalized });
+      return normalized;
+    }
+    
+    // Already has country code (39 prefix + 10 digits = 12 total)
+    if (cleanDigits.length === 12 && cleanDigits.startsWith('39')) {
+      const normalized = `+${cleanDigits}`;
+      debugLog('Normalized number with country code', { normalized });
+      return normalized;
+    }
+    
+    // Has country code but missing the + (11 digits starting with 39)
+    if (cleanDigits.length === 11 && cleanDigits.startsWith('39')) {
+      const normalized = `+${cleanDigits}`;
+      debugLog('Normalized 11-digit number with country code', { normalized });
+      return normalized;
+    }
+    
+    // 11 digits without country code - take last 10
+    if (cleanDigits.length === 11 && !cleanDigits.startsWith('39')) {
+      const lastTen = cleanDigits.slice(-10);
+      const normalized = `+39${lastTen}`;
+      debugLog('Normalized 11-digit number (took last 10)', { normalized });
+      return normalized;
+    }
+    
+    // More than 10 digits, take last 10
+    if (cleanDigits.length > 10) {
+      const lastTen = cleanDigits.slice(-10);
+      const normalized = `+39${lastTen}`;
+      debugLog('Normalized number (took last 10 digits)', { 
+        original: cleanDigits, 
+        lastTen, 
+        normalized 
+      });
+      return normalized;
+    }
+    
+    console.log(`❌ Invalid phone number length: ${cleanDigits.length} digits (minimum 10 required)`);
+    return null;
+  };
+  
+  // Log the entire transcript for debugging
+  debugLog('Processing transcript', { messageCount: transcript.length });
+  
+  // ===== STRATEGY 1: FIND CONFIRMED NUMBER WITH ANCHOR =====
+  debugLog('Strategy 1: Looking for confirmed number with anchor');
+  
+  for (let i = transcript.length - 1; i >= 1; i--) {
+    const currentMsg = transcript[i];
+    const content = (currentMsg.content || '').toLowerCase().trim();
+    
+    // Check for any confirmation phrase
+    const isConfirmation = confirmationPhrases.some(phrase => 
+      content === phrase || content.includes(phrase)
+    );
+    
+    if (currentMsg.role === 'user' && isConfirmation) {
+      debugLog('Found confirmation', { 
+        index: i, 
+        content: currentMsg.content,
+        role: currentMsg.role 
+      });
+      
+      // Check the agent message immediately before the confirmation
+      const agentMsg = transcript[i - 1];
+      if (agentMsg && agentMsg.role === 'agent') {
+        debugLog('Found agent message before confirmation', { 
+          agentContent: agentMsg.content 
+        });
+        
+        const rawDigits = convertToDigits(agentMsg.content);
+        const finalNumber = normalizePhoneNumber(rawDigits);
+        
+        if (finalNumber) {
+          console.log(`✅ SUCCESS: Extracted confirmed number: ${finalNumber}`);
+          console.log(`   From agent: "${agentMsg.content}"`);
+          console.log(`   User confirmed: "${currentMsg.content}"`);
+          console.log(`   Raw digits extracted: ${rawDigits}`);
+          return finalNumber;
+        }
+      }
+    }
+  }
+  
+  // ===== STRATEGY 2: LOOK FOR NUMBERS IN AGENT MESSAGES (CONFIRMATION CONTEXT) =====
+  debugLog('Strategy 2: Looking for numbers in agent messages');
+  
+  for (let i = transcript.length - 1; i >= 0; i--) {
+    const msg = transcript[i];
+    if (msg.role === 'agent') {
+      const content = msg.content.toLowerCase();
+      
+      // Check if this message looks like a number confirmation
+      const isRepeatingNumber = 
+        content.includes('numero') ||
+        content.includes('telefono') ||
+        content.includes('cellulare') ||
+        content.includes('phone') ||
+        content.includes('number') ||
+        content.includes('il suo numero') ||
+        content.includes('il numero è') ||
+        content.includes('il numero di telefono') ||
+        content.match(/\d{5,}/); // Contains at least 5 digits
+      
+      if (isRepeatingNumber) {
+        debugLog('Found agent repeating number', { 
+          index: i, 
+          content: msg.content 
+        });
+        
+        const rawDigits = convertToDigits(msg.content);
+        const finalNumber = normalizePhoneNumber(rawDigits);
+        
+        if (finalNumber) {
+          console.log(`✅ SUCCESS: Extracted number from agent confirmation: ${finalNumber}`);
+          console.log(`   From agent: "${msg.content}"`);
+          console.log(`   Raw digits extracted: ${rawDigits}`);
+          return finalNumber;
+        }
+      }
+    }
+  }
+  
+  // ===== STRATEGY 3: LOOK FOR USER'S ORIGINAL NUMBER (BEFORE CONFIRMATION) =====
+  debugLog('Strategy 3: Looking for user number with agent confirmation');
+  
+  for (let i = 0; i < transcript.length; i++) {
+    const msg = transcript[i];
+    if (msg.role === 'user') {
+      const rawDigits = convertToDigits(msg.content);
+      
+      if (rawDigits.length >= 10 && rawDigits.length <= 12) {
+        debugLog('Found potential user number', { 
+          index: i, 
+          content: msg.content,
+          digits: rawDigits 
+        });
+        
+        // Check if a subsequent agent message confirms this number
+        for (let j = i + 1; j < Math.min(i + 4, transcript.length); j++) {
+          const nextMsg = transcript[j];
+          if (nextMsg.role === 'agent') {
+            const agentDigits = convertToDigits(nextMsg.content);
+            
+            // Check if agent repeats the number (exact match or close match)
+            const exactMatch = agentDigits === rawDigits;
+            const closeMatch = Math.abs(agentDigits.length - rawDigits.length) <= 2 && 
+                               agentDigits.slice(-8) === rawDigits.slice(-8);
+            
+            if (exactMatch || closeMatch) {
+              debugLog('Found agent confirming user number', {
+                userDigits: rawDigits,
+                agentDigits: agentDigits,
+                exactMatch,
+                closeMatch
+              });
+              
+              const finalNumber = normalizePhoneNumber(rawDigits);
+              if (finalNumber) {
+                console.log(`✅ SUCCESS: Extracted confirmed user number: ${finalNumber}`);
+                console.log(`   User said: "${msg.content}"`);
+                console.log(`   Agent confirmed: "${nextMsg.content}"`);
+                return finalNumber;
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+  
+  // ===== STRATEGY 4: LOOK FOR NUMBERS IN USER MESSAGES =====
+  debugLog('Strategy 4: Looking for numbers in user messages');
+  
+  for (let i = transcript.length - 1; i >= 0; i--) {
+    const msg = transcript[i];
+    if (msg.role === 'user') {
+      const rawDigits = convertToDigits(msg.content);
+      
+      if (rawDigits.length >= 10 && rawDigits.length <= 12) {
+        const finalNumber = normalizePhoneNumber(rawDigits);
+        if (finalNumber) {
+          console.log(`⚠️ WARNING: Extracted unconfirmed user number: ${finalNumber}`);
+          console.log(`   User said: "${msg.content}"`);
+          return finalNumber;
+        }
+      }
+    }
+  }
+  
+  // ===== STRATEGY 5: FALLBACK - ANY VALID ITALIAN NUMBER FORMAT =====
+  debugLog('Strategy 5: Fallback - any valid Italian number');
+  
+  for (let i = transcript.length - 1; i >= 0; i--) {
+    const msg = transcript[i];
+    if (msg.role === 'user' || msg.role === 'agent') {
+      const rawDigits = convertToDigits(msg.content);
+      
+      // Look for any valid Italian number pattern (minimum 10 digits)
+      if (rawDigits.length >= 10 && rawDigits.length <= 12) {
+        const finalNumber = normalizePhoneNumber(rawDigits);
+        if (finalNumber) {
+          console.log(`⚠️ WARNING: Extracted unconfirmed fallback: ${finalNumber}`);
+          console.log(`   From: ${msg.role} - "${msg.content}"`);
+          console.log(`   Raw digits: ${rawDigits}`);
+          return finalNumber;
+        }
+      }
+      
+      // Also look for specific patterns like "333 1234567" or "333-1234567"
+      const patternMatch = msg.content.match(/(\d{3}[\s\-]?\d{6,7})/);
+      if (patternMatch) {
+        const rawDigits = patternMatch[1].replace(/\D/g, '');
+        if (rawDigits.length >= 10) {
+          const finalNumber = normalizePhoneNumber(rawDigits);
+          if (finalNumber) {
+            console.log(`⚠️ WARNING: Extracted pattern-matched number: ${finalNumber}`);
+            console.log(`   Pattern: "${patternMatch[1]}"`);
+            return finalNumber;
+          }
+        }
+      }
+    }
+  }
+  
+  console.log('❌ No valid phone number found in transcript');
+  
+  // Additional debug: print all messages for troubleshooting
+  if (DEBUG) {
+    console.log('\n📝 Full transcript for debugging:');
+    transcript.forEach((msg, idx) => {
+      console.log(`${idx}: ${msg.role.toUpperCase()} - "${msg.content}"`);
+    });
+  }
+  
+  return null;
+}
+// ===== EXTRACT WHATSAPP CONFIRMATION FROM TRANSCRIPT =====
+function extractWhatsappConfirmation(transcript) {
+  if (!transcript || !Array.isArray(transcript)) {
+    return false;
+  }
+  
+  console.log('🔍 Extracting WhatsApp confirmation from transcript...');
+  
+  // Look for the WhatsApp question and user's response
+  for (let i = 0; i < transcript.length; i++) {
+    const msg = transcript[i];
+    const content = (msg.content || '').toLowerCase();
+    
+    // Check if this is the agent asking about WhatsApp confirmation
+    if (msg.role === 'agent' && 
+        (content.includes('desidera ricevere il messaggio di conferma') ||
+         content.includes('ricevere il messaggio di conferma su whatsapp') ||
+         content.includes('conferma su whatsapp'))) {
+      
+      console.log(`📱 Found WhatsApp question at index ${i}: "${msg.content}"`);
+      
+      // Look at the next few messages for user's response
+      for (let j = i + 1; j < Math.min(i + 5, transcript.length); j++) {
+        const userMsg = transcript[j];
+        if (userMsg.role === 'user') {
+          const userContent = (userMsg.content || '').toLowerCase();
+          
+          // Check for affirmative response
+          if (userContent.includes('sì') || userContent.includes('si') || 
+              userContent.includes('yes') || userContent.includes('ok') ||
+              userContent.includes('va bene') || userContent.includes('certo') ||
+              userContent.includes('gracias')) {
+            console.log(`✅ User confirmed WhatsApp: "${userMsg.content}"`);
+            return true;
+          }
+          
+          // Check for negative response
+          if (userContent.includes('no') || userContent.includes('non') ||
+              userContent.includes('grazie no')) {
+            console.log(`❌ User declined WhatsApp: "${userMsg.content}"`);
+            return false;
+          }
+        }
+      }
+    }
+  }
+  
+  console.log('⚠️ No WhatsApp confirmation found in transcript');
+  return false;
+}
+// ===== EXTRACT NEWSLETTER/EVENTS PROGRAM CONFIRMATION =====
+function extractNewsletterConfirmation(transcript) {
+  if (!transcript || !Array.isArray(transcript)) {
+    return false;
+  }
+  
+  console.log('🔍 Extracting events program confirmation from transcript...');
+  
+  // Look for the events program question and user's response
+  for (let i = 0; i < transcript.length; i++) {
+    const msg = transcript[i];
+    const content = (msg.content || '').toLowerCase();
+    
+    // Check if this is the agent asking about events program
+    if (msg.role === 'agent' && 
+        (content.includes('programma eventi') ||
+         content.includes('ricevere anche il nostro programma eventi') ||
+         content.includes('eventi via whatsapp'))) {
+      
+      console.log(`📅 Found events program question at index ${i}: "${msg.content}"`);
+      
+      // Look at the next few messages for user's response
+      for (let j = i + 1; j < Math.min(i + 5, transcript.length); j++) {
+        const userMsg = transcript[j];
+        if (userMsg.role === 'user') {
+          const userContent = (userMsg.content || '').toLowerCase();
+          
+          // Check for affirmative response
+          if (userContent.includes('sì') || userContent.includes('si') || 
+              userContent.includes('yes') || userContent.includes('ok') ||
+              userContent.includes('va bene') || userContent.includes('certo') ||
+              userContent.includes('gracias')) {
+            console.log(`✅ User confirmed events program: "${userMsg.content}"`);
+            return true;
+          }
+          
+          // Check for negative response
+          if (userContent.includes('no') || userContent.includes('non') ||
+              userContent.includes('grazie no')) {
+            console.log(`❌ User declined events program: "${userMsg.content}"`);
+            return false;
+          }
+        }
+      }
+    }
+  }
+  
+  console.log('⚠️ No events program confirmation found in transcript');
+  return false;
 }
 
 // ===== FUNCTION TO SEND WEBHOOK TO MAKE.COM =====
