@@ -967,8 +967,7 @@ function extractPhoneFromTranscript(transcript) {
       }
     }
   }
-  
-  // ===== STRATEGY 5: FALLBACK - ANY VALID ITALIAN NUMBER FORMAT =====
+    // ===== STRATEGY 5: FALLBACK - ANY VALID ITALIAN NUMBER FORMAT =====
   debugLog('Strategy 5: Fallback - any valid Italian number');
   
   for (let i = transcript.length - 1; i >= 0; i--) {
@@ -976,8 +975,8 @@ function extractPhoneFromTranscript(transcript) {
     if (msg.role === 'user' || msg.role === 'agent') {
       const rawDigits = convertToDigits(msg.content);
       
-      // Look for any valid Italian number pattern
-      if (rawDigits.length >= 9 && rawDigits.length <= 12) {
+      // Look for any valid Italian number pattern - MINIMUM 10 DIGITS
+      if (rawDigits.length >= 10 && rawDigits.length <= 12) {
         const finalNumber = normalizePhoneNumber(rawDigits);
         if (finalNumber) {
           console.log(`⚠️ WARNING: Extracted unconfirmed fallback: ${finalNumber}`);
@@ -987,15 +986,17 @@ function extractPhoneFromTranscript(transcript) {
         }
       }
       
-      // Also look for specific patterns like "333 1234567" or "333-1234567"
-      const patternMatch = msg.content.match(/(\d{3}[\s\-]?\d{6,7})/);
+      // Also look for specific patterns like "333 1234567" or "333-1234567" (10 digits total)
+      const patternMatch = msg.content.match(/(\d{3}[\s\-]?\d{7})/);
       if (patternMatch) {
         const rawDigits = patternMatch[1].replace(/\D/g, '');
-        const finalNumber = normalizePhoneNumber(rawDigits);
-        if (finalNumber) {
-          console.log(`⚠️ WARNING: Extracted pattern-matched number: ${finalNumber}`);
-          console.log(`   Pattern: "${patternMatch[1]}"`);
-          return finalNumber;
+        if (rawDigits.length >= 10) {
+          const finalNumber = normalizePhoneNumber(rawDigits);
+          if (finalNumber) {
+            console.log(`⚠️ WARNING: Extracted pattern-matched number: ${finalNumber}`);
+            console.log(`   Pattern: "${patternMatch[1]}"`);
+            return finalNumber;
+          }
         }
       }
     }
@@ -1014,8 +1015,7 @@ function extractPhoneFromTranscript(transcript) {
   return null;
 }
 
-// PHONE NUMBER NORMALIZATION OF 10 DIGITS//
-
+// ===== NORMALIZE PHONE NUMBER - MINIMUM 10 DIGITS =====
 const normalizePhoneNumber = (digits) => {
   if (!digits) return null;
   
@@ -1075,6 +1075,7 @@ const normalizePhoneNumber = (digits) => {
   console.log(`❌ Invalid phone number length: ${cleanDigits.length} digits (minimum 10 required)`);
   return null;
 };
+
 // ===== EXTRACT WHATSAPP CONFIRMATION FROM TRANSCRIPT =====
 function extractWhatsappConfirmation(transcript) {
   if (!transcript || !Array.isArray(transcript)) {
@@ -1125,7 +1126,6 @@ function extractWhatsappConfirmation(transcript) {
   console.log('⚠️ No WhatsApp confirmation found in transcript');
   return false;
 }
-
 // ===== EXTRACT NEWSLETTER/EVENTS PROGRAM CONFIRMATION =====
 function extractNewsletterConfirmation(transcript) {
   if (!transcript || !Array.isArray(transcript)) {
