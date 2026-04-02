@@ -768,17 +768,10 @@ async function sendToMakeWebhook(reservationData, reservationId) {
     return false;
   }
 
-  // Validate phone number has at least 10 digits (not 9)
-const phoneDigits = reservationData.phone.replace(/\D/g, '');
-if (phoneDigits.length < 10) {
-  console.log(`❌ Webhook NOT sent - invalid phone number: ${reservationData.phone} (${phoneDigits.length} digits, minimum 10 required)`);
-  return false;
-}
-  
-  // Validate phone number has at least 9 digits
+   // Validate phone number - MINIMUM 10 DIGITS REQUIRED
   const phoneDigits = reservationData.phone.replace(/\D/g, '');
-  if (phoneDigits.length < 9) {
-    console.log(`❌ Webhook NOT sent - invalid phone number: ${reservationData.phone} (${phoneDigits.length} digits)`);
+  if (phoneDigits.length < 10) {
+    console.log(`❌ Webhook NOT sent - invalid phone number: ${reservationData.phone} (${phoneDigits.length} digits, minimum 10 required)`);
     return false;
   }
   
@@ -821,7 +814,6 @@ if (phoneDigits.length < 10) {
       newsletter: reservationData.newsletter || false,
       whatsappConfirmation: reservationData.whatsapp_confirmation || false
     };
-
     console.log('📤 SENDING TO MAKE.COM:');
     console.log('Payload size:', JSON.stringify(payload).length, 'bytes');
     console.log('Payload:', JSON.stringify(payload, null, 2));
