@@ -274,20 +274,8 @@ function extractPhoneFromTranscript(transcript) {
     'cinquecento': '500', 'seicento': '600', 'settecento': '700', 'ottocento': '800',
     'novecento': '900',
     
-    // ===== ITALIAN THOUSANDS (ADDED) =====
+    // Italian thousands (1,000 - 10,000)
     'mille': '1000',
-    'millenovecento': '1900',
-    'duemila': '2000',
-    'tremila': '3000',
-    'quattromila': '4000',
-    'cinquemila': '5000',
-    'seimila': '6000',
-    'settemila': '7000',
-    'ottomila': '8000',
-    'novemila': '9000',
-    'diecimila': '10000',
-    
-    // Compound thousands with hundreds
     'millecento': '1100',
     'milleduecento': '1200',
     'milletrecento': '1300',
@@ -297,144 +285,54 @@ function extractPhoneFromTranscript(transcript) {
     'millesettecento': '1700',
     'milleottocento': '1800',
     'millenovecento': '1900',
-    
-    // Compound thousands with tens and units (e.g., millecentoventi = 1120)
-    'millecentoventi': '1120',
-    'millecentotrenta': '1130',
-    'millecentoquaranta': '1140',
-    'millecentocinquanta': '1150',
-    'millecentosessanta': '1160',
-    'millecentosettanta': '1170',
-    'millecentottanta': '1180',
-    'millecentonovanta': '1190',
-    
-    'milleduecentoventi': '1220',
-    'milleduecentotrenta': '1230',
-    'milleduecentoquaranta': '1240',
-    'milleduecentocinquanta': '1250',
-    'milleduecentosessanta': '1260',
-    'milleduecentosettanta': '1270',
-    'milleduecentottanta': '1280',
-    'milleduecentonovanta': '1290',
-    
-    'milletrecentoventi': '1320',
-    'milletrecentotrenta': '1330',
-    'milletrecentoquaranta': '1340',
-    'milletrecentocinquanta': '1350',
-    'milletrecentosessanta': '1360',
-    'milletrecentosettanta': '1370',
-    'milletrecentottanta': '1380',
-    'milletrecentonovanta': '1390',
-    
-    'millequattrocentoventi': '1420',
-    'millequattrocentotrenta': '1430',
-    'millequattrocentoquaranta': '1440',
-    'millequattrocentocinquanta': '1450',
-    'millequattrocentosessanta': '1460',
-    'millequattrocentosettanta': '1470',
-    'millequattrocentottanta': '1480',
-    'millequattrocentonovanta': '1490',
-    
-    'millecinquecentoventi': '1520',
-    'millecinquecentotrenta': '1530',
-    'millecinquecentoquaranta': '1540',
-    'millecinquecentocinquanta': '1550',
-    'millecinquecentosessanta': '1560',
-    'millecinquecentosettanta': '1570',
-    'millecinquecentottanta': '1580',
-    'millecinquecentonovanta': '1590',
-    
-    // Italian numbers with "mille" followed by a number word
-    'milleuno': '1001',
-    'milledue': '1002',
-    'milletre': '1003',
-    'millequattro': '1004',
-    'millecinque': '1005',
-    'millesei': '1006',
-    'millesette': '1007',
-    'milleotto': '1008',
-    'millenove': '1009',
-    'milledieci': '1010',
-    'milleundici': '1011',
-    'milledodici': '1012',
-    'milletredici': '1013',
-    'millequattordici': '1014',
-    'millequindici': '1015',
-    'millesedici': '1016',
-    'millediciassette': '1017',
-    'millediciotto': '1018',
-    'millediciannove': '1019',
-    'milleventi': '1020',
-    'milletrenta': '1030',
-    'millequaranta': '1040',
-    'millecinquanta': '1050',
-    'millesessanta': '1060',
-    'millesettanta': '1070',
-    'milleottanta': '1080',
-    'millenovanta': '1090'
+    'duemila': '2000',
+    'tremila': '3000',
+    'quattromila': '4000',
+    'cinquemila': '5000',
+    'seimila': '6000',
+    'settemila': '7000',
+    'ottomila': '8000',
+    'novemila': '9000',
+    'diecimila': '10000'
   };
   
   // Compound Italian numbers (e.g., ventuno = 21, trentadue = 32)
   const compoundMap = {
-    // 20s
     'ventuno': '21', 'ventidue': '22', 'ventitre': '23', 'ventiquattro': '24',
     'venticinque': '25', 'ventisei': '26', 'ventisette': '27', 'ventotto': '28',
-    'ventinove': '29',
-    // 30s
-    'trentuno': '31', 'trentadue': '32', 'trentatre': '33', 'trentaquattro': '34',
-    'trentacinque': '35', 'trentasei': '36', 'trentasette': '37', 'trentotto': '38',
-    'trentanove': '39',
-    // 40s
-    'quarantuno': '41', 'quarantadue': '42', 'quarantatre': '43', 'quarantaquattro': '44',
-    'quarantacinque': '45', 'quarantasei': '46', 'quarantasette': '47', 'quarantotto': '48',
-    'quarantanove': '49',
-    // 50s
-    'cinquantuno': '51', 'cinquantadue': '52', 'cinquantatre': '53', 'cinquantaquattro': '54',
-    'cinquantacinque': '55', 'cinquantasei': '56', 'cinquantasette': '57', 'cinquantotto': '58',
-    'cinquantanove': '59',
-    // 60s
+    'ventinove': '29', 'trentuno': '31', 'trentadue': '32', 'trentatre': '33',
+    'trentaquattro': '34', 'trentacinque': '35', 'trentasei': '36', 'trentasette': '37',
+    'trentotto': '38', 'trentanove': '39', 'quarantuno': '41', 'quarantadue': '42',
+    'quarantatre': '43', 'quarantaquattro': '44', 'quarantacinque': '45', 'quarantasei': '46',
+    'quarantasette': '47', 'quarantotto': '48', 'quarantanove': '49', 'cinquantuno': '51',
+    'cinquantadue': '52', 'cinquantatre': '53', 'cinquantaquattro': '54', 'cinquantacinque': '55',
+    'cinquantasei': '56', 'cinquantasette': '57', 'cinquantotto': '58', 'cinquantanove': '59',
     'sessantuno': '61', 'sessantadue': '62', 'sessantatre': '63', 'sessantaquattro': '64',
     'sessantacinque': '65', 'sessantasei': '66', 'sessantasette': '67', 'sessantotto': '68',
-    'sessantanove': '69',
-    // 70s
-    'settantuno': '71', 'settantadue': '72', 'settantatre': '73', 'settantaquattro': '74',
-    'settantacinque': '75', 'settantasei': '76', 'settantasette': '77', 'settantotto': '78',
-    'settantanove': '79',
-    // 80s
-    'ottantuno': '81', 'ottantadue': '82', 'ottantatre': '83', 'ottantaquattro': '84',
-    'ottantacinque': '85', 'ottantasei': '86', 'ottantasette': '87', 'ottantotto': '88',
-    'ottantanove': '89',
-    // 90s
-    'novantuno': '91', 'novantadue': '92', 'novantatre': '93', 'novantaquattro': '94',
-    'novantacinque': '95', 'novantasei': '96', 'novantasette': '97', 'novantotto': '98',
-    'novantanove': '99'
+    'sessantanove': '69', 'settantuno': '71', 'settantadue': '72', 'settantatre': '73',
+    'settantaquattro': '74', 'settantacinque': '75', 'settantasei': '76', 'settantasette': '77',
+    'settantotto': '78', 'settantanove': '79', 'ottantuno': '81', 'ottantadue': '82',
+    'ottantatre': '83', 'ottantaquattro': '84', 'ottantacinque': '85', 'ottantasei': '86',
+    'ottantasette': '87', 'ottantotto': '88', 'ottantanove': '89', 'novantuno': '91',
+    'novantadue': '92', 'novantatre': '93', 'novantaquattro': '94', 'novantacinque': '95',
+    'novantasei': '96', 'novantasette': '97', 'novantotto': '98', 'novantanove': '99'
   };
   
-  // Italian confirmation phrases (expanded)
+  // Italian confirmation phrases
   const confirmationPhrases = [
     'sì', 'si', 'yes', 'yep', 'yeah', 'correct', 'ok', 'okay', 'va bene',
     'corretto', 'esatto', 'perfetto', 'giusto', 'giustissimo', 'esattamente',
-    'sì corretto', 'si corretto', 'sì esatto', 'si esatto', 'sì è corretto',
-    'si è corretto', 'sì sì', 'si si', 'certamente', 'sicuro', 'assolutamente'
+    'sì corretto', 'si corretto', 'sì esatto', 'si esatto'
   ];
   
-  /**
-   * Convert any text to digits only, handling Italian number words comprehensively
-   */
   const convertToDigits = (text) => {
     if (!text) return '';
     
-    debugLog('Converting text to digits', { original: text });
-    
-    // Remove common punctuation and normalize spaces
     let cleanText = text.toLowerCase()
       .replace(/[.,\-/()]/g, ' ')
       .replace(/\s+/g, ' ')
       .trim();
     
-    debugLog('Cleaned text', { cleaned: cleanText });
-    
-    // Split into words and number segments
     const words = cleanText.split(/\s+/);
     let result = '';
     let i = 0;
@@ -442,247 +340,128 @@ function extractPhoneFromTranscript(transcript) {
     while (i < words.length) {
       const word = words[i];
       
-      // Check for compound numbers first
       if (compoundMap[word]) {
         result += compoundMap[word];
-        debugLog('Found compound number', { word, value: compoundMap[word] });
         i++;
         continue;
       }
       
-      // Check if it's a mapped number word
       if (numberMap[word]) {
         result += numberMap[word];
-        debugLog('Found number word', { word, value: numberMap[word] });
         i++;
         continue;
       }
       
-      // Check for numeric segment
       if (/\d+/.test(word)) {
-        const digits = word.replace(/\D/g, '');
-        result += digits;
-        debugLog('Found numeric segment', { word, digits });
+        result += word.replace(/\D/g, '');
         i++;
         continue;
-      }
-      
-      // Check for "e" conjunction in numbers (e.g., "venti e tre" for 23)
-      if (word === 'e' && i > 0 && i < words.length - 1) {
-        const prevWord = words[i - 1];
-        const nextWord = words[i + 1];
-        
-        // Check if previous is a tens and next is a single digit
-        if (numberMap[prevWord] && numberMap[prevWord].length === 2 && 
-            numberMap[nextWord] && numberMap[nextWord].length === 1) {
-          const tensValue = parseInt(numberMap[prevWord]);
-          const unitValue = parseInt(numberMap[nextWord]);
-          const combined = tensValue + unitValue;
-          result = result.slice(0, -2) + combined.toString(); // Replace the tens part
-          debugLog('Combined number with "e"', { tens: tensValue, unit: unitValue, combined });
-          i += 2;
-          continue;
-        }
       }
       
       i++;
     }
     
-    // If result is empty, try to extract digits directly
     if (result === '') {
       result = text.replace(/\D/g, '');
-      debugLog('Fallback: extracted digits directly', { result });
     }
     
-    debugLog('Final digit conversion result', { result });
     return result;
   };
   
-  /**
-   * Normalize phone number to standard Italian format (+39XXXXXXXXXX)
-   * NOW REQUIRES MINIMUM 10 DIGITS
-   */
   const normalizePhoneNumber = (digits) => {
     if (!digits) return null;
     
-    // Remove any non-digit characters
     const cleanDigits = digits.replace(/\D/g, '');
     
-    debugLog('Normalizing phone number', { original: digits, clean: cleanDigits });
-    
-    // Italian mobile numbers MUST be 10 digits after country code
-    // Reject anything less than 10 digits
+    // MINIMUM 10 DIGITS REQUIRED
     if (cleanDigits.length < 10) {
       console.log(`❌ Phone number rejected: ${cleanDigits.length} digits (minimum required: 10)`);
       return null;
     }
     
-    // Perfect: 10 digits
     if (cleanDigits.length === 10) {
-      const normalized = `+39${cleanDigits}`;
-      debugLog('Normalized 10-digit number', { normalized });
-      return normalized;
+      return `+39${cleanDigits}`;
     }
-    
-    // Already has country code (39 prefix + 10 digits = 12 total)
     if (cleanDigits.length === 12 && cleanDigits.startsWith('39')) {
-      const normalized = `+${cleanDigits}`;
-      debugLog('Normalized number with country code', { normalized });
-      return normalized;
+      return `+${cleanDigits}`;
     }
-    
-    // Has country code but missing the + (11 digits starting with 39)
     if (cleanDigits.length === 11 && cleanDigits.startsWith('39')) {
-      const normalized = `+${cleanDigits}`;
-      debugLog('Normalized 11-digit number with country code', { normalized });
-      return normalized;
+      return `+${cleanDigits}`;
     }
-    
-    // 11 digits without country code - take last 10
     if (cleanDigits.length === 11 && !cleanDigits.startsWith('39')) {
-      const lastTen = cleanDigits.slice(-10);
-      const normalized = `+39${lastTen}`;
-      debugLog('Normalized 11-digit number (took last 10)', { normalized });
-      return normalized;
+      return `+39${cleanDigits.slice(-10)}`;
     }
-    
-    // More than 10 digits, take last 10
     if (cleanDigits.length > 10) {
-      const lastTen = cleanDigits.slice(-10);
-      const normalized = `+39${lastTen}`;
-      debugLog('Normalized number (took last 10 digits)', { 
-        original: cleanDigits, 
-        lastTen, 
-        normalized 
-      });
-      return normalized;
+      return `+39${cleanDigits.slice(-10)}`;
     }
     
-    console.log(`❌ Invalid phone number length: ${cleanDigits.length} digits (minimum 10 required)`);
     return null;
   };
   
-  // Log the entire transcript for debugging
   debugLog('Processing transcript', { messageCount: transcript.length });
   
   // ===== STRATEGY 1: FIND CONFIRMED NUMBER WITH ANCHOR =====
-  debugLog('Strategy 1: Looking for confirmed number with anchor');
-  
   for (let i = transcript.length - 1; i >= 1; i--) {
     const currentMsg = transcript[i];
     const content = (currentMsg.content || '').toLowerCase().trim();
     
-    // Check for any confirmation phrase
     const isConfirmation = confirmationPhrases.some(phrase => 
       content === phrase || content.includes(phrase)
     );
     
     if (currentMsg.role === 'user' && isConfirmation) {
-      debugLog('Found confirmation', { 
-        index: i, 
-        content: currentMsg.content,
-        role: currentMsg.role 
-      });
-      
-      // Check the agent message immediately before the confirmation
       const agentMsg = transcript[i - 1];
       if (agentMsg && agentMsg.role === 'agent') {
-        debugLog('Found agent message before confirmation', { 
-          agentContent: agentMsg.content 
-        });
-        
         const rawDigits = convertToDigits(agentMsg.content);
         const finalNumber = normalizePhoneNumber(rawDigits);
         
         if (finalNumber) {
           console.log(`✅ SUCCESS: Extracted confirmed number: ${finalNumber}`);
-          console.log(`   From agent: "${agentMsg.content}"`);
-          console.log(`   User confirmed: "${currentMsg.content}"`);
-          console.log(`   Raw digits extracted: ${rawDigits}`);
           return finalNumber;
         }
       }
     }
   }
   
-  // ===== STRATEGY 2: LOOK FOR NUMBERS IN AGENT MESSAGES (CONFIRMATION CONTEXT) =====
-  debugLog('Strategy 2: Looking for numbers in agent messages');
-  
+  // ===== STRATEGY 2: LOOK FOR NUMBERS IN AGENT MESSAGES =====
   for (let i = transcript.length - 1; i >= 0; i--) {
     const msg = transcript[i];
     if (msg.role === 'agent') {
       const content = msg.content.toLowerCase();
-      
-      // Check if this message looks like a number confirmation
       const isRepeatingNumber = 
         content.includes('numero') ||
         content.includes('telefono') ||
         content.includes('cellulare') ||
         content.includes('phone') ||
         content.includes('number') ||
-        content.includes('il suo numero') ||
-        content.includes('il numero è') ||
-        content.includes('il numero di telefono') ||
-        content.match(/\d{5,}/); // Contains at least 5 digits
+        content.includes('confermo il numero');
       
       if (isRepeatingNumber) {
-        debugLog('Found agent repeating number', { 
-          index: i, 
-          content: msg.content 
-        });
-        
         const rawDigits = convertToDigits(msg.content);
         const finalNumber = normalizePhoneNumber(rawDigits);
-        
         if (finalNumber) {
-          console.log(`✅ SUCCESS: Extracted number from agent confirmation: ${finalNumber}`);
-          console.log(`   From agent: "${msg.content}"`);
-          console.log(`   Raw digits extracted: ${rawDigits}`);
+          console.log(`✅ SUCCESS: Extracted number from agent: ${finalNumber}`);
           return finalNumber;
         }
       }
     }
   }
   
-  // ===== STRATEGY 3: LOOK FOR USER'S ORIGINAL NUMBER (BEFORE CONFIRMATION) =====
-  debugLog('Strategy 3: Looking for user number with agent confirmation');
-  
+  // ===== STRATEGY 3: LOOK FOR USER'S ORIGINAL NUMBER =====
   for (let i = 0; i < transcript.length; i++) {
     const msg = transcript[i];
     if (msg.role === 'user') {
       const rawDigits = convertToDigits(msg.content);
       
       if (rawDigits.length >= 10 && rawDigits.length <= 12) {
-        debugLog('Found potential user number', { 
-          index: i, 
-          content: msg.content,
-          digits: rawDigits 
-        });
-        
-        // Check if a subsequent agent message confirms this number
         for (let j = i + 1; j < Math.min(i + 4, transcript.length); j++) {
           const nextMsg = transcript[j];
           if (nextMsg.role === 'agent') {
             const agentDigits = convertToDigits(nextMsg.content);
-            
-            // Check if agent repeats the number (exact match or close match)
-            const exactMatch = agentDigits === rawDigits;
-            const closeMatch = Math.abs(agentDigits.length - rawDigits.length) <= 2 && 
-                               agentDigits.slice(-8) === rawDigits.slice(-8);
-            
-            if (exactMatch || closeMatch) {
-              debugLog('Found agent confirming user number', {
-                userDigits: rawDigits,
-                agentDigits: agentDigits,
-                exactMatch,
-                closeMatch
-              });
-              
+            if (agentDigits === rawDigits || agentDigits.slice(-8) === rawDigits.slice(-8)) {
               const finalNumber = normalizePhoneNumber(rawDigits);
               if (finalNumber) {
                 console.log(`✅ SUCCESS: Extracted confirmed user number: ${finalNumber}`);
-                console.log(`   User said: "${msg.content}"`);
-                console.log(`   Agent confirmed: "${nextMsg.content}"`);
                 return finalNumber;
               }
             }
@@ -693,8 +472,6 @@ function extractPhoneFromTranscript(transcript) {
   }
   
   // ===== STRATEGY 4: LOOK FOR NUMBERS IN USER MESSAGES =====
-  debugLog('Strategy 4: Looking for numbers in user messages');
-  
   for (let i = transcript.length - 1; i >= 0; i--) {
     const msg = transcript[i];
     if (msg.role === 'user') {
@@ -704,289 +481,26 @@ function extractPhoneFromTranscript(transcript) {
         const finalNumber = normalizePhoneNumber(rawDigits);
         if (finalNumber) {
           console.log(`⚠️ WARNING: Extracted unconfirmed user number: ${finalNumber}`);
-          console.log(`   User said: "${msg.content}"`);
           return finalNumber;
         }
       }
     }
   }
   
-  // ===== STRATEGY 5: FALLBACK - ANY VALID ITALIAN NUMBER FORMAT =====
-  debugLog('Strategy 5: Fallback - any valid Italian number');
-  
+  // ===== STRATEGY 5: FALLBACK =====
   for (let i = transcript.length - 1; i >= 0; i--) {
     const msg = transcript[i];
     if (msg.role === 'user' || msg.role === 'agent') {
       const rawDigits = convertToDigits(msg.content);
       
-      // Look for any valid Italian number pattern (minimum 10 digits)
       if (rawDigits.length >= 10 && rawDigits.length <= 12) {
         const finalNumber = normalizePhoneNumber(rawDigits);
         if (finalNumber) {
           console.log(`⚠️ WARNING: Extracted unconfirmed fallback: ${finalNumber}`);
-          console.log(`   From: ${msg.role} - "${msg.content}"`);
-          console.log(`   Raw digits: ${rawDigits}`);
           return finalNumber;
         }
       }
       
-      // Also look for specific patterns like "333 1234567" or "333-1234567"
-      const patternMatch = msg.content.match(/(\d{3}[\s\-]?\d{6,7})/);
-      if (patternMatch) {
-        const rawDigits = patternMatch[1].replace(/\D/g, '');
-        if (rawDigits.length >= 10) {
-          const finalNumber = normalizePhoneNumber(rawDigits);
-          if (finalNumber) {
-            console.log(`⚠️ WARNING: Extracted pattern-matched number: ${finalNumber}`);
-            console.log(`   Pattern: "${patternMatch[1]}"`);
-            return finalNumber;
-          }
-        }
-      }
-    }
-  }
-  
-  console.log('❌ No valid phone number found in transcript');
-  
-  // Additional debug: print all messages for troubleshooting
-  if (DEBUG) {
-    console.log('\n📝 Full transcript for debugging:');
-    transcript.forEach((msg, idx) => {
-      console.log(`${idx}: ${msg.role.toUpperCase()} - "${msg.content}"`);
-    });
-  }
-  
-  return null;
-}
-  
-  /**
-   * Normalize phone number to standard Italian format (+39XXXXXXXXXX)
-   */
-  const normalizePhoneNumber = (digits) => {
-    if (!digits) return null;
-    
-    // Remove any non-digit characters
-    const cleanDigits = digits.replace(/\D/g, '');
-    
-    debugLog('Normalizing phone number', { original: digits, clean: cleanDigits });
-    
-    // Italian mobile numbers are 10 digits after country code
-    if (cleanDigits.length === 10) {
-      const normalized = `+39${cleanDigits}`;
-      debugLog('Normalized 10-digit number', { normalized });
-      return normalized;
-    }
-    // Already has country code (39 prefix + 10 digits = 12 total)
-    else if (cleanDigits.length === 12 && cleanDigits.startsWith('39')) {
-      const normalized = `+${cleanDigits}`;
-      debugLog('Normalized number with country code', { normalized });
-      return normalized;
-    }
-    // Has country code but missing the + (11 digits starting with 39)
-    else if (cleanDigits.length === 11 && cleanDigits.startsWith('39')) {
-      const normalized = `+${cleanDigits}`;
-      debugLog('Normalized 11-digit number with country code', { normalized });
-      return normalized;
-    }
-    // 11 digits without country code (possible leading digit error)
-    else if (cleanDigits.length === 11 && !cleanDigits.startsWith('39')) {
-      const lastTen = cleanDigits.slice(-10);
-      const normalized = `+39${lastTen}`;
-      debugLog('Normalized 11-digit number (took last 10)', { normalized });
-      return normalized;
-    }
-    // More than 10 digits, take last 10 (most common case)
-    else if (cleanDigits.length > 10) {
-      const lastTen = cleanDigits.slice(-10);
-      const normalized = `+39${lastTen}`;
-      debugLog('Normalized number (took last 10 digits)', { 
-        original: cleanDigits, 
-        lastTen, 
-        normalized 
-      });
-      return normalized;
-    }
-    // Less than 10 digits but at least 9 (possible missing digit)
-    else if (cleanDigits.length >= 9 && cleanDigits.length < 10) {
-      // Log warning but still return with padding
-      console.log(`⚠️ Phone number has ${cleanDigits.length} digits (expected 10): ${cleanDigits}`);
-      const normalized = `+39${cleanDigits}`;
-      debugLog('Normalized short number', { normalized });
-      return normalized;
-    }
-    
-    console.log(`❌ Invalid phone number length: ${cleanDigits.length} digits`);
-    return null;
-  };
-  
-  // Log the entire transcript for debugging
-  debugLog('Processing transcript', { messageCount: transcript.length });
-  
-  // ===== STRATEGY 1: FIND CONFIRMED NUMBER WITH ANCHOR =====
-  debugLog('Strategy 1: Looking for confirmed number with anchor');
-  
-  for (let i = transcript.length - 1; i >= 1; i--) {
-    const currentMsg = transcript[i];
-    const content = (currentMsg.content || '').toLowerCase().trim();
-    
-    // Check for any confirmation phrase
-    const isConfirmation = confirmationPhrases.some(phrase => 
-      content === phrase || content.includes(phrase)
-    );
-    
-    if (currentMsg.role === 'user' && isConfirmation) {
-      debugLog('Found confirmation', { 
-        index: i, 
-        content: currentMsg.content,
-        role: currentMsg.role 
-      });
-      
-      // Check the agent message immediately before the confirmation
-      const agentMsg = transcript[i - 1];
-      if (agentMsg && agentMsg.role === 'agent') {
-        debugLog('Found agent message before confirmation', { 
-          agentContent: agentMsg.content 
-        });
-        
-        const rawDigits = convertToDigits(agentMsg.content);
-        const finalNumber = normalizePhoneNumber(rawDigits);
-        
-        if (finalNumber) {
-          console.log(`✅ SUCCESS: Extracted confirmed number: ${finalNumber}`);
-          console.log(`   From agent: "${agentMsg.content}"`);
-          console.log(`   User confirmed: "${currentMsg.content}"`);
-          console.log(`   Raw digits extracted: ${rawDigits}`);
-          return finalNumber;
-        }
-      }
-    }
-  }
-  
-  // ===== STRATEGY 2: LOOK FOR NUMBERS IN AGENT MESSAGES (CONFIRMATION CONTEXT) =====
-  debugLog('Strategy 2: Looking for numbers in agent messages');
-  
-  for (let i = transcript.length - 1; i >= 0; i--) {
-    const msg = transcript[i];
-    if (msg.role === 'agent') {
-      const content = msg.content.toLowerCase();
-      
-      // Check if this message looks like a number confirmation
-      const isRepeatingNumber = 
-        content.includes('numero') ||
-        content.includes('telefono') ||
-        content.includes('cellulare') ||
-        content.includes('phone') ||
-        content.includes('number') ||
-        content.includes('il suo numero') ||
-        content.includes('il numero è') ||
-        content.includes('il numero di telefono') ||
-        content.match(/\d{5,}/); // Contains at least 5 digits
-      
-      if (isRepeatingNumber) {
-        debugLog('Found agent repeating number', { 
-          index: i, 
-          content: msg.content 
-        });
-        
-        const rawDigits = convertToDigits(msg.content);
-        const finalNumber = normalizePhoneNumber(rawDigits);
-        
-        if (finalNumber) {
-          console.log(`✅ SUCCESS: Extracted number from agent confirmation: ${finalNumber}`);
-          console.log(`   From agent: "${msg.content}"`);
-          console.log(`   Raw digits extracted: ${rawDigits}`);
-          return finalNumber;
-        }
-      }
-    }
-  }
-  
-  // ===== STRATEGY 3: LOOK FOR USER'S ORIGINAL NUMBER (BEFORE CONFIRMATION) =====
-  debugLog('Strategy 3: Looking for user number with agent confirmation');
-  
-  for (let i = 0; i < transcript.length; i++) {
-    const msg = transcript[i];
-    if (msg.role === 'user') {
-      const rawDigits = convertToDigits(msg.content);
-      
-      if (rawDigits.length >= 9 && rawDigits.length <= 12) {
-        debugLog('Found potential user number', { 
-          index: i, 
-          content: msg.content,
-          digits: rawDigits 
-        });
-        
-        // Check if a subsequent agent message confirms this number
-        for (let j = i + 1; j < Math.min(i + 4, transcript.length); j++) {
-          const nextMsg = transcript[j];
-          if (nextMsg.role === 'agent') {
-            const agentDigits = convertToDigits(nextMsg.content);
-            
-            // Check if agent repeats the number (exact match or close match)
-            const exactMatch = agentDigits === rawDigits;
-            const closeMatch = Math.abs(agentDigits.length - rawDigits.length) <= 2 && 
-                               agentDigits.slice(-8) === rawDigits.slice(-8);
-            
-            if (exactMatch || closeMatch) {
-              debugLog('Found agent confirming user number', {
-                userDigits: rawDigits,
-                agentDigits: agentDigits,
-                exactMatch,
-                closeMatch
-              });
-              
-              const finalNumber = normalizePhoneNumber(rawDigits);
-              if (finalNumber) {
-                console.log(`✅ SUCCESS: Extracted confirmed user number: ${finalNumber}`);
-                console.log(`   User said: "${msg.content}"`);
-                console.log(`   Agent confirmed: "${nextMsg.content}"`);
-                return finalNumber;
-              }
-            }
-          }
-        }
-      }
-    }
-  }
-  
-  // ===== STRATEGY 4: LOOK FOR NUMBERS IN USER MESSAGES =====
-  debugLog('Strategy 4: Looking for numbers in user messages');
-  
-  for (let i = transcript.length - 1; i >= 0; i--) {
-    const msg = transcript[i];
-    if (msg.role === 'user') {
-      const rawDigits = convertToDigits(msg.content);
-      
-      if (rawDigits.length >= 9 && rawDigits.length <= 12) {
-        const finalNumber = normalizePhoneNumber(rawDigits);
-        if (finalNumber) {
-          console.log(`⚠️ WARNING: Extracted unconfirmed user number: ${finalNumber}`);
-          console.log(`   User said: "${msg.content}"`);
-          return finalNumber;
-        }
-      }
-    }
-  }
-    // ===== STRATEGY 5: FALLBACK - ANY VALID ITALIAN NUMBER FORMAT =====
-  debugLog('Strategy 5: Fallback - any valid Italian number');
-  
-  for (let i = transcript.length - 1; i >= 0; i--) {
-    const msg = transcript[i];
-    if (msg.role === 'user' || msg.role === 'agent') {
-      const rawDigits = convertToDigits(msg.content);
-      
-      // Look for any valid Italian number pattern - MINIMUM 10 DIGITS
-      if (rawDigits.length >= 10 && rawDigits.length <= 12) {
-        const finalNumber = normalizePhoneNumber(rawDigits);
-        if (finalNumber) {
-          console.log(`⚠️ WARNING: Extracted unconfirmed fallback: ${finalNumber}`);
-          console.log(`   From: ${msg.role} - "${msg.content}"`);
-          console.log(`   Raw digits: ${rawDigits}`);
-          return finalNumber;
-        }
-      }
-      
-      // Also look for specific patterns like "333 1234567" or "333-1234567" (10 digits total)
       const patternMatch = msg.content.match(/(\d{3}[\s\-]?\d{7})/);
       if (patternMatch) {
         const rawDigits = patternMatch[1].replace(/\D/g, '');
@@ -994,7 +508,6 @@ function extractPhoneFromTranscript(transcript) {
           const finalNumber = normalizePhoneNumber(rawDigits);
           if (finalNumber) {
             console.log(`⚠️ WARNING: Extracted pattern-matched number: ${finalNumber}`);
-            console.log(`   Pattern: "${patternMatch[1]}"`);
             return finalNumber;
           }
         }
@@ -1004,7 +517,6 @@ function extractPhoneFromTranscript(transcript) {
   
   console.log('❌ No valid phone number found in transcript');
   
-  // Additional debug: print all messages for troubleshooting
   if (DEBUG) {
     console.log('\n📝 Full transcript for debugging:');
     transcript.forEach((msg, idx) => {
@@ -1014,68 +526,6 @@ function extractPhoneFromTranscript(transcript) {
   
   return null;
 }
-
-// ===== NORMALIZE PHONE NUMBER - MINIMUM 10 DIGITS =====
-const normalizePhoneNumber = (digits) => {
-  if (!digits) return null;
-  
-  // Remove any non-digit characters
-  const cleanDigits = digits.replace(/\D/g, '');
-  
-  debugLog('Normalizing phone number', { original: digits, clean: cleanDigits });
-  
-  // Italian mobile numbers MUST be 10 digits after country code
-  // Reject anything less than 10 digits
-  if (cleanDigits.length < 10) {
-    console.log(`❌ Phone number rejected: ${cleanDigits.length} digits (minimum required: 10)`);
-    return null;
-  }
-  
-  // Perfect: 10 digits
-  if (cleanDigits.length === 10) {
-    const normalized = `+39${cleanDigits}`;
-    debugLog('Normalized 10-digit number', { normalized });
-    return normalized;
-  }
-  
-  // Already has country code (39 prefix + 10 digits = 12 total)
-  if (cleanDigits.length === 12 && cleanDigits.startsWith('39')) {
-    const normalized = `+${cleanDigits}`;
-    debugLog('Normalized number with country code', { normalized });
-    return normalized;
-  }
-  
-  // Has country code but missing the + (11 digits starting with 39)
-  if (cleanDigits.length === 11 && cleanDigits.startsWith('39')) {
-    const normalized = `+${cleanDigits}`;
-    debugLog('Normalized 11-digit number with country code', { normalized });
-    return normalized;
-  }
-  
-  // 11 digits without country code - take last 10
-  if (cleanDigits.length === 11 && !cleanDigits.startsWith('39')) {
-    const lastTen = cleanDigits.slice(-10);
-    const normalized = `+39${lastTen}`;
-    debugLog('Normalized 11-digit number (took last 10)', { normalized });
-    return normalized;
-  }
-  
-  // More than 10 digits, take last 10
-  if (cleanDigits.length > 10) {
-    const lastTen = cleanDigits.slice(-10);
-    const normalized = `+39${lastTen}`;
-    debugLog('Normalized number (took last 10 digits)', { 
-      original: cleanDigits, 
-      lastTen, 
-      normalized 
-    });
-    return normalized;
-  }
-  
-  console.log(`❌ Invalid phone number length: ${cleanDigits.length} digits (minimum 10 required)`);
-  return null;
-};
-
 // ===== EXTRACT WHATSAPP CONFIRMATION FROM TRANSCRIPT =====
 function extractWhatsappConfirmation(transcript) {
   if (!transcript || !Array.isArray(transcript)) {
