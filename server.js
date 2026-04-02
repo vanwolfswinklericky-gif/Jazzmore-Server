@@ -957,6 +957,13 @@ async function sendToMakeWebhook(reservationData, reservationId) {
     console.log(`   This prevents queue issues and bad WhatsApp messages.`);
     return false;
   }
+
+  // Validate phone number has at least 10 digits (not 9)
+const phoneDigits = reservationData.phone.replace(/\D/g, '');
+if (phoneDigits.length < 10) {
+  console.log(`❌ Webhook NOT sent - invalid phone number: ${reservationData.phone} (${phoneDigits.length} digits, minimum 10 required)`);
+  return false;
+}
   
   // Validate phone number has at least 9 digits
   const phoneDigits = reservationData.phone.replace(/\D/g, '');
