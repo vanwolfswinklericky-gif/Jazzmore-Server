@@ -231,277 +231,6 @@ function convertToISODate(dateString) {
   return dateString;
 }
 
-// ===== CLOSURE CHECK FOR MONDAYS & TUESDAYS =====
-const CLOSED_DAYS = {
-  monday: 1,
-  tuesday: 2,
-  lunedì: 1,
-  lunedi: 1,
-  martedì: 2,
-  martedi: 2
-};
-
-const CLOSED_DAY_NAMES = {
-  'monday': 'Monday',
-  'tuesday': 'Tuesday',
-  'lunedì': 'Monday (Lunedì)',
-  'lunedi': 'Monday (Lunedì)',
-  'martedì': 'Tuesday (Martedì)',
-  'martedi': 'Tuesday (Martedì)'
-};
-
-/**
- * Check if a date falls on a closed day (Monday or Tuesday)
- * Returns object with closure status and helpful message
- */
-function checkIfClosed(dateInput) {
-  const resolvedDate = resolveDate(dateInput);
-  
-  if (!resolvedDate || !resolvedDate.match(/^\d{2}-\d{2}-\d{4}$/)) {
-    return {
-      isClosed: false,
-      error: `Invalid date: ${dateInput}`,
-      message: "I couldn't understand that date. Could you please specify another day?"
-    };
-  }
-  
-  const [day, month, year] = resolvedDate.split('-');
-  const dateObj = new Date(`${year}-${month}-${day}`);
-  const dayOfWeek = dateObj.getDay(); // 0 = Sunday, 1 = Monday, 2 = Tuesday, etc.
-  
-  // Monday = 1, Tuesday = 2
-  const isClosed = (dayOfWeek === 1 || dayOfWeek === 2);
-  
-  const dayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
-  const dayNameItalian = ['Domenica', 'Lunedì', 'Martedì', 'Mercoledì', 'Giovedì', 'Venerdì', 'Sabato'];
-  const dayNameEn = dayNames[dayOfWeek];
-  const dayNameIt = dayNameItalian[dayOfWeek];
-  
-  let message = '';
-  if (isClosed) {
-    message = `I'm sorry, but Jazzamore is closed on ${dayNameEn} (${dayNameIt}). We are open from Wednesday to Sunday. Could you please choose a different day between Wednesday and Sunday?`;
-  }
-  
-  return {
-    isClosed,
-    date: resolvedDate,
-    dayOfWeek,
-    dayName: dayNameEn,
-    dayNameItalian: dayNameIt,
-    message,
-    closedDays: ['Monday', 'Tuesday', 'Lunedì', 'Martedì'],
-    openDays: 'Wednesday to Sunday (Mercoledì a Domenica)'
-  };
-}
-
-/**
- * Check if a date string mentions a closed day by name
- * Useful for catching "next monday" before resolving the date
- */
-function isClosedDayByName(dateInput) {
-  const lowerInput = dateInput.toLowerCase().trim();
-  
-  // Check for explicit Monday/Tuesday references
-  const closedDayPatterns = [
-    /^monday$/i, /^tuesday$/i,
-    /^luned[iì]$/i, /^marted[iì]$/i,
-    /next\s+monday/i, /next\s+tuesday/i,
-    /next\s+luned[iì]/i, /next\s+marted[iì]/i,
-    /this\s+monday/i, /this\s+tuesday/i,
-    /prossim[oa]\s+luned[iì]/i, /prossim[oa]\s+marted[iì]/i
-  ];
-  
-  for (const pattern of closedDayPatterns) {
-    if (pattern.test(lowerInput)) {
-      return true;
-    }
-  }
-  
-  return false;
-}
-
-/**
- * Get a helpful response for closed day requests
- */
-function getClosedDayResponse(dateInput) {
-  const lowerInput = dateInput.toLowerCase().trim();
-  
-  // Determine which day they asked for
-  let requestedDay = '';
-  if (lowerInput.includes('monday') || lowerInput.includes('lunedì') || lowerInput.includes('lunedi')) {
-    requestedDay = 'Monday (Lunedì)';
-  } else if (lowerInput.includes('tuesday') || lowerInput.includes('martedì') || lowerInput.includes('martedi')) {
-    requestedDay = 'Tuesday (Martedì)';
-  } else {
-    const check = checkIfClosed(dateInput);
-    if (check.isClosed) {
-      requestedDay = check.dayName;
-    }
-  }
-  
-  return {
-    success: false,
-    isClosed: true,
-    message: `I'm sorry, but Jazzamore is closed on ${requestedDay}. We are open Wednesday through Sunday (Mercoledì a Domenica). Would you like to book for Wednesday, Thursday, Friday, Saturday, or Sunday instead?`,
-    suggestedAlternatives: ['Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'],
-    suggestedAlternativesItalian: ['Mercoledì', 'Giovedì', 'Venerdì', 'Sabato', 'Domenica']
-  };
-}
-
-// ===================================================================
-// ===== CLOSURE CHECK TOOL FOR RETELL AGENT =====
-// ===================================================================
-
-/**
- * Check if Jazzamore is closed on a given date
- * Returns: { isClosed, dayName, date, message, suggestedAlternatives }
- */
-app.post('/api/check-closure', async (req, res) => {
-  try {
-    const { date } = req.body;
-    const dateArg = req.body.args?.date || date;
-    
-    if (!dateArg) {
-      return res.status(400).json({
-        success: false,
-        error: 'Missing date parameter',
-        message: 'Please provide a date to check'
-      });
-    }
-    
-    console.log(`🔍 Closure check requested for: "${dateArg}"`);
-    
-    // Step 1: Resolve the date using your existing resolve_date function
-    let resolvedDate;
-    try {
-      // First try to resolve the date
-      resolvedDate = resolveDate(dateArg);
-      console.log(`📅 Resolved date: ${resolvedDate}`);
-    } catch (error) {
-      console.log(`❌ Date resolution failed: ${error.message}`);
-      return res.status(400).json({
-        success: false,
-        isClosed: false,
-        error: 'Invalid date',
-        message: 'I could not understand that date. Could you please specify a different date?'
-      });
-    }
-    
-    // Step 2: Parse the resolved date (DD-MM-YYYY)
-    if (!resolvedDate || !resolvedDate.match(/^\d{2}-\d{2}-\d{4}$/)) {
-      return res.status(400).json({
-        success: false,
-        isClosed: false,
-        error: 'Invalid date format',
-        message: 'I could not understand that date format. Please try another date.'
-      });
-    }
-    
-    const [day, month, year] = resolvedDate.split('-');
-    const dateObj = new Date(`${year}-${month}-${day}`);
-    
-    // Step 3: Get day of week (0 = Sunday, 1 = Monday, 2 = Tuesday, etc.)
-    const dayOfWeek = dateObj.getDay();
-    const isClosed = (dayOfWeek === 1 || dayOfWeek === 2); // Monday or Tuesday
-    
-    const dayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
-    const dayNamesItalian = ['Domenica', 'Lunedì', 'Martedì', 'Mercoledì', 'Giovedì', 'Venerdì', 'Sabato'];
-    
-    const dayName = dayNames[dayOfWeek];
-    const dayNameItalian = dayNamesItalian[dayOfWeek];
-    
-    // Step 4: Build response
-    const response = {
-      success: true,
-      isClosed: isClosed,
-      date: resolvedDate,
-      dayOfWeek: dayOfWeek,
-      dayName: dayName,
-      dayNameItalian: dayNameItalian,
-      originalRequest: dateArg
-    };
-    
-    if (isClosed) {
-      response.message = `Jazzamore is closed on ${dayName}s (${dayNameItalian}). We are open Wednesday through Sunday.`;
-      response.rejectionPhrase = {
-        english: "I'm sorry, Jazzamore is closed on Mondays and Tuesdays. We are open Wednesday through Sunday. Which day would you prefer between Wednesday, Thursday, Friday, Saturday, or Sunday?",
-        italian: "Mi dispiace, il Jazzamore è chiuso il Lunedì e il Martedì. Siamo aperti da Mercoledì a Domenica. Che giorno preferisce tra Mercoledì, Giovedì, Venerdì, Sabato o Domenica?"
-      };
-      response.suggestedAlternatives = ['Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
-      response.suggestedAlternativesItalian = ['Mercoledì', 'Giovedì', 'Venerdì', 'Sabato', 'Domenica'];
-    } else {
-      response.message = `Jazzamore is open on ${dayName} (${dayNameItalian}).`;
-      response.confirmationPhrase = {
-        english: `Jazzamore is open on ${dayName}. Would you like to make a reservation?`,
-        italian: `Il Jazzamore è aperto ${dayNameItalian}. Desidera fare una prenotazione?`
-      };
-    }
-    
-    console.log(`📤 Closure check response: isClosed=${isClosed}, day=${dayName}`);
-    res.json(response);
-    
-  } catch (error) {
-    console.error('❌ Error in /api/check-closure:', error.message);
-    res.status(500).json({
-      success: false,
-      isClosed: false,
-      error: 'Internal server error',
-      message: 'I had trouble checking if we are open that day. Could you please try another date?'
-    });
-  }
-});
-
-// GET endpoint for testing (optional)
-app.get('/api/check-closure', async (req, res) => {
-  try {
-    const { date } = req.query;
-    
-    if (!date) {
-      return res.status(400).json({
-        success: false,
-        error: 'Missing date parameter',
-        message: 'Please provide a date to check (e.g., "today", "tomorrow", "monday", "15-04-2025")'
-      });
-    }
-    
-    // Reuse the same logic as POST
-    const resolvedDate = resolveDate(date);
-    
-    if (!resolvedDate || !resolvedDate.match(/^\d{2}-\d{2}-\d{4}$/)) {
-      return res.status(400).json({
-        success: false,
-        error: 'Invalid date',
-        message: 'Could not understand that date'
-      });
-    }
-    
-    const [day, month, year] = resolvedDate.split('-');
-    const dateObj = new Date(`${year}-${month}-${day}`);
-    const dayOfWeek = dateObj.getDay();
-    const isClosed = (dayOfWeek === 1 || dayOfWeek === 2);
-    
-    const dayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
-    const dayNamesItalian = ['Domenica', 'Lunedì', 'Martedì', 'Mercoledì', 'Giovedì', 'Venerdì', 'Sabato'];
-    
-    res.json({
-      success: true,
-      input: date,
-      resolvedDate: resolvedDate,
-      isClosed: isClosed,
-      dayOfWeek: dayOfWeek,
-      dayName: dayNames[dayOfWeek],
-      dayNameItalian: dayNamesItalian[dayOfWeek],
-      message: isClosed 
-        ? `Jazzamore is closed on ${dayNames[dayOfWeek]}s. Open Wednesday through Sunday.`
-        : `Jazzamore is open on ${dayNames[dayOfWeek]}.`
-    });
-    
-  } catch (error) {
-    console.error('❌ Error in GET /api/check-closure:', error.message);
-    res.status(500).json({ success: false, error: error.message });
-  }
-});
-
 // ===== PHONE EXTRACTION FROM TRANSCRIPT =====
 function extractPhoneFromTranscript(transcript) {
   if (!transcript || !Array.isArray(transcript)) {
@@ -1026,34 +755,121 @@ function extractNewsletterConfirmation(transcript) {
   console.log('⚠️ No events program confirmation found in transcript');
   return false;
 }
+// ===== CLOSURE CHECK FOR MONDAYS & TUESDAYS =====
+const CLOSED_DAYS = {
+  monday: 1,
+  tuesday: 2,
+  lunedì: 1,
+  lunedi: 1,
+  martedì: 2,
+  martedi: 2
+};
 
-// Final safety check - if we have a confirmed phone number but no WhatsApp confirmation,
-// check if the user ever said "sì" after the WhatsApp question
-if (whatsapp_confirmation === false && call?.transcript_object) {
-  // Scan the transcript for the WhatsApp question pattern
-  for (let i = 0; i < call.transcript_object.length; i++) {
-    const msg = call.transcript_object[i];
-    if (msg.role === 'agent' && 
-        msg.content && 
-        msg.content.toLowerCase().includes('whatsapp')) {
-      
-      // Look at the next 3 messages for a "sì" or "si"
-      for (let j = i + 1; j < Math.min(i + 4, call.transcript_object.length); j++) {
-        const userMsg = call.transcript_object[j];
-        if (userMsg.role === 'user' && userMsg.content) {
-          const response = userMsg.content.toLowerCase();
-          if (response.includes('sì') || response.includes('si') || 
-              response.includes('yes') || response.includes('gracias')) {
-            console.log('🔧 FALLBACK: Found affirmative response to WhatsApp question');
-            whatsapp_confirmation = true;
-            reservationData.whatsapp_confirmation = true;
-            break;
-          }
-        }
-      }
-      break;
+const CLOSED_DAY_NAMES = {
+  'monday': 'Monday',
+  'tuesday': 'Tuesday',
+  'lunedì': 'Monday (Lunedì)',
+  'lunedi': 'Monday (Lunedì)',
+  'martedì': 'Tuesday (Martedì)',
+  'martedi': 'Tuesday (Martedì)'
+};
+
+/**
+ * Check if a date falls on a closed day (Monday or Tuesday)
+ * Returns object with closure status and helpful message
+ */
+function checkIfClosed(dateInput) {
+  const resolvedDate = resolveDate(dateInput);
+  
+  if (!resolvedDate || !resolvedDate.match(/^\d{2}-\d{2}-\d{4}$/)) {
+    return {
+      isClosed: false,
+      error: `Invalid date: ${dateInput}`,
+      message: "I couldn't understand that date. Could you please specify another day?"
+    };
+  }
+  
+  const [day, month, year] = resolvedDate.split('-');
+  const dateObj = new Date(`${year}-${month}-${day}`);
+  const dayOfWeek = dateObj.getDay(); // 0 = Sunday, 1 = Monday, 2 = Tuesday, etc.
+  
+  // Monday = 1, Tuesday = 2
+  const isClosed = (dayOfWeek === 1 || dayOfWeek === 2);
+  
+  const dayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+  const dayNameItalian = ['Domenica', 'Lunedì', 'Martedì', 'Mercoledì', 'Giovedì', 'Venerdì', 'Sabato'];
+  const dayNameEn = dayNames[dayOfWeek];
+  const dayNameIt = dayNameItalian[dayOfWeek];
+  
+  let message = '';
+  if (isClosed) {
+    message = `I'm sorry, but Jazzamore is closed on ${dayNameEn} (${dayNameIt}). We are open from Wednesday to Sunday. Could you please choose a different day between Wednesday and Sunday?`;
+  }
+  
+  return {
+    isClosed,
+    date: resolvedDate,
+    dayOfWeek,
+    dayName: dayNameEn,
+    dayNameItalian: dayNameIt,
+    message,
+    closedDays: ['Monday', 'Tuesday', 'Lunedì', 'Martedì'],
+    openDays: 'Wednesday to Sunday (Mercoledì a Domenica)'
+  };
+}
+
+/**
+ * Check if a date string mentions a closed day by name
+ * Useful for catching "next monday" before resolving the date
+ */
+function isClosedDayByName(dateInput) {
+  const lowerInput = dateInput.toLowerCase().trim();
+  
+  // Check for explicit Monday/Tuesday references
+  const closedDayPatterns = [
+    /^monday$/i, /^tuesday$/i,
+    /^luned[iì]$/i, /^marted[iì]$/i,
+    /next\s+monday/i, /next\s+tuesday/i,
+    /next\s+luned[iì]/i, /next\s+marted[iì]/i,
+    /this\s+monday/i, /this\s+tuesday/i,
+    /prossim[oa]\s+luned[iì]/i, /prossim[oa]\s+marted[iì]/i
+  ];
+  
+  for (const pattern of closedDayPatterns) {
+    if (pattern.test(lowerInput)) {
+      return true;
     }
   }
+  
+  return false;
+}
+
+/**
+ * Get a helpful response for closed day requests
+ */
+function getClosedDayResponse(dateInput) {
+  const lowerInput = dateInput.toLowerCase().trim();
+  
+  // Determine which day they asked for
+  let requestedDay = '';
+  if (lowerInput.includes('monday') || lowerInput.includes('lunedì') || lowerInput.includes('lunedi')) {
+    requestedDay = 'Monday (Lunedì)';
+  } else if (lowerInput.includes('tuesday') || lowerInput.includes('martedì') || lowerInput.includes('martedi')) {
+    requestedDay = 'Tuesday (Martedì)';
+  } else {
+    const check = checkIfClosed(dateInput);
+    if (check.isClosed) {
+      requestedDay = check.dayName;
+    }
+  }
+  
+  return {
+    success: false,
+    isClosed: true,
+    message: `I'm sorry, but Jazzamore is closed on ${requestedDay}. We are open Wednesday through Sunday (Mercoledì a Domenica). Would you like to book for Wednesday, Thursday, Friday, Saturday, or Sunday instead?`,
+    suggestedAlternatives: ['Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'],
+    suggestedAlternativesItalian: ['Mercoledì', 'Giovedì', 'Venerdì', 'Sabato', 'Domenica']
+  };
 }
 
 // ===== FUNCTION TO SEND WEBHOOK TO MAKE.COM =====
@@ -1061,6 +877,46 @@ async function sendToMakeWebhook(reservationData, reservationId) {
   console.log('🔵 sendToMakeWebhook RECEIVED:');
   console.log('reservationId:', reservationId);
   console.log('reservationData:', JSON.stringify(reservationData, null, 2));
+  
+  // ===== CRITICAL: Validate required fields - NO PLACEHOLDERS =====
+  // If any required field is missing, DO NOT send the webhook
+  
+  const requiredFields = ['phone', 'firstName', 'lastName', 'date', 'time', 'guests'];
+  const missingFields = [];
+  
+  for (const field of requiredFields) {
+    if (!reservationData[field] || reservationData[field] === '' || reservationData[field] === null) {
+      missingFields.push(field);
+    }
+  }
+  
+  if (missingFields.length > 0) {
+    console.log(`❌ Webhook NOT sent to Make.com - missing required fields: ${missingFields.join(', ')}`);
+    console.log(`   Reservation data:`, JSON.stringify(reservationData, null, 2));
+    console.log(`   This prevents queue issues and bad WhatsApp messages.`);
+    return false;
+  }
+  
+  // Validate phone number has at least 9 digits
+  const phoneDigits = reservationData.phone.replace(/\D/g, '');
+  if (phoneDigits.length < 9) {
+    console.log(`❌ Webhook NOT sent - invalid phone number: ${reservationData.phone} (${phoneDigits.length} digits)`);
+    return false;
+  }
+  
+  // Validate date format
+  if (!reservationData.date.match(/^\d{2}-\d{2}-\d{4}$/)) {
+    console.log(`❌ Webhook NOT sent - invalid date format: ${reservationData.date}`);
+    return false;
+  }
+  
+  // Validate time format
+  if (!reservationData.time.match(/^([01]?[0-9]|2[0-3]):[0-5][0-9]$/)) {
+    console.log(`❌ Webhook NOT sent - invalid time format: ${reservationData.time}`);
+    return false;
+  }
+  
+  console.log('✅ All required fields validated. Sending to Make.com...');
   
   try {
     let formattedDate = reservationData.date;
@@ -1075,9 +931,9 @@ async function sendToMakeWebhook(reservationData, reservationId) {
     
     const payload = {
       reservationId: reservationId,
-      firstName: reservationData.firstName || '',
-      lastName: reservationData.lastName || '',
-      phone: reservationData.phone || '',
+      firstName: reservationData.firstName,
+      lastName: reservationData.lastName,
+      phone: reservationData.phone,
       date: formattedDate,
       time: reservationData.time,
       guests: reservationData.guests,
@@ -1105,6 +961,7 @@ async function sendToMakeWebhook(reservationData, reservationId) {
 
     if (response.ok) {
       console.log('✅ Webhook sent to Make.com successfully', { reservationId });
+      return true;
     } else {
       console.log('⚠️ Webhook to Make.com failed', { 
         reservationId, 
@@ -1112,6 +969,7 @@ async function sendToMakeWebhook(reservationData, reservationId) {
         statusText: response.statusText,
         responseBody: responseText
       });
+      return false;
     }
   } catch (error) {
     console.error('❌ Webhook error:', error.message);
@@ -1120,7 +978,110 @@ async function sendToMakeWebhook(reservationData, reservationId) {
       error: error.message,
       stack: error.stack
     });
+    return false;
   }
+}
+
+// ============================================
+// ===== FIELD COMPARISON WITH CONFIDENCE SCORES =====
+// ============================================
+
+/**
+ * Calculate confidence score for a field value
+ * Higher score = more reliable
+ */
+function calculateFieldConfidence(value, source, context = {}) {
+  if (!value || value === '' || value === null) return 0;
+  
+  let score = 0;
+  
+  // Base score for having a value
+  score += 10;
+  
+  // Length-based scoring
+  if (typeof value === 'string') {
+    if (value.length > 3) score += 5;
+    if (value.length > 10) score += 5;
+  }
+  
+  // Source-based scoring
+  if (source === 'postcall') score += 15; // Post-call analysis is usually reliable
+  if (source === 'transcript_confirmed') score += 25; // Most reliable - user confirmed
+  if (source === 'transcript_unconfirmed') score += 5; // Less reliable
+  if (source === 'structured') score += 20; // Structured data block
+  
+  // Context-based scoring for phone numbers
+  if (context.field === 'phone') {
+    const digits = value.replace(/\D/g, '');
+    if (digits.length === 10) score += 20; // Perfect length
+    if (digits.length === 11 || digits.length === 12) score += 10;
+    if (digits.startsWith('3')) score += 10; // Italian mobile starts with 3
+    if (context.userConfirmed) score += 30; // User said "sì" or "yes"
+    if (context.agentReadBack) score += 20; // Agent repeated the number
+  }
+  
+  // Context-based scoring for names
+  if (context.field === 'name') {
+    if (value.match(/^[A-Z][a-z]+$/)) score += 10; // Proper capitalization
+    if (context.userConfirmed) score += 30;
+  }
+  
+  // Context-based scoring for guests
+  if (context.field === 'guests') {
+    const num = parseInt(value);
+    if (num > 0 && num < 20) score += 20;
+    if (context.userConfirmed) score += 30;
+  }
+  
+  // Context-based scoring for time
+  if (context.field === 'time') {
+    if (value.match(/^([01]?[0-9]|2[0-3]):[0-5][0-9]$/)) score += 20;
+    if (context.userConfirmed) score += 30;
+  }
+  
+  // Context-based scoring for date
+  if (context.field === 'date') {
+    if (value.match(/^\d{2}-\d{2}-\d{4}$/)) score += 20;
+    if (context.userConfirmed) score += 30;
+  }
+  
+  return score;
+}
+
+/**
+ * Compare two field values and return the best one based on confidence scores
+ */
+function getBestFieldValue(postcallValue, transcriptValue, fieldName, transcriptContext = {}) {
+  const postcallScore = calculateFieldConfidence(postcallValue, 'postcall', { field: fieldName, ...transcriptContext });
+  const transcriptScore = calculateFieldConfidence(transcriptValue, 'transcript_confirmed', { field: fieldName, ...transcriptContext });
+  
+  console.log(`📊 Field comparison for "${fieldName}":`);
+  console.log(`   Post-call: "${postcallValue}" (score: ${postcallScore})`);
+  console.log(`   Transcript: "${transcriptValue}" (score: ${transcriptScore})`);
+  
+  if (postcallScore === 0 && transcriptScore === 0) {
+    console.log(`   ❌ No valid value for ${fieldName}`);
+    return null;
+  }
+  
+  if (postcallScore > transcriptScore) {
+    console.log(`   ✅ Using POST-CALL value for ${fieldName}`);
+    return postcallValue;
+  }
+  
+  if (transcriptScore > postcallScore) {
+    console.log(`   ✅ Using TRANSCRIPT value for ${fieldName}`);
+    return transcriptValue;
+  }
+  
+  // Scores are equal - prefer transcript if available (more direct from conversation)
+  if (transcriptScore > 0) {
+    console.log(`   ⚖️ Scores equal - using TRANSCRIPT for ${fieldName}`);
+    return transcriptValue;
+  }
+  
+  console.log(`   ⚖️ Scores equal - using POST-CALL for ${fieldName}`);
+  return postcallValue;
 }
 
 // ===== GOOGLE CALENDAR INTEGRATION =====
@@ -1682,7 +1643,6 @@ async function getEventsForWeek(startDateInput) {
   });
   
   try {
-    // Step 1: Resolve the start date (returns DD-MM-YYYY)
     const resolvedStartDate = resolveDate(startDateInput);
     
     if (!resolvedStartDate || !resolvedStartDate.match(/^\d{2}-\d{2}-\d{4}$/)) {
@@ -1699,7 +1659,6 @@ async function getEventsForWeek(startDateInput) {
     
     safeLog('✅ Start date resolved successfully', { originalInput: startDateInput, resolvedStartDate });
     
-    // Step 2: Calculate the end date (6 days after start = 7 days total)
     const [day, month, year] = resolvedStartDate.split('-');
     const startDate = new Date(`${year}-${month}-${day}`);
     const endDate = new Date(startDate);
@@ -1709,13 +1668,11 @@ async function getEventsForWeek(startDateInput) {
     
     safeLog('📅 Week range calculated', { startDate: resolvedStartDate, endDate: endDateFormatted });
     
-    // Step 3: Get Google Calendar client
     const calendar = await getCalendarClient();
     if (!calendar) {
       throw new Error("Google Calendar client not initialized");
     }
     
-    // Step 4: Query Google Calendar for the date range
     const startDateTime = `${year}-${month}-${day}T00:00:00`;
     const endDateTime = `${endDate.getFullYear()}-${String(endDate.getMonth() + 1).padStart(2, '0')}-${String(endDate.getDate()).padStart(2, '0')}T23:59:59`;
     
@@ -1746,7 +1703,6 @@ async function getEventsForWeek(startDateInput) {
       source: 'Google Calendar API'
     });
     
-    // Step 5: Organise events by date, initialising all 7 days first
     const dayNames = ['Domenica', 'Lunedì', 'Martedì', 'Mercoledì', 'Giovedì', 'Venerdì', 'Sabato'];
     const weekEvents = {};
     
@@ -1762,7 +1718,6 @@ async function getEventsForWeek(startDateInput) {
       };
     }
     
-    // Step 6: Process and assign each event to its day bucket
     for (const event of events) {
       const availability = analyzeEventAvailability(event);
       
@@ -1793,7 +1748,6 @@ async function getEventsForWeek(startDateInput) {
       }
     }
     
-    // Step 7: Sort events within each day by start time
     for (const dateKey in weekEvents) {
       weekEvents[dateKey].events.sort((a, b) => {
         const timeA = a.time === 'All day' ? '00:00' : a.time;
@@ -1841,7 +1795,6 @@ async function getEventsForDateRange(startDateInput, endDateInput) {
   });
   
   try {
-    // Step 1: Resolve both dates
     const resolvedStartDate = resolveDate(startDateInput);
     const resolvedEndDate = resolveDate(endDateInput);
     
@@ -1863,14 +1816,12 @@ async function getEventsForDateRange(startDateInput, endDateInput) {
       };
     }
     
-    // Step 2: Parse dates and calculate range
     const [startDay, startMonth, startYear] = resolvedStartDate.split('-');
     const [endDay, endMonth, endYear] = resolvedEndDate.split('-');
     
     const startDate = new Date(`${startYear}-${startMonth}-${startDay}`);
     const endDate = new Date(`${endYear}-${endMonth}-${endDay}`);
     
-    // Guard against reversed range
     if (endDate < startDate) {
       return {
         success: false,
@@ -1880,7 +1831,6 @@ async function getEventsForDateRange(startDateInput, endDateInput) {
       };
     }
     
-    // Cap range at 31 days to protect against excessive API calls
     const daysDiff = Math.round((endDate - startDate) / (1000 * 60 * 60 * 24));
     if (daysDiff > 31) {
       return {
@@ -1895,13 +1845,11 @@ async function getEventsForDateRange(startDateInput, endDateInput) {
       startDate: resolvedStartDate, endDate: resolvedEndDate, daysDiff 
     });
     
-    // Step 3: Get Google Calendar client
     const calendar = await getCalendarClient();
     if (!calendar) {
       throw new Error("Google Calendar client not initialized");
     }
     
-    // Step 4: Query Google Calendar for the full range in one call
     const startDateTime = `${startYear}-${startMonth}-${startDay}T00:00:00`;
     const endDateTime = `${endYear}-${endMonth}-${endDay}T23:59:59`;
     
@@ -1921,7 +1869,6 @@ async function getEventsForDateRange(startDateInput, endDateInput) {
       startDate: resolvedStartDate, endDate: resolvedEndDate, count: events.length 
     });
     
-    // Step 5: Initialise a bucket for every day in the range
     const dayNames = ['Domenica', 'Lunedì', 'Martedì', 'Mercoledì', 'Giovedì', 'Venerdì', 'Sabato'];
     const rangeEvents = {};
     
@@ -1936,7 +1883,6 @@ async function getEventsForDateRange(startDateInput, endDateInput) {
       };
     }
     
-    // Step 6: Assign events to day buckets
     for (const event of events) {
       const availability = analyzeEventAvailability(event);
       let eventDate = null;
@@ -1966,7 +1912,6 @@ async function getEventsForDateRange(startDateInput, endDateInput) {
       }
     }
     
-    // Step 7: Sort within each day
     for (const dateKey in rangeEvents) {
       rangeEvents[dateKey].events.sort((a, b) => {
         const timeA = a.time === 'All day' ? '00:00' : a.time;
@@ -2718,7 +2663,7 @@ function convertDayToDate(dayName) {
 }
 
 // ===================================================================
-// ===== API ENDPOINTS
+// ===== API ENDPOINTS =====
 // ===================================================================
 
 // A) Authoritative time context endpoint
@@ -2807,12 +2752,6 @@ app.get('/api/resolve-date', (req, res) => {
     });
   }
 });
-
-// ===================================================================
-// ===== CALENDAR ENDPOINTS — SINGLE DAY
-// Use for: specific day requests ("mercoledì", "venerdì prossimo", "tomorrow")
-// Tool name: get_events_by_date
-// ===================================================================
 
 // C) Single day — POST (Retell format, primary)
 app.post('/api/calendar/date', async (req, res) => {
@@ -2908,12 +2847,6 @@ app.get('/api/calendar/date', async (req, res) => {
     });
   }
 });
-
-// ===================================================================
-// ===== CALENDAR ENDPOINTS — FULL WEEK
-// Use for: week-scope requests ("next week", "questa settimana", "dal lunedì al venerdì")
-// Tool name: get_events_for_week  |  startDate = first day of the desired week
-// ===================================================================
 
 // D) Full week — POST (Retell format, primary)
 app.post('/api/calendar/week', async (req, res) => {
@@ -3013,13 +2946,6 @@ app.get('/api/calendar/week', async (req, res) => {
     });
   }
 });
-
-// ===================================================================
-// ===== CALENDAR ENDPOINTS — CUSTOM DATE RANGE  (NEW)
-// Use for: explicit range requests ("from March 1 to March 7", "dal 1 al 7 marzo")
-// Tool name: get_events_for_date_range
-// Max range: 31 days. startDate and endDate are both inclusive.
-// ===================================================================
 
 // E) Date range — POST (Retell format, primary)
 app.post('/api/calendar/range', async (req, res) => {
@@ -3321,10 +3247,6 @@ app.get('/api/test/google-calendar', async (req, res) => {
   }
 });
 
-// ===================================================================
-// ===== CLOSURE CHECK ENDPOINTS
-// ===================================================================
-
 // J) Check if a date is closed (POST - for Retell agent)
 app.post('/api/check-closure', (req, res) => {
   try {
@@ -3338,7 +3260,6 @@ app.post('/api/check-closure', (req, res) => {
       });
     }
     
-    // First check if they explicitly asked for a closed day by name
     if (isClosedDayByName(date)) {
       const closedResponse = getClosedDayResponse(date);
       return res.json({
@@ -3349,7 +3270,6 @@ app.post('/api/check-closure', (req, res) => {
       });
     }
     
-    // Otherwise resolve the date and check
     const closureCheck = checkIfClosed(date);
     
     if (closureCheck.isClosed) {
@@ -3367,7 +3287,6 @@ app.post('/api/check-closure', (req, res) => {
       });
     }
     
-    // Not closed - return success
     return res.json({
       success: true,
       isClosed: false,
@@ -3428,7 +3347,7 @@ app.get('/api/check-closure', (req, res) => {
 });
 
 // ===================================================================
-// ===== MAIN WEBHOOK ENDPOINT
+// ===== MAIN WEBHOOK ENDPOINT =====
 // ===================================================================
 app.post('/api/reservations', async (req, res) => {
   try {
@@ -3481,44 +3400,129 @@ app.post('/api/reservations', async (req, res) => {
       postCallData = call.call_analysis.reservation_details;
     }
     
-    if (postCallData) {
-      reservationData = {
-        firstName: postCallData.first_name || postCallData.firstName || '',
-        lastName: postCallData.last_name || postCallData.lastName || '',
-        phone: postCallData.phone || '',
-        guests: parseInt(postCallData.guests) || 2,
-        adults: parseInt(postCallData.adults) || (parseInt(postCallData.guests) || 2),
-        children: parseInt(postCallData.children) || 0,
-        date: postCallData.date ? convertDayToDate(postCallData.date) : formatInTimeZone(new Date(Date.now() + 24 * 60 * 60 * 1000), ROME_TIMEZONE, 'dd-MM-yyyy'),
-        time: postCallData.time || '22:00',
-        specialRequests: postCallData.special_requests || postCallData.specialRequests || 'No special requests',
-        newsletter: postCallData.newsletter === 'yes' || postCallData.newsletter_opt_in === 'yes' || postCallData.newsletter === true || false,
-        whatsapp_confirmation: postCallData.whatsapp_confirmation === 'yes' || postCallData.whatsapp === 'yes' || false
-      };
-    } else if (call?.transcript_object) {
-      const systemLogs = JSON.stringify(call, null, 2);
-      reservationData = extractReservationData(call.transcript_object, systemLogs);
-    } else {
-      reservationData = {
-        firstName: '', lastName: '',
-        date: formatInTimeZone(new Date(Date.now() + 24 * 60 * 60 * 1000), ROME_TIMEZONE, 'dd-MM-yyyy'),
-        time: '22:00', guests: 2, adults: 2, children: 0,
-        phone: '', specialRequests: 'No special requests', newsletter: false, whatsapp_confirmation: false
-      };
+    // Extract data from transcript as fallback
+    let transcriptFirstName = null;
+    let transcriptLastName = null;
+    let transcriptGuests = null;
+    let transcriptDate = null;
+    let transcriptTime = null;
+    
+    if (call?.transcript_object) {
+      for (const msg of call.transcript_object) {
+        if (msg.role === 'user') {
+          const content = msg.content.toLowerCase();
+          
+          // Extract name
+          const nameMatch = content.match(/(?:mi chiamo|my name is|sono|i'm)\s+([A-Z][a-z]+)\s+([A-Z][a-z]+)/i);
+          if (nameMatch && !transcriptFirstName) {
+            transcriptFirstName = nameMatch[1];
+            transcriptLastName = nameMatch[2];
+          }
+          
+          // Extract guests
+          const guestsMatch = content.match(/(\d+)\s*(?:people|persons|guests|persone|ospiti)/i);
+          if (guestsMatch && !transcriptGuests) {
+            transcriptGuests = parseInt(guestsMatch[1]);
+          }
+          
+          // Extract time
+          const timeMatch = content.match(/(\d{1,2})[\s:]?(\d{2})?\s*(?:am|pm|di sera|di mattina)?/i);
+          if (timeMatch && !transcriptTime) {
+            let hour = parseInt(timeMatch[1]);
+            const minute = timeMatch[2] ? parseInt(timeMatch[2]) : 0;
+            if (hour < 12 && content.includes('pm')) hour += 12;
+            if (hour === 12 && content.includes('am')) hour = 0;
+            transcriptTime = `${hour.toString().padStart(2, '0')}:${minute.toString().padStart(2, '0')}`;
+          }
+        }
+      }
     }
     
+    // Extract phone from transcript
+    const transcriptPhone = extractPhoneFromTranscript(call?.transcript_object);
+    
+    // Extract WhatsApp and newsletter confirmations from transcript
+    const whatsappFromTranscript = extractWhatsappConfirmation(call?.transcript_object);
+    const newsletterFromTranscript = extractNewsletterConfirmation(call?.transcript_object);
+    
+    // ============================================
+    // ===== FIELD COMPARISON USING CONFIDENCE SCORES =====
+    // ============================================
+    
+    console.log('\n📊 Comparing fields between post-call and transcript...');
+    
+    // Compare FIRST NAME
+    const bestFirstName = getBestFieldValue(
+      postCallData?.first_name || postCallData?.firstName || null,
+      transcriptFirstName,
+      'firstName'
+    );
+    
+    // Compare LAST NAME
+    const bestLastName = getBestFieldValue(
+      postCallData?.last_name || postCallData?.lastName || null,
+      transcriptLastName,
+      'lastName'
+    );
+    
+    // Compare GUESTS
+    let postCallGuests = null;
+    if (postCallData?.guests) {
+      postCallGuests = parseInt(postCallData.guests);
+    }
+    const bestGuests = getBestFieldValue(postCallGuests, transcriptGuests, 'guests');
+    
+    // Compare DATE
+    let postCallDate = null;
+    if (postCallData?.date) {
+      postCallDate = convertDayToDate(postCallData.date);
+    }
+    const bestDate = getBestFieldValue(postCallDate, transcriptDate, 'date');
+    
+    // Compare TIME
+    const bestTime = getBestFieldValue(postCallData?.time || null, transcriptTime, 'time');
+    
+    // Compare PHONE (with highest confidence scoring)
+    const phoneContext = {
+      field: 'phone',
+      userConfirmed: true,
+      agentReadBack: true
+    };
+    const bestPhone = getBestFieldValue(postCallData?.phone || null, transcriptPhone, 'phone', phoneContext);
+    
+    // Build final reservation data with best values
+    reservationData = {
+      firstName: bestFirstName || '',
+      lastName: bestLastName || '',
+      phone: bestPhone || '',
+      guests: bestGuests || 2,
+      adults: bestGuests || 2,
+      children: 0,
+      date: bestDate || formatInTimeZone(new Date(Date.now() + 24 * 60 * 60 * 1000), ROME_TIMEZONE, 'dd-MM-yyyy'),
+      time: bestTime || '20:00',
+      specialRequests: postCallData?.special_requests || postCallData?.specialRequests || 'No special requests',
+      newsletter: newsletterFromTranscript !== null ? newsletterFromTranscript : (postCallData?.newsletter === 'yes' || false),
+      whatsapp_confirmation: whatsappFromTranscript !== null ? whatsappFromTranscript : (postCallData?.whatsapp_confirmation === 'yes' || false)
+    };
+    
+    console.log('\n✅ Final reservation data after comparison:');
+    console.log(`   Name: ${reservationData.firstName} ${reservationData.lastName}`);
+    console.log(`   Phone: ${reservationData.phone}`);
+    console.log(`   Guests: ${reservationData.guests}`);
+    console.log(`   Date: ${reservationData.date}`);
+    console.log(`   Time: ${reservationData.time}`);
+    console.log(`   WhatsApp: ${reservationData.whatsapp_confirmation}`);
+    console.log(`   Newsletter: ${reservationData.newsletter}`);
+    
     // ===== CLOSURE CHECK - BLOCK MONDAYS & TUESDAYS =====
-    console.log('🔒 Checking if date is on a closed day...');
+    console.log('\n🔒 Checking if date is on a closed day...');
     
     let reservationDate = reservationData.date;
     
-    // First, check if the date is a closed day by name or resolution
     if (reservationDate) {
-      // Check by name first (for "monday", "tuesday", etc.)
       if (isClosedDayByName(reservationDate)) {
         const closedResponse = getClosedDayResponse(reservationDate);
         console.log(`🚫 CLOSED DAY DETECTED: ${reservationDate} is a closed day`);
-        
         const greeting = getItalianTimeGreeting();
         return res.json({
           response: `${greeting}! ${closedResponse.message}`,
@@ -3529,12 +3533,10 @@ app.post('/api/reservations', async (req, res) => {
         });
       }
       
-      // Otherwise resolve and check the actual date
       const closureCheck = checkIfClosed(reservationDate);
       
       if (closureCheck.isClosed) {
         console.log(`🚫 CLOSED DAY DETECTED: ${reservationDate} resolves to ${closureCheck.dayName} (${closureCheck.date})`);
-        
         const greeting = getItalianTimeGreeting();
         return res.json({
           response: `${greeting}! ${closureCheck.message}`,
@@ -3546,27 +3548,39 @@ app.post('/api/reservations', async (req, res) => {
       }
       
       console.log(`✅ Date is valid: ${reservationDate} is on ${closureCheck.dayName}`);
-    } else {
-      console.log('⚠️ No date found in reservation data for closure check');
     }
     
-    // Override phone number with transcript-extracted number (more reliable)
-    const transcriptPhone = extractPhoneFromTranscript(call?.transcript_object);
-    if (transcriptPhone) {
-      reservationData.phone = transcriptPhone;
-      console.log(`✅ Using transcript-extracted phone number: ${transcriptPhone}`);
+    // ===== VALIDATE ALL REQUIRED FIELDS BEFORE SAVING =====
+    const missingRequiredFields = [];
+    if (!reservationData.firstName || reservationData.firstName === '') missingRequiredFields.push('firstName');
+    if (!reservationData.lastName || reservationData.lastName === '') missingRequiredFields.push('lastName');
+    if (!reservationData.phone || reservationData.phone === '') missingRequiredFields.push('phone');
+    if (!reservationData.date || reservationData.date === '') missingRequiredFields.push('date');
+    if (!reservationData.time || reservationData.time === '') missingRequiredFields.push('time');
+    if (!reservationData.guests || reservationData.guests < 1) missingRequiredFields.push('guests');
+    
+    if (missingRequiredFields.length > 0) {
+      console.log(`❌ Cannot save reservation - missing required fields: ${missingRequiredFields.join(', ')}`);
+      const greeting = getItalianTimeGreeting();
+      return res.json({
+        response: `${greeting}! Mi dispiace, non ho ricevuto tutte le informazioni necessarie. Può richiamare per completare la prenotazione?`,
+        saveToAirtable: false,
+        reason: `Missing fields: ${missingRequiredFields.join(', ')}`
+      });
     }
     
-    const { firstName, lastName, date, time, guests, adults, children, phone, specialRequests, newsletter, whatsapp_confirmation } = reservationData;
-    
-    let formattedPhone = phone;
-    if (phone && phone.replace(/\D/g, '').length >= 9) {
-      const digits = phone.replace(/\D/g, '');
-      formattedPhone = digits.startsWith('39') ? `+${digits}` : `+39${digits}`;
+    // Format phone number
+    let formattedPhone = reservationData.phone;
+    if (reservationData.phone) {
+      const digits = reservationData.phone.replace(/\D/g, '');
+      if (digits.length >= 9) {
+        formattedPhone = digits.startsWith('39') ? `+${digits}` : `+39${digits}`;
+      }
     }
     
-    let validatedDate = date;
-    const [day, month, year] = date.split('-');
+    // Validate and adjust date if in past
+    let validatedDate = reservationData.date;
+    const [day, month, year] = reservationData.date.split('-');
     const reservationDateObj = new Date(`${year}-${month}-${day}`);
     const today = new Date();
     today.setHours(0, 0, 0, 0);
@@ -3578,9 +3592,10 @@ app.post('/api/reservations', async (req, res) => {
       console.log(`⚠️ Date in past, adjusted to: ${validatedDate}`);
     }
     
+    // Check calendar conflicts
     let calendarCheck;
     try {
-      calendarCheck = await checkCalendarForConflicts(validatedDate, time);
+      calendarCheck = await checkCalendarForConflicts(validatedDate, reservationData.time);
       
       if (calendarCheck.hasConflicts) {
         const soldOutConflicts = calendarCheck.conflictingEvents.filter(event => event.isSoldOut);
@@ -3594,15 +3609,15 @@ app.post('/api/reservations', async (req, res) => {
       calendarCheck = { hasConflicts: false, conflictingEvents: [], error: calendarError.message };
     }
     
-    const arrivalTimeISO = formatTimeForAirtable(time, validatedDate);
+    const arrivalTimeISO = formatTimeForAirtable(reservationData.time, validatedDate);
     
-    const whatsappValue = (whatsapp_confirmation === true || 
-                           whatsapp_confirmation === 'yes' || 
-                           whatsapp_confirmation === 'true') ? "Yes" : "No";
+    const whatsappValue = (reservationData.whatsapp_confirmation === true || 
+                           reservationData.whatsapp_confirmation === 'yes' || 
+                           reservationData.whatsapp_confirmation === 'true') ? "Yes" : "No";
     
-    const newsletterValue = (newsletter === true || 
-                             newsletter === 'yes' || 
-                             newsletter === 'true');
+    const newsletterValue = (reservationData.newsletter === true || 
+                             reservationData.newsletter === 'yes' || 
+                             reservationData.newsletter === 'true');
     
     let airtableDate = validatedDate;
     if (validatedDate && validatedDate.match(/^\d{2}-\d{2}-\d{4}$/)) {
@@ -3612,15 +3627,15 @@ app.post('/api/reservations', async (req, res) => {
     
     const airtableFields = {
       "Reservation ID": reservationId,
-      "First Name": firstName || '',
-      "Last Name": lastName || '',
-      "Phone Number": formattedPhone || '',
+      "First Name": reservationData.firstName,
+      "Last Name": reservationData.lastName,
+      "Phone Number": formattedPhone,
       "Reservation Date": airtableDate,
       "Arrival Time": arrivalTimeISO,
-      "Total People": parseInt(guests) || 2,
-      "Dinner Count": parseInt(adults) || 2,
+      "Total People": parseInt(reservationData.guests) || 2,
+      "Dinner Count": parseInt(reservationData.adults) || parseInt(reservationData.guests) || 2,
       "Show-Only Count": 0,
-      "Kids Count": parseInt(children) || 0,
+      "Kids Count": parseInt(reservationData.children) || 0,
       "Special Requests": reservationData.specialRequests || '',
       "Reservation Status": "Confirmed",
       "Reservation Type": "Dinner + Show",
@@ -3635,19 +3650,14 @@ app.post('/api/reservations', async (req, res) => {
       console.log('Reservation ID:', reservationId);
       console.log('Airtable Record ID:', record[0].id);
       
-      if (whatsapp_confirmation === true || whatsapp_confirmation === 'yes') {
-        let cleanSpecialRequests = reservationData.specialRequests || 'No special requests';
-        if (cleanSpecialRequests.includes('Calendar Note:')) {
-          cleanSpecialRequests = cleanSpecialRequests.split('Calendar Note:')[0].trim();
-          if (!cleanSpecialRequests) cleanSpecialRequests = 'No special requests';
-        }
-        
-        await sendToMakeWebhook({
-          firstName, lastName, phone: formattedPhone,
-          date: validatedDate, time, guests,
-          specialRequests: cleanSpecialRequests,
-          whatsapp_confirmation
-        }, reservationId);
+      // Only send to Make.com if ALL required fields are present AND phone is valid
+      const phoneDigits = formattedPhone.replace(/\D/g, '');
+      const isPhoneValid = phoneDigits.length >= 9;
+      
+      if (reservationData.whatsapp_confirmation === true && isPhoneValid) {
+        await sendToMakeWebhook(reservationData, reservationId);
+      } else {
+        console.log(`⚠️ WhatsApp confirmation skipped: confirmation=${reservationData.whatsapp_confirmation}, phoneValid=${isPhoneValid}`);
       }
       
       const greeting = getItalianTimeGreeting();
@@ -3661,7 +3671,7 @@ app.post('/api/reservations', async (req, res) => {
       const farewell = farewellMap[greeting] || "Buona giornata";
       
       res.json({
-        response: `Perfetto! ${greeting}! Ho prenotato per ${guests} persone il ${validatedDate} alle ${time}. La tua conferma è ${reservationId}. ${farewell}!`,
+        response: `Perfetto! ${greeting}! Ho prenotato per ${reservationData.guests} persone il ${validatedDate} alle ${reservationData.time}. La tua conferma è ${reservationId}. ${farewell}!`,
         saveToAirtable: true,
         reservationId,
         intentDetected: true,
@@ -3698,50 +3708,15 @@ app.listen(PORT, () => {
   const romeDateTime = getRomeDateTime();
   const greeting = getItalianTimeGreeting();
   
-  console.log(`\n🎵 Jazzamore Reservation System v3.0`);
+  console.log(`\n🎵 Jazzamore Reservation System v4.0`);
   console.log(`📡 Running on port: ${PORT}`);
   console.log(`🇮🇹 ${greeting}! Rome time: ${romeDateTime.date} ${romeDateTime.time}`);
-  console.log(`\n🔑 Google Calendar Integration:`);
-  console.log(`   • Account: ${serviceAccount.client_email}`);
-  console.log(`   • Calendar ID: ${JAZZAMORE_CALENDAR_ID}`);
-  console.log(`   • Access: Read-only (calendar.readonly)`);
-  console.log(`   • Status: ✅ ACTIVE - SINGLE SOURCE OF TRUTH`);
-  console.log(`\n🌐 API Endpoints:`);
-  console.log(`   • Time in Rome:               GET  /api/now`);
-  console.log(`   • Resolve Date (POST):         POST /api/resolve_date`);
-  console.log(`   • Resolve Date (GET):          GET  /api/resolve-date?text=tomorrow`);
-  console.log(`\n   ── SINGLE DAY (get_events_by_date) ──`);
-  console.log(`   • Calendar Events (POST):      POST /api/calendar/date`);
-  console.log(`   • Calendar Events (GET):       GET  /api/calendar/date?date=tomorrow`);
-  console.log(`\n   ── FULL WEEK (get_events_for_week) ──`);
-  console.log(`   • Week Events (POST):          POST /api/calendar/week`);
-  console.log(`   • Week Events (GET):           GET  /api/calendar/week?startDate=monday`);
-  console.log(`\n   ── CUSTOM RANGE (get_events_for_date_range) ── NEW`);
-  console.log(`   • Date Range Events (POST):    POST /api/calendar/range`);
-  console.log(`   • Date Range Events (GET):     GET  /api/calendar/range?startDate=01-04-2026&endDate=07-04-2026`);
-  console.log(`\n   ── CLOSURE CHECK (NEW) ──`);
-  console.log(`   • Check Closure (POST):        POST /api/check-closure`);
-  console.log(`   • Check Closure (GET):         GET  /api/check-closure?date=monday`);
-  console.log(`\n   ── OTHER ──`);
-  console.log(`   • Availability:                GET  /api/calendar/availability?date=tomorrow&time=20:00`);
-  console.log(`   • Time Greeting (GET):         GET  /api/time-greeting`);
-  console.log(`   • Time Greeting (POST):        POST /api/time-greeting`);
-  console.log(`   • Diagnostic:                  GET  /api/calendar/diagnostic`);
-  console.log(`   • Test Calendar:               GET  /api/test/google-calendar`);
-  console.log(`   • Reservations Webhook:        POST /api/reservations`);
-  console.log(`\n📋 EVENT REQUEST HANDLING:`);
-  console.log(`   • Specific day  → use get_events_by_date  → POST /api/calendar/date`);
-  console.log(`   • Full week     → use get_events_for_week → POST /api/calendar/week`);
-  console.log(`   • Date range    → use get_events_for_date_range → POST /api/calendar/range`);
-  console.log(`\n📋 Key Features:`);
-  console.log(`   ✅ Google Calendar as ONLY source of truth`);
-  console.log(`   ✅ All dates in DD-MM-YYYY format for WhatsApp`);
-  console.log(`   ✅ Enhanced date resolution returning DD-MM-YYYY`);
-  console.log(`   ✅ Fixed phone number extraction from transcript`);
-  console.log(`   ✅ Calendar note removed from WhatsApp messages`);
-  console.log(`   ✅ Full week view (7 days, all slots initialised)`);
-  console.log(`   ✅ Custom date range view (up to 31 days)`);
-  console.log(`   ✅ CLOSURE CHECK - Blocks reservations on Mondays & Tuesdays`);
-  console.log(`\n🚀 System ready! Google Calendar is the authoritative source for all events.`);
+  console.log(`\n🔑 Features enabled:`);
+  console.log(`   ✅ Field-by-field confidence scoring comparison`);
+  console.log(`   ✅ Null value protection - NO placeholders sent to Make.com`);
+  console.log(`   ✅ Phone number extraction with confirmation anchor`);
+  console.log(`   ✅ Monday/Tuesday closure check`);
+  console.log(`   ✅ WhatsApp & newsletter extraction from transcript`);
+  console.log(`\n🚀 System ready!`);
   console.log(`\n🔒 CLOSURE RULE: Restaurant is CLOSED on Mondays and Tuesdays (Lunedì e Martedì)`);
 });
