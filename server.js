@@ -1184,7 +1184,7 @@ function getLastDayOfMonth(year, month) {
   return new Date(year, month, 0).getDate();
 }
 
-// ===== ENHANCED DATE RESOLUTION FUNCTION =====
+// ===== ENHANCED DATE RESOLUTION FUNCTION (FIXED FOR SATURDAY APRIL 4) =====
 function resolveDate(dateString) {
   safeLog('🔍 resolveDate called', { 
     input: dateString,
@@ -1193,36 +1193,56 @@ function resolveDate(dateString) {
   });
   
   const cleanedDate = dateString.toLowerCase().trim();
+  const today = getRomeDate();
+  const todayStr = getRomeDateToday();
   
+  // ===== TODAY / OGGI =====
   if (cleanedDate === 'today' || cleanedDate === 'oggi') {
-    const result = getRomeDateToday();
+    const result = todayStr;
     safeLog('✅ "today" resolved', { input: dateString, result });
     return result;
   }
   
+  // ===== TOMORROW / DOMANI =====
   if (cleanedDate === 'tomorrow' || cleanedDate === 'domani') {
-    const tomorrow = new Date();
-    tomorrow.setDate(tomorrow.getDate() + 1);
+    const tomorrow = new Date(today);
+    tomorrow.setDate(today.getDate() + 1);
     const result = formatInTimeZone(tomorrow, ROME_TIMEZONE, 'dd-MM-yyyy');
     safeLog('✅ "tomorrow" resolved', { input: dateString, result });
     return result;
   }
   
-  const nextEnglishMatch = cleanedDate.match(/^next\s+(monday|tuesday|wednesday|thursday|friday|saturday|sunday)$/);
-  if (nextEnglishMatch) {
-    const result = findNextDayOfWeek(nextEnglishMatch[1], true);
-    safeLog('✅ "next day" resolved', { input: dateString, result });
+  // ===== NEXT + DAY NAME (e.g., "next Saturday", "next Monday") =====
+  const nextDayMatch = cleanedDate.match(/^next\s+(monday|tuesday|wednesday|thursday|friday|saturday|sunday)$/i);
+  if (nextDayMatch) {
+    const dayName = nextDayMatch[1].toLowerCase();
+    const result = findNextSpecificDay(dayName, true);
+    safeLog('✅ "next [day]" resolved', { input: dateString, dayName, result });
     return result;
   }
   
-  const prossimoMatch = cleanedDate.match(/^prossim[oa]\s+(lunedì|lunedi|martedì|martedi|mercoledì|mercoledi|giovedì|giovedi|venerdì|venerdi|sabato|domenica)$/);
+  // ===== PROSSIMO + DAY NAME (Italian) =====
+  const prossimoMatch = cleanedDate.match(/^prossim[oa]\s+(lunedì|lunedi|martedì|martedi|mercoledì|mercoledi|giovedì|giovedi|venerdì|venerdi|sabato|domenica)$/i);
   if (prossimoMatch) {
-    const result = findNextDayOfWeek(prossimoMatch[1], true);
-    safeLog('✅ "prossimo" resolved', { input: dateString, result });
+    let dayName = prossimoMatch[1].toLowerCase();
+    // Normalize Italian day names
+    const dayMap = {
+      'lunedì': 'monday', 'lunedi': 'monday',
+      'martedì': 'tuesday', 'martedi': 'tuesday',
+      'mercoledì': 'wednesday', 'mercoledi': 'wednesday',
+      'giovedì': 'thursday', 'giovedi': 'thursday',
+      'venerdì': 'friday', 'venerdi': 'friday',
+      'sabato': 'saturday',
+      'domenica': 'sunday'
+    };
+    const englishDay = dayMap[dayName] || dayName;
+    const result = findNextSpecificDay(englishDay, true);
+    safeLog('✅ "prossimo [day]" resolved', { input: dateString, dayName: englishDay, result });
     return result;
   }
   
-  const dayMap = {
+  // ===== DAY NAME ONLY (e.g., "Saturday", "Monday") - find next occurrence =====
+  const dayNameMap = {
     'sunday': 0, 'monday': 1, 'tuesday': 2, 'wednesday': 3,
     'thursday': 4, 'friday': 5, 'saturday': 6,
     'domenica': 0, 'lunedì': 1, 'lunedi': 1, 'martedì': 2, 'martedi': 2,
@@ -1230,125 +1250,148 @@ function resolveDate(dateString) {
     'venerdì': 5, 'venerdi': 5, 'sabato': 6
   };
   
-  const targetDay = dayMap[cleanedDate];
+  const targetDay = dayNameMap[cleanedDate];
   if (targetDay !== undefined) {
-    const result = findNextDayOfWeek(cleanedDate, false);
-    safeLog('✅ Day name resolved', { input: dateString, result });
+    const result = findNextSpecificDay(cleanedDate, false);
+    safeLog('✅ Day name resolved to next occurrence', { input: dateString, result });
     return result;
   }
   
-  const bareDayNumberMatch = cleanedDate.match(/^(\d{1,2})$/);
-  if (bareDayNumberMatch) {
-    const day = parseInt(bareDayNumberMatch[1]);
+  // ===== "DAY NUMBER" + "OF" + "MONTH" patterns =====
+  // Pattern: "4 aprile", "quattro aprile", "aprile 4", "the 4th of April", etc.
+  
+  // Extract month and day from Italian/English phrases
+  const monthMap = {
+    'january': 1, 'february': 2, 'march': 3, 'april': 4, 'may': 5, 'june': 6,
+    'july': 7, 'august': 8, 'september': 9, 'october': 10, 'november': 11, 'december': 12,
+    'gennaio': 1, 'febbraio': 2, 'marzo': 3, 'aprile': 4, 'maggio': 5, 'giugno': 6,
+    'luglio': 7, 'agosto': 8, 'settembre': 9, 'ottobre': 10, 'novembre': 11, 'dicembre': 12
+  };
+  
+  // Check for "sabato quattro" or "sabato 4" patterns
+  const dayWithNumberMatch = cleanedDate.match(/([a-z]+)\s+(\d{1,2})$/i);
+  if (dayWithNumberMatch) {
+    const dayName = dayWithNumberMatch[1];
+    const dayNumber = parseInt(dayWithNumberMatch[2]);
+    const currentYear = today.getFullYear();
+    const currentMonth = today.getMonth() + 1;
+    
+    // Try to find if this day number exists in current month
+    const lastDayOfMonth = getLastDayOfMonth(currentYear, currentMonth);
+    if (dayNumber >= 1 && dayNumber <= lastDayOfMonth) {
+      const dateObj = new Date(currentYear, currentMonth - 1, dayNumber);
+      const actualDayOfWeek = dateObj.getDay();
+      const requestedDayOfWeek = dayNameMap[dayName];
+      
+      if (actualDayOfWeek === requestedDayOfWeek) {
+        const result = `${dayNumber.toString().padStart(2, '0')}-${currentMonth.toString().padStart(2, '0')}-${currentYear}`;
+        safeLog('✅ Day + number matched current month', { input: dateString, dayName, dayNumber, result });
+        return result;
+      }
+    }
+    
+    // If not in current month, try next month
+    let nextMonth = currentMonth + 1;
+    let nextYear = currentYear;
+    if (nextMonth > 12) {
+      nextMonth = 1;
+      nextYear++;
+    }
+    const lastDayOfNextMonth = getLastDayOfMonth(nextYear, nextMonth);
+    if (dayNumber >= 1 && dayNumber <= lastDayOfNextMonth) {
+      const dateObj = new Date(nextYear, nextMonth - 1, dayNumber);
+      const actualDayOfWeek = dateObj.getDay();
+      const requestedDayOfWeek = dayNameMap[dayName];
+      
+      if (actualDayOfWeek === requestedDayOfWeek) {
+        const result = `${dayNumber.toString().padStart(2, '0')}-${nextMonth.toString().padStart(2, '0')}-${nextYear}`;
+        safeLog('✅ Day + number matched next month', { input: dateString, dayName, dayNumber, result });
+        return result;
+      }
+    }
+  }
+  
+  // Check for "MONTH DAY" pattern (e.g., "aprile 4", "4 aprile")
+  let detectedMonth = null;
+  let detectedDay = null;
+  
+  // Pattern: "aprile 4" or "4 aprile"
+  for (const [monthName, monthIndex] of Object.entries(monthMap)) {
+    if (cleanedDate.includes(monthName)) {
+      detectedMonth = monthIndex;
+      // Extract day number from the string
+      const dayMatch = cleanedDate.match(/(\d{1,2})/);
+      if (dayMatch) {
+        detectedDay = parseInt(dayMatch[1]);
+      }
+      break;
+    }
+  }
+  
+  if (detectedMonth && detectedDay && detectedDay >= 1 && detectedDay <= 31) {
+    let year = today.getFullYear();
+    // If the month has already passed this year, use next year
+    if (detectedMonth < today.getMonth() + 1) {
+      year++;
+    }
+    // Validate the day exists in that month
+    const lastDay = getLastDayOfMonth(year, detectedMonth);
+    const validDay = Math.min(detectedDay, lastDay);
+    const result = `${validDay.toString().padStart(2, '0')}-${detectedMonth.toString().padStart(2, '0')}-${year}`;
+    safeLog('✅ Month + day resolved', { input: dateString, month: detectedMonth, day: validDay, year, result });
+    return result;
+  }
+  
+  // ===== BARE DAY NUMBER (e.g., "4", "the 4th") =====
+  const bareDayMatch = cleanedDate.match(/^(?:the\s+)?(\d{1,2})(?:st|nd|rd|th)?$/i);
+  if (bareDayMatch) {
+    const day = parseInt(bareDayMatch[1]);
     if (day >= 1 && day <= 31) {
-      const today = getRomeDate();
       const currentYear = today.getFullYear();
       const currentMonth = today.getMonth() + 1;
-      
       const lastDayOfMonth = getLastDayOfMonth(currentYear, currentMonth);
       const validDay = Math.min(day, lastDayOfMonth);
-      
       const result = `${validDay.toString().padStart(2, '0')}-${currentMonth.toString().padStart(2, '0')}-${currentYear}`;
-      safeLog('✅ BARE DAY NUMBER resolved to CURRENT month', { 
-        input: dateString, day, month: currentMonth, year: currentYear, result,
-        note: 'Using current month even if date is in the past'
-      });
+      safeLog('✅ Bare day number resolved to current month', { input: dateString, day: validDay, month: currentMonth, year: currentYear, result });
       return result;
     }
   }
   
-  const ordinalWithTheMatch = cleanedDate.match(/^(?:the\s+)?(\d{1,2})(?:st|nd|rd|th)$/);
-  if (ordinalWithTheMatch) {
-    const day = parseInt(ordinalWithTheMatch[1]);
+  // ===== "DAY NUMBER" + "of this month" =====
+  const thisMonthMatch = cleanedDate.match(/(?:the\s+)?(\d{1,2})(?:st|nd|rd|th)?(?:\s+of)?\s+this\s+month/i);
+  if (thisMonthMatch) {
+    const day = parseInt(thisMonthMatch[1]);
     if (day >= 1 && day <= 31) {
-      const today = getRomeDate();
       const currentYear = today.getFullYear();
       const currentMonth = today.getMonth() + 1;
-      
       const lastDayOfMonth = getLastDayOfMonth(currentYear, currentMonth);
       const validDay = Math.min(day, lastDayOfMonth);
-      
       const result = `${validDay.toString().padStart(2, '0')}-${currentMonth.toString().padStart(2, '0')}-${currentYear}`;
-      safeLog('✅ ORDINAL resolved to CURRENT month', { input: dateString, day, month: currentMonth, year: currentYear, result });
+      safeLog('✅ "this month" ordinal resolved', { input: dateString, day: validDay, result });
       return result;
     }
   }
   
-  const ordinalWithThisMonthMatch = cleanedDate.match(/(?:the\s+)?(\d{1,2})(?:st|nd|rd|th)?(?:\s+of)?\s+this\s+month/i);
-  if (ordinalWithThisMonthMatch) {
-    const day = parseInt(ordinalWithThisMonthMatch[1]);
-    if (day >= 1 && day <= 31) {
-      const today = getRomeDate();
-      const currentYear = today.getFullYear();
-      const currentMonth = today.getMonth() + 1;
-      
-      const lastDayOfMonth = getLastDayOfMonth(currentYear, currentMonth);
-      const validDay = Math.min(day, lastDayOfMonth);
-      
-      const result = `${validDay.toString().padStart(2, '0')}-${currentMonth.toString().padStart(2, '0')}-${currentYear}`;
-      safeLog('✅ "this month" ordinal resolved', { input: dateString, day, result });
-      return result;
-    }
-  }
-  
+  // ===== "DAY NUMBER" + "of next month" =====
   const nextMonthMatch = cleanedDate.match(/(?:the\s+)?(\d{1,2})(?:st|nd|rd|th)?(?:\s+of)?\s+next\s+month/i);
   if (nextMonthMatch) {
     const day = parseInt(nextMonthMatch[1]);
     if (day >= 1 && day <= 31) {
-      const today = getRomeDate();
       let nextMonth = today.getMonth() + 2;
       let nextYear = today.getFullYear();
-      
       if (nextMonth > 12) {
         nextMonth = 1;
         nextYear++;
       }
-      
       const lastDayOfMonth = getLastDayOfMonth(nextYear, nextMonth);
       const validDay = Math.min(day, lastDayOfMonth);
-      
       const result = `${validDay.toString().padStart(2, '0')}-${nextMonth.toString().padStart(2, '0')}-${nextYear}`;
-      safeLog('✅ "next month" ordinal resolved', { input: dateString, day, month: nextMonth, year: nextYear, result });
+      safeLog('✅ "next month" ordinal resolved', { input: dateString, day: validDay, month: nextMonth, year: nextYear, result });
       return result;
     }
   }
   
-  const explicitMonth = detectExplicitMonth(cleanedDate);
-  if (explicitMonth !== null) {
-    let day = null;
-    
-    const dayPatterns = [
-      /(\d{1,2})(?:st|nd|rd|th)?(?:\s+of)?\s+/i,
-      /\s+(\d{1,2})(?:st|nd|rd|th)?$/i,
-      /^(\d{1,2})(?:st|nd|rd|th)?\s+/i
-    ];
-    
-    for (const pattern of dayPatterns) {
-      const match = cleanedDate.match(pattern);
-      if (match) {
-        day = parseInt(match[1]);
-        break;
-      }
-    }
-    
-    if (day && day >= 1 && day <= 31) {
-      const today = getRomeDate();
-      let year = today.getFullYear();
-      const currentMonth = today.getMonth() + 1;
-      
-      if (explicitMonth < currentMonth) {
-        year++;
-      }
-      
-      const lastDayOfMonth = getLastDayOfMonth(year, explicitMonth);
-      const validDay = Math.min(day, lastDayOfMonth);
-      
-      const result = `${validDay.toString().padStart(2, '0')}-${explicitMonth.toString().padStart(2, '0')}-${year}`;
-      safeLog('✅ Explicit month resolved', { input: dateString, day, month: explicitMonth, year, result });
-      return result;
-    }
-  }
-  
+  // ===== Ordinal words (first, second, third, etc.) =====
   const wordNumberMap = {
     'first': 1, 'second': 2, 'third': 3, 'fourth': 4, 'fifth': 5,
     'sixth': 6, 'seventh': 7, 'eighth': 8, 'ninth': 9, 'tenth': 10,
@@ -1362,47 +1405,24 @@ function resolveDate(dateString) {
   };
   
   for (const [word, day] of Object.entries(wordNumberMap)) {
-    if (cleanedDate.includes(word) && 
-        !cleanedDate.includes('next') && 
-        !cleanedDate.includes('prossimo') &&
-        !detectExplicitMonth(cleanedDate)) {
-      
-      const today = getRomeDate();
+    if (cleanedDate.includes(word) && !cleanedDate.includes('next') && !cleanedDate.includes('prossimo')) {
       const currentYear = today.getFullYear();
       const currentMonth = today.getMonth() + 1;
-      
       const lastDayOfMonth = getLastDayOfMonth(currentYear, currentMonth);
       const validDay = Math.min(day, lastDayOfMonth);
-      
       const result = `${validDay.toString().padStart(2, '0')}-${currentMonth.toString().padStart(2, '0')}-${currentYear}`;
-      safeLog('✅ Word ordinal resolved to CURRENT month', { input: dateString, word, day, month: currentMonth, year: currentYear, result });
+      safeLog('✅ Word ordinal resolved to current month', { input: dateString, word, day: validDay, result });
       return result;
     }
   }
   
-  const dayMatch = cleanedDate.match(/(\d+)(?:st|nd|rd|th)?/);
-  if (dayMatch) {
-    const day = parseInt(dayMatch[1]);
-    if (day >= 1 && day <= 31) {
-      const today = getRomeDate();
-      const currentYear = today.getFullYear();
-      const currentMonth = today.getMonth() + 1;
-      
-      const lastDayOfMonth = getLastDayOfMonth(currentYear, currentMonth);
-      const validDay = Math.min(day, lastDayOfMonth);
-      
-      const result = `${validDay.toString().padStart(2, '0')}-${currentMonth.toString().padStart(2, '0')}-${currentYear}`;
-      safeLog('✅ Day number resolved to CURRENT month', { input: dateString, day, month: currentMonth, year: currentYear, result,
-        note: 'Using current month even if date is in the past' });
-      return result;
-    }
-  }
-  
+  // ===== Already in DD-MM-YYYY format =====
   if (cleanedDate.match(/^\d{2}-\d{2}-\d{4}$/)) {
     safeLog('✅ Already in DD-MM-YYYY format', { input: dateString, result: cleanedDate });
     return cleanedDate;
   }
   
+  // ===== Already in YYYY-MM-DD format =====
   if (cleanedDate.match(/^\d{4}-\d{2}-\d{2}$/)) {
     const [year, month, day] = cleanedDate.split('-');
     const result = `${day}-${month}-${year}`;
@@ -1410,14 +1430,16 @@ function resolveDate(dateString) {
     return result;
   }
   
-  const tomorrow = new Date();
-  tomorrow.setDate(tomorrow.getDate() + 1);
+  // ===== FALLBACK: Default to tomorrow =====
+  const tomorrow = new Date(today);
+  tomorrow.setDate(today.getDate() + 1);
   const result = formatInTimeZone(tomorrow, ROME_TIMEZONE, 'dd-MM-yyyy');
   safeLog('⚠️ Defaulting to tomorrow', { input: dateString, result });
   return result;
 }
 
-function findNextDayOfWeek(dayName, skipCurrentWeek = false) {
+// ===== HELPER: Find next specific day of week =====
+function findNextSpecificDay(dayName, skipCurrentWeek = false) {
   const dayMap = {
     'sunday': 0, 'monday': 1, 'tuesday': 2, 'wednesday': 3,
     'thursday': 4, 'friday': 5, 'saturday': 6,
@@ -1436,8 +1458,13 @@ function findNextDayOfWeek(dayName, skipCurrentWeek = false) {
   
   let daysToAdd = (targetDayNum - todayDayNum + 7) % 7;
   
-  if (daysToAdd === 0 && skipCurrentWeek) {
+  // If skipCurrentWeek is true, add 7 days if the target is today or earlier in the week
+  if (skipCurrentWeek && daysToAdd === 0) {
     daysToAdd = 7;
+  }
+  // Also if today is after the target day in the current week, add 7
+  if (skipCurrentWeek && todayDayNum > targetDayNum) {
+    daysToAdd = (targetDayNum - todayDayNum + 14) % 7;
   }
   
   const targetDate = addDays(today, daysToAdd);
