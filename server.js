@@ -946,6 +946,7 @@ function extractPhoneFromTranscript(transcript) {
 // ===== EXTRACT WHATSAPP CONFIRMATION FROM TRANSCRIPT =====
 function extractWhatsappConfirmation(transcript) {
   if (!transcript || !Array.isArray(transcript)) {
+    console.log('❌ No transcript provided for WhatsApp extraction');
     return false;
   }
   
@@ -957,11 +958,25 @@ function extractWhatsappConfirmation(transcript) {
     const content = (msg.content || '').toLowerCase();
     
     // Check if this is the agent asking about WhatsApp confirmation
-    if (msg.role === 'agent' && 
-        (content.includes('desidera ricevere il messaggio di conferma') ||
-         content.includes('ricevere il messaggio di conferma su whatsapp') ||
-         content.includes('conferma su whatsapp'))) {
-      
+    // Support BOTH Italian and English phrases
+    const isWhatsappQuestion = 
+      // Italian phrases
+      content.includes('desidera ricevere il messaggio di conferma') ||
+      content.includes('ricevere il messaggio di conferma su whatsapp') ||
+      content.includes('conferma su whatsapp') ||
+      content.includes('vuole ricevere la conferma su whatsapp') ||
+      content.includes('conferma tramite whatsapp') ||
+      // English phrases
+      content.includes('confirmation message on whatsapp') ||
+      content.includes('receive the confirmation message') ||
+      content.includes('confirmation message') && content.includes('whatsapp') ||
+      (content.includes('whatsapp') && content.includes('confirmation')) ||
+      content.includes('send you the confirmation via whatsapp') ||
+      content.includes('get the confirmation by whatsapp') ||
+      content.includes('confirmation by whatsapp') ||
+      content.includes('whatsapp confirmation');
+    
+    if (msg.role === 'agent' && isWhatsappQuestion) {
       console.log(`📱 Found WhatsApp question at index ${i}: "${msg.content}"`);
       
       // Look at the next few messages for user's response
@@ -970,18 +985,105 @@ function extractWhatsappConfirmation(transcript) {
         if (userMsg.role === 'user') {
           const userContent = (userMsg.content || '').toLowerCase();
           
-          // Check for affirmative response
-          if (userContent.includes('sì') || userContent.includes('si') || 
-              userContent.includes('yes') || userContent.includes('ok') ||
-              userContent.includes('va bene') || userContent.includes('certo') ||
-              userContent.includes('gracias')) {
+          // ===== AFFIRMATIVE RESPONSES (EXPANDED) =====
+          const affirmativeResponses = [
+            // English
+            'yes', 'yeah', 'yep', 'yup', 'yea', 'yah',
+            'ok', 'okay', 'k', 'kk', 'o k',
+            'sure', 'sure thing', 'of course', 'definitely', 'absolutely',
+            'correct', 'that is correct', 'that\'s correct',
+            'right', 'that\'s right', 'exactly',
+            'please do', 'go ahead', 'send it', 'please send',
+            'i would', 'i would like', 'i want it', 'i need it',
+            'that would be great', 'that works', 'fine',
+            'good', 'great', 'perfect', 'awesome', 'excellent',
+            'why not', 'certainly', 'indeed', 'totally',
+            'affirmative', 'roger', 'copy',
+            
+            // Italian
+            'sì', 'si', 'sisi', 'si si',
+            'certo', 'certamente', 'sicuro', 'assolutamente',
+            'okay', 'va bene', 'perfetto', 'ottimo', 'eccellente',
+            'corretto', 'esatto', 'giusto', 'giustissimo',
+            'lo voglio', 'lo desidero', 'per favore',
+            'volentieri', 'con piacere', 'certamente sì',
+            'sì grazie', 'si grazie', 'grazie sì', 'grazie si',
+            
+            // Spanish (common for international callers)
+            'sí', 'si', 'claro', 'por supuesto', 'vale', 'dale',
+            
+            // French
+            'oui', 'bien sûr', 'd\'accord', 'oui s\'il vous plaît',
+            
+            // German
+            'ja', 'ja bitte', 'klar', 'natürlich', 'genau',
+            
+            // Mixed/Partial
+            'ye', 'ya', 'y', 'yea', 'uh huh', 'mmhmm', 'mhm'
+          ];
+          
+          // ===== NEGATIVE RESPONSES (EXPANDED) =====
+          const negativeResponses = [
+            // English
+            'no', 'nah', 'nope', 'no way', 'not really',
+            'no thanks', 'no thank you', 'thanks no',
+            'not necessary', 'no need', 'don\'t need', 'skip',
+            'pass', 'maybe later', 'next time', 'not now',
+            'i don\'t want it', 'i don\'t need it', 'not interested',
+            'no please', 'please no', 'no don\'t',
+            'unsubscribe', 'opt out', 'decline',
+            'no whatsapp', 'without whatsapp', 'not on whatsapp',
+            
+            // Italian
+            'no', 'no grazie', 'grazie no', 'non',
+            'non necessario', 'non serve', 'non voglio',
+            'non mi serve', 'lasciamo perdere', 'meglio di no',
+            'non questa volta', 'forse più tardi',
+            
+            // Spanish
+            'no', 'no gracias', 'no es necesario',
+            
+            // French
+            'non', 'non merci', 'pas nécessaire',
+            
+            // German
+            'nein', 'nein danke', 'nicht nötig'
+          ];
+          
+          // Check for affirmative response (exact matches or contains)
+          let isAffirmative = false;
+          for (const affirm of affirmativeResponses) {
+            if (userContent === affirm || userContent.includes(affirm)) {
+              isAffirmative = true;
+              break;
+            }
+          }
+          
+          // Also check for single character 'y' (common shorthand)
+          if (userContent === 'y' || userContent === 's') {
+            isAffirmative = true;
+          }
+          
+          // Check for negative response
+          let isNegative = false;
+          for (const neg of negativeResponses) {
+            if (userContent === neg || userContent.includes(neg)) {
+              isNegative = true;
+              break;
+            }
+          }
+          
+          // Also check for single character 'n'
+          if (userContent === 'n') {
+            isNegative = true;
+          }
+          
+          if (isAffirmative) {
             console.log(`✅ User confirmed WhatsApp: "${userMsg.content}"`);
             return true;
           }
           
-          // Check for negative response
-          if (userContent.includes('no') || userContent.includes('non') ||
-              userContent.includes('grazie no')) {
+          if (isNegative) {
             console.log(`❌ User declined WhatsApp: "${userMsg.content}"`);
             return false;
           }
@@ -990,50 +1092,81 @@ function extractWhatsappConfirmation(transcript) {
     }
   }
   
-  console.log('⚠️ No WhatsApp confirmation found in transcript');
+  console.log('⚠️ No WhatsApp confirmation found in transcript, defaulting to false');
   return false;
 }
 
 // ===== EXTRACT NEWSLETTER/EVENTS PROGRAM CONFIRMATION =====
 function extractNewsletterConfirmation(transcript) {
   if (!transcript || !Array.isArray(transcript)) {
+    console.log('❌ No transcript provided for newsletter extraction');
     return false;
   }
   
   console.log('🔍 Extracting events program confirmation from transcript...');
   
-  // Look for the events program question and user's response
   for (let i = 0; i < transcript.length; i++) {
     const msg = transcript[i];
     const content = (msg.content || '').toLowerCase();
     
     // Check if this is the agent asking about events program
-    if (msg.role === 'agent' && 
-        (content.includes('programma eventi') ||
-         content.includes('ricevere anche il nostro programma eventi') ||
-         content.includes('eventi via whatsapp'))) {
+    const isNewsletterQuestion = 
+      content.includes('programma eventi') ||
+      content.includes('ricevere anche il nostro programma eventi') ||
+      content.includes('eventi via whatsapp') ||
+      content.includes('weekly events program') ||
+      content.includes('events program via whatsapp') ||
+      content.includes('receive our weekly events') ||
+      content.includes('events newsletter') ||
+      content.includes('subscribe to our events') ||
+      content.includes('get our events');
+    
+    if (msg.role === 'agent' && isNewsletterQuestion) {
+      console.log(`📅 Found newsletter question at index ${i}: "${msg.content}"`);
       
-      console.log(`📅 Found events program question at index ${i}: "${msg.content}"`);
-      
-      // Look at the next few messages for user's response
       for (let j = i + 1; j < Math.min(i + 5, transcript.length); j++) {
         const userMsg = transcript[j];
         if (userMsg.role === 'user') {
           const userContent = (userMsg.content || '').toLowerCase();
           
-          // Check for affirmative response
-          if (userContent.includes('sì') || userContent.includes('si') || 
-              userContent.includes('yes') || userContent.includes('ok') ||
-              userContent.includes('va bene') || userContent.includes('certo') ||
-              userContent.includes('gracias')) {
-            console.log(`✅ User confirmed events program: "${userMsg.content}"`);
+          // ===== AFFIRMATIVE RESPONSES =====
+          const affirmativeResponses = [
+            'yes', 'yeah', 'yep', 'ok', 'okay', 'sure', 'of course',
+            'sì', 'si', 'certo', 'va bene', 'perfetto',
+            'claro', 'vale', 'oui', 'ja', 'uh huh', 'mmhmm',
+            'y', 's', 'please', 'why not', 'absolutely', 'definitely'
+          ];
+          
+          // ===== NEGATIVE RESPONSES =====
+          const negativeResponses = [
+            'no', 'nah', 'nope', 'no thanks', 'not necessary',
+            'no grazie', 'grazie no', 'non', 'skip', 'pass',
+            'n', 'not interested', 'maybe later'
+          ];
+          
+          let isAffirmative = false;
+          for (const affirm of affirmativeResponses) {
+            if (userContent === affirm || userContent.includes(affirm)) {
+              isAffirmative = true;
+              break;
+            }
+          }
+          
+          let isNegative = false;
+          for (const neg of negativeResponses) {
+            if (userContent === neg || userContent.includes(neg)) {
+              isNegative = true;
+              break;
+            }
+          }
+          
+          if (isAffirmative) {
+            console.log(`✅ User confirmed newsletter: "${userMsg.content}"`);
             return true;
           }
           
-          // Check for negative response
-          if (userContent.includes('no') || userContent.includes('non') ||
-              userContent.includes('grazie no')) {
-            console.log(`❌ User declined events program: "${userMsg.content}"`);
+          if (isNegative) {
+            console.log(`❌ User declined newsletter: "${userMsg.content}"`);
             return false;
           }
         }
@@ -1041,10 +1174,9 @@ function extractNewsletterConfirmation(transcript) {
     }
   }
   
-  console.log('⚠️ No events program confirmation found in transcript');
+  console.log('⚠️ No newsletter confirmation found in transcript, defaulting to false');
   return false;
 }
-
 // ===== FUNCTION TO SEND WEBHOOK TO MAKE.COM - STRICT VALIDATION =====
 async function sendToMakeWebhook(reservationData, reservationId) {
   console.log('\n' + '='.repeat(60));
