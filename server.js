@@ -3660,44 +3660,54 @@ app.get('/api/check-closure', (req, res) => {
 // ===================================================================
 app.post('/api/reservations', async (req, res) => {
   try {
-    console.log('\n📞 RETELL WEBHOOK RECEIVED');
+    console.log('\n' + '='.repeat(80));
+    console.log('📞📞📞 RETELL RESERVATION WEBHOOK RECEIVED 📞📞📞');
+    console.log('='.repeat(80));
     console.log('Event:', req.body.event);
     
     const { event, call } = req.body;
     
     if (event !== 'call_analyzed') {
+      console.log(`⚠️ Ignoring event type: ${event}`);
       return res.json({ status: 'received', event: event });
     }
     
     console.log('🎯 Processing call_analyzed event...');
+    console.log('Call ID:', call?.call_id);
+    console.log('Call duration:', call?.duration_seconds, 'seconds');
     
     const conversationText = call?.transcript_object
       ?.map(msg => msg.content || '')
       .join(' ')
       .toLowerCase() || '';
     
+    console.log('\n📝 Conversation transcript:');
+    call?.transcript_object?.forEach((msg, idx) => {
+      console.log(`   ${idx}: ${msg.role.toUpperCase()} - "${msg.content}"`);
+    });
+    
     const intentResult = detectReservationIntent(conversationText, call?.transcript_object || []);
     
     if (!intentResult.wantsReservation) {
-      console.log('❌ No reservation intent detected. NOT saving to Airtable.');
+      console.log('\n❌ No reservation intent detected. NOT saving to Airtable.');
       const greeting = getItalianTimeGreeting();
       return res.json({
-        response: `${greeting}! Grazie per aver chiamato il Jazzamore. Se hai bisogno di fare una prenotazione, siamo a tua disposizione. Arrivederci!`,
+        response: `${greeting}! Grazie per aver chiamato il Jazzamore. Come posso aiutarti?`,
         saveToAirtable: false,
-        reason: 'No reservation intent detected',
-        detectionDetails: intentResult
+        reason: 'No reservation intent detected'
       });
     }
     
-    console.log('✅ Reservation intent detected. Proceeding with data extraction...');
+    console.log('\n✅ Reservation intent detected. Proceeding with data extraction...');
     
     const reservationId = generateReservationId();
-    let reservationData = {};
+    console.log(`🆔 Generated Reservation ID: ${reservationId}`);
     
     let postCallData = null;
     if (call?.call_analysis?.custom_analysis_data?.reservation_details) {
       try {
         postCallData = JSON.parse(call.call_analysis.custom_analysis_data.reservation_details);
+        console.log('\n📊 Post-call analysis data:', JSON.stringify(postCallData, null, 2));
       } catch (error) {
         console.log('❌ Error parsing reservation_details JSON:', error.message);
       }
@@ -3716,22 +3726,27 @@ app.post('/api/reservations', async (req, res) => {
     let transcriptDate = null;
     let transcriptTime = null;
     
+    console.log('\n🔍 Extracting data from transcript...');
+    
     if (call?.transcript_object) {
       for (const msg of call.transcript_object) {
         if (msg.role === 'user') {
-          const content = msg.content.toLowerCase();
+          const content = msg.content;
+          const lowerContent = content.toLowerCase();
           
           // Extract name
           const nameMatch = content.match(/(?:mi chiamo|my name is|sono|i'm)\s+([A-Z][a-z]+)\s+([A-Z][a-z]+)/i);
           if (nameMatch && !transcriptFirstName) {
             transcriptFirstName = nameMatch[1];
             transcriptLastName = nameMatch[2];
+            console.log(`   Found name: ${transcriptFirstName} ${transcriptLastName}`);
           }
           
           // Extract guests
-          const guestsMatch = content.match(/(\d+)\s*(?:people|persons|guests|persone|ospiti)/i);
+          const guestsMatch = lowerContent.match(/(\d+)\s*(?:people|persons|guests|persone|ospiti)/i);
           if (guestsMatch && !transcriptGuests) {
             transcriptGuests = parseInt(guestsMatch[1]);
+            console.log(`   Found guests: ${transcriptGuests}`);
           }
           
           // Extract time
@@ -3739,9 +3754,10 @@ app.post('/api/reservations', async (req, res) => {
           if (timeMatch && !transcriptTime) {
             let hour = parseInt(timeMatch[1]);
             const minute = timeMatch[2] ? parseInt(timeMatch[2]) : 0;
-            if (hour < 12 && content.includes('pm')) hour += 12;
-            if (hour === 12 && content.includes('am')) hour = 0;
+            if (hour < 12 && lowerContent.includes('pm')) hour += 12;
+            if (hour === 12 && lowerContent.includes('am')) hour = 0;
             transcriptTime = `${hour.toString().padStart(2, '0')}:${minute.toString().padStart(2, '0')}`;
+            console.log(`   Found time: ${transcriptTime}`);
           }
         }
       }
@@ -3749,49 +3765,47 @@ app.post('/api/reservations', async (req, res) => {
     
     // Extract phone from transcript
     const transcriptPhone = extractPhoneFromTranscript(call?.transcript_object);
+    console.log(`\n📱 Extracted phone: ${transcriptPhone || 'None'}`);
     
     // Extract WhatsApp and newsletter confirmations from transcript
     const whatsappFromTranscript = extractWhatsappConfirmation(call?.transcript_object);
     const newsletterFromTranscript = extractNewsletterConfirmation(call?.transcript_object);
+    console.log(`📱 WhatsApp confirmation: ${whatsappFromTranscript}`);
+    console.log(`📧 Newsletter confirmation: ${newsletterFromTranscript}`);
     
     // ============================================
     // ===== FIELD COMPARISON USING CONFIDENCE SCORES =====
     // ============================================
     
-    console.log('\n📊 Comparing fields between post-call and transcript...');
+    console.log('\n📊 COMPARING FIELDS: Post-call vs Transcript');
+    console.log('='.repeat(50));
     
-    // Compare FIRST NAME
     const bestFirstName = getBestFieldValue(
       postCallData?.first_name || postCallData?.firstName || null,
       transcriptFirstName,
       'firstName'
     );
     
-    // Compare LAST NAME
     const bestLastName = getBestFieldValue(
       postCallData?.last_name || postCallData?.lastName || null,
       transcriptLastName,
       'lastName'
     );
     
-    // Compare GUESTS
     let postCallGuests = null;
     if (postCallData?.guests) {
       postCallGuests = parseInt(postCallData.guests);
     }
     const bestGuests = getBestFieldValue(postCallGuests, transcriptGuests, 'guests');
     
-    // Compare DATE
     let postCallDate = null;
     if (postCallData?.date) {
       postCallDate = convertDayToDate(postCallData.date);
     }
     const bestDate = getBestFieldValue(postCallDate, transcriptDate, 'date');
     
-    // Compare TIME
     const bestTime = getBestFieldValue(postCallData?.time || null, transcriptTime, 'time');
     
-    // Compare PHONE (with highest confidence scoring)
     const phoneContext = {
       field: 'phone',
       userConfirmed: true,
@@ -3800,7 +3814,7 @@ app.post('/api/reservations', async (req, res) => {
     const bestPhone = getBestFieldValue(postCallData?.phone || null, transcriptPhone, 'phone', phoneContext);
     
     // Build final reservation data with best values
-    reservationData = {
+    const reservationData = {
       firstName: bestFirstName || '',
       lastName: bestLastName || '',
       phone: bestPhone || '',
@@ -3814,49 +3828,48 @@ app.post('/api/reservations', async (req, res) => {
       whatsapp_confirmation: whatsappFromTranscript !== null ? whatsappFromTranscript : (postCallData?.whatsapp_confirmation === 'yes' || false)
     };
     
-    console.log('\n✅ Final reservation data after comparison:');
+    console.log('\n✅ FINAL RESERVATION DATA:');
     console.log(`   Name: ${reservationData.firstName} ${reservationData.lastName}`);
     console.log(`   Phone: ${reservationData.phone}`);
     console.log(`   Guests: ${reservationData.guests}`);
     console.log(`   Date: ${reservationData.date}`);
     console.log(`   Time: ${reservationData.time}`);
+    console.log(`   Special Requests: ${reservationData.specialRequests}`);
     console.log(`   WhatsApp: ${reservationData.whatsapp_confirmation}`);
     console.log(`   Newsletter: ${reservationData.newsletter}`);
     
     // ===== CLOSURE CHECK - BLOCK MONDAYS & TUESDAYS =====
-    console.log('\n🔒 Checking if date is on a closed day...');
+    console.log('\n🔒 CHECKING CLOSURE STATUS');
+    console.log('='.repeat(40));
     
-    let reservationDate = reservationData.date;
+    let validatedDate = reservationData.date;
     
-    if (reservationDate) {
-      if (isClosedDayByName(reservationDate)) {
-        const closedResponse = getClosedDayResponse(reservationDate);
-        console.log(`🚫 CLOSED DAY DETECTED: ${reservationDate} is a closed day`);
+    if (validatedDate) {
+      if (isClosedDayByName(validatedDate)) {
+        const closedResponse = getClosedDayResponse(validatedDate);
+        console.log(`🚫 CLOSED DAY DETECTED: ${validatedDate}`);
         const greeting = getItalianTimeGreeting();
         return res.json({
           response: `${greeting}! ${closedResponse.message}`,
           saveToAirtable: false,
           reason: 'Restaurant closed on Monday/Tuesday',
-          closureDetails: closedResponse,
           requiresNewDate: true
         });
       }
       
-      const closureCheck = checkIfClosed(reservationDate);
-      
+      const closureCheck = checkIfClosed(validatedDate);
       if (closureCheck.isClosed) {
-        console.log(`🚫 CLOSED DAY DETECTED: ${reservationDate} resolves to ${closureCheck.dayName} (${closureCheck.date})`);
+        console.log(`🚫 CLOSED DAY DETECTED: ${validatedDate} is ${closureCheck.dayName}`);
         const greeting = getItalianTimeGreeting();
         return res.json({
           response: `${greeting}! ${closureCheck.message}`,
           saveToAirtable: false,
           reason: 'Restaurant closed on Monday/Tuesday',
-          closureDetails: closureCheck,
           requiresNewDate: true
         });
       }
       
-      console.log(`✅ Date is valid: ${reservationDate} is on ${closureCheck.dayName}`);
+      console.log(`✅ Date is valid: ${validatedDate} is ${closureCheck.dayName}`);
     }
     
     // ===== VALIDATE ALL REQUIRED FIELDS BEFORE SAVING =====
@@ -3869,10 +3882,10 @@ app.post('/api/reservations', async (req, res) => {
     if (!reservationData.guests || reservationData.guests < 1) missingRequiredFields.push('guests');
     
     if (missingRequiredFields.length > 0) {
-      console.log(`❌ Cannot save reservation - missing required fields: ${missingRequiredFields.join(', ')}`);
+      console.log(`\n❌ Missing required fields: ${missingRequiredFields.join(', ')}`);
       const greeting = getItalianTimeGreeting();
       return res.json({
-        response: `${greeting}! Mi dispiace, non ho ricevuto tutte le informazioni necessarie. Può richiamare per completare la prenotazione?`,
+        response: `${greeting}! Mi dispiace, non ho ricevuto tutte le informazioni necessarie per la prenotazione. Può richiamare per completare?`,
         saveToAirtable: false,
         reason: `Missing fields: ${missingRequiredFields.join(', ')}`
       });
@@ -3880,15 +3893,13 @@ app.post('/api/reservations', async (req, res) => {
     
     // Format phone number
     let formattedPhone = reservationData.phone;
-    if (reservationData.phone) {
-      const digits = reservationData.phone.replace(/\D/g, '');
-      if (digits.length >= 9) {
-        formattedPhone = digits.startsWith('39') ? `+${digits}` : `+39${digits}`;
-      }
+    const phoneDigits = reservationData.phone.replace(/\D/g, '');
+    if (phoneDigits.length >= 9) {
+      formattedPhone = phoneDigits.startsWith('39') ? `+${phoneDigits}` : `+39${phoneDigits}`;
     }
+    console.log(`\n📱 Formatted phone: ${formattedPhone}`);
     
     // Validate and adjust date if in past
-    let validatedDate = reservationData.date;
     const [day, month, year] = reservationData.date.split('-');
     const reservationDateObj = new Date(`${year}-${month}-${day}`);
     const today = new Date();
@@ -3898,17 +3909,14 @@ app.post('/api/reservations', async (req, res) => {
       const tomorrow = new Date(today);
       tomorrow.setDate(today.getDate() + 1);
       validatedDate = formatInTimeZone(tomorrow, ROME_TIMEZONE, 'dd-MM-yyyy');
-      console.log(`⚠️ Date in past, adjusted to: ${validatedDate}`);
+      console.log(`⚠️ Date was in past, adjusted to: ${validatedDate}`);
     }
     
     // Check calendar conflicts
     let calendarCheck;
     try {
       calendarCheck = await checkCalendarForConflicts(validatedDate, reservationData.time);
-      
       if (calendarCheck.hasConflicts) {
-        // Do NOT add internal notes to specialRequests - they are for internal use only
-        // The customer should NOT see "Calendar Note" in their WhatsApp message
         console.log(`ℹ️ Calendar conflict detected but not shown to customer`);
       }
     } catch (calendarError) {
@@ -3916,14 +3924,7 @@ app.post('/api/reservations', async (req, res) => {
     }
     
     const arrivalTimeISO = formatTimeForAirtable(reservationData.time, validatedDate);
-    
-    const whatsappValue = (reservationData.whatsapp_confirmation === true || 
-                           reservationData.whatsapp_confirmation === 'yes' || 
-                           reservationData.whatsapp_confirmation === 'true') ? "Yes" : "No";
-    
-    const newsletterValue = (reservationData.newsletter === true || 
-                             reservationData.newsletter === 'yes' || 
-                             reservationData.newsletter === 'true');
+    const whatsappValue = reservationData.whatsapp_confirmation ? "Yes" : "No";
     
     let airtableDate = validatedDate;
     if (validatedDate && validatedDate.match(/^\d{2}-\d{2}-\d{4}$/)) {
@@ -3945,16 +3946,19 @@ app.post('/api/reservations', async (req, res) => {
       "Special Requests": reservationData.specialRequests || '',
       "Reservation Status": "Confirmed",
       "Reservation Type": "Dinner + Show",
-      "Newsletter Opt-In": newsletterValue,
+      "Newsletter Opt-In": reservationData.newsletter,
       "Whatsapp Confirmation": whatsappValue
     };
+    
+    console.log('\n💾 SAVING TO AIRTABLE...');
+    console.log('Airtable fields:', JSON.stringify(airtableFields, null, 2));
     
     try {
       const record = await base('Reservations').create([{ fields: airtableFields }]);
       
-      console.log('🎉 RESERVATION SAVED TO AIRTABLE!');
-      console.log('Reservation ID:', reservationId);
-      console.log('Airtable Record ID:', record[0].id);
+      console.log('\n🎉🎉🎉 RESERVATION SAVED TO AIRTABLE! 🎉🎉🎉');
+      console.log(`   Reservation ID: ${reservationId}`);
+      console.log(`   Airtable Record ID: ${record[0].id}`);
       
       // ===== STRICT CHECK - ONLY SEND TO MAKE.COM IF ALL FIELDS ARE VALID =====
       const hasAllRequiredFields = 
@@ -3965,8 +3969,16 @@ app.post('/api/reservations', async (req, res) => {
         reservationData.time && reservationData.time !== '' &&
         reservationData.guests && reservationData.guests > 0;
       
+      // Extract phone digits and get last 10 (works for any format: 3351340532, +393351340532, 393351340532)
       const phoneDigitsForMake = reservationData.phone ? reservationData.phone.replace(/\D/g, '') : '';
-      const isPhoneValidForMake = phoneDigitsForMake.length === 10;
+      const lastTenDigitsForMake = phoneDigitsForMake.slice(-10);
+      const isPhoneValidForMake = lastTenDigitsForMake.length === 10;
+      
+      console.log(`\n📱 Phone validation for Make.com:`);
+      console.log(`   Raw phone: "${reservationData.phone}"`);
+      console.log(`   Digits extracted: "${phoneDigitsForMake}" (length: ${phoneDigitsForMake.length})`);
+      console.log(`   Last 10 digits: "${lastTenDigitsForMake}" (length: ${lastTenDigitsForMake.length})`);
+      console.log(`   Valid for Make.com: ${isPhoneValidForMake}`);
       
       // ONLY send if ALL conditions are met
       const shouldSendToMake = 
@@ -3975,13 +3987,13 @@ app.post('/api/reservations', async (req, res) => {
         isPhoneValidForMake;
       
       if (shouldSendToMake) {
-        console.log('✅ All conditions met. Sending to Make.com...');
+        console.log('\n✅ All conditions met. Sending to Make.com...');
         await sendToMakeWebhook(reservationData, reservationId);
       } else {
-        console.log(`❌ NOT sending to Make.com - conditions not met:`);
+        console.log(`\n❌ NOT sending to Make.com - conditions not met:`);
         console.log(`   whatsapp_confirmation: ${reservationData.whatsapp_confirmation}`);
         console.log(`   hasAllRequiredFields: ${hasAllRequiredFields}`);
-        console.log(`   isPhoneValid (10 digits): ${isPhoneValidForMake} (${phoneDigitsForMake.length} digits)`);
+        console.log(`   isPhoneValidForMake (last 10 digits): ${isPhoneValidForMake} (${lastTenDigitsForMake.length} digits)`);
       }
       
       const greeting = getItalianTimeGreeting();
@@ -3994,20 +4006,17 @@ app.post('/api/reservations', async (req, res) => {
       };
       const farewell = farewellMap[greeting] || "Buona giornata";
       
+      console.log('\n✅ RESERVATION COMPLETE - Sending success response to Retell');
+      
       res.json({
-        response: `Perfetto! ${greeting}! Ho prenotato per ${reservationData.guests} persone il ${validatedDate} alle ${reservationData.time}. La tua conferma è ${reservationId}. ${farewell}!`,
+        response: `Perfetto! ${greeting}! Ho prenotato per ${reservationData.guests} persone il ${validatedDate} alle ${reservationData.time} a nome ${reservationData.firstName} ${reservationData.lastName}. Riceverai conferma su WhatsApp. ${farewell}!`,
         saveToAirtable: true,
         reservationId,
-        intentDetected: true,
-        detectionDetails: intentResult,
-        calendarCheck: {
-          hasConflicts: calendarCheck.hasConflicts || false,
-          error: calendarCheck.error
-        }
+        intentDetected: true
       });
       
     } catch (airtableError) {
-      console.error('❌ Airtable error:', airtableError.message);
+      console.error('\n❌❌❌ AIRTABLE ERROR:', airtableError.message);
       const greeting = getItalianTimeGreeting();
       res.json({
         response: `${greeting}! Abbiamo riscontrato un problema con la prenotazione. Ti preghiamo di riprovare o chiamarci direttamente.`,
@@ -4017,7 +4026,7 @@ app.post('/api/reservations', async (req, res) => {
     }
     
   } catch (error) {
-    console.error('❌ Error in main webhook endpoint:', error.message);
+    console.error('\n❌❌❌ ERROR IN MAIN WEBHOOK:', error.message);
     const greeting = getItalianTimeGreeting();
     res.json({
       response: `${greeting}! Grazie per la tua chiamata! Abbiamo riscontrato un problema. Ti preghiamo di riprovare più tardi.`,
