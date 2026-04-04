@@ -4073,6 +4073,479 @@ app.get('/api/test/google-calendar', async (req, res) => {
   }
 });
 
+// ============================================
+// ===== RESERVATION INTENT DETECTION =====
+// ============================================
+function detectReservationIntent(conversationText, transcript = []) {
+  console.log('\n🔍 DETECTING RESERVATION INTENT');
+  console.log('='.repeat(40));
+  
+  const lowerText = conversationText.toLowerCase();
+  
+  const reservationKeywords = [
+    'reservation', 'reserve', 'book', 'booking', 'make a reservation',
+    'table for', 'reserve a table', 'book a table', 'make a booking',
+    'dinner reservation', 'reserve seats', 'book seats', 'make reservation',
+    'reserve for', 'book for', 'I want to reserve', 'I want to book',
+    'I would like to reserve', 'I would like to book', 'can i reserve',
+    'can i book', 'could i reserve', 'could i book',
+    'make a table reservation', 'table booking', 'seat reservation',
+    'prenotazione', 'prenotare', 'prenota', 'prenotiamo', 'prenotato',
+    'prenotati', 'vorrei prenotare', 'desidero prenotare', 'posso prenotare',
+    'faccio una prenotazione', 'fare una prenotazione', 'per prenotare',
+    'prenotare un tavolo', 'prenotazione tavolo', 'tavolo per',
+    'riservare', 'riservazione', 'riserva', 'vorrei riservare',
+    'posto a sedere', 'posti a sedere', 'sedie', 'tavoli',
+    'voglio prenotare', 'devo prenotare', 'ho bisogno di prenotare',
+    'mi piacerebbe prenotare', 'avrei bisogno di prenotare',
+    'vorrei riservare un tavolo', 'riservazione tavolo',
+    'for dinner', 'per cena', 'for lunch', 'per pranzo',
+    'for tonight', 'per stasera', 'for tomorrow', 'per domani'
+  ];
+  
+  for (const keyword of reservationKeywords) {
+    if (lowerText.includes(keyword.toLowerCase())) {
+      console.log(`✅ Found keyword: "${keyword}"`);
+      return { wantsReservation: true, reason: `Keyword: ${keyword}` };
+    }
+  }
+  
+  const patterns = [
+    /(for|per)\s+(\d+)\s+(people|persons|guests|persone|ospiti)/i,
+    /(\d+)\s+(people|persons|guests|persone|ospiti)\s+(for|per)/i,
+    /(table|tavolo)\s+(for|per)\s+(\d+)/i,
+    /(i'd like|i would like|i want|vorrei|desidero)\s+(to\s+)?(reserve|book|prenotare)/i,
+    /(can|could|may|posso|potrei)\s+(i|we|io|noi)\s+(reserve|book|prenotare)/i,
+    /(un|due|tre|quattro|cinque|sei|sette|otto|nove|dieci)\s+(persone|ospiti)/i,
+    /(per|a)\s+(nome|nome e cognome)/i,
+    /(numero|telefono|cellulare)\s+(di|da)/i,
+    /(che\s+ora|a\s+che\s+ora|what time)/i,
+    /(che\s+giorno|che\s+data|what date)/i
+  ];
+  
+  for (const pattern of patterns) {
+    const match = lowerText.match(pattern);
+    if (match) {
+      console.log(`✅ Found pattern: "${match[0]}"`);
+      return { wantsReservation: true, reason: `Pattern: ${match[0]}` };
+    }
+  }
+  
+  console.log(`❌ No reservation intent detected`);
+  return { wantsReservation: false, reason: 'No indicators found' };
+}
+
+// ============================================
+// ===== FIELD COMPARISON WITH CONFIDENCE SCORES =====
+// ============================================
+function calculateFieldConfidence(value, source, context = {}) {
+  if (!value || value === '' || value === null) return 0;
+  
+  let score = 10;
+  
+  if (typeof value === 'string') {
+    if (value.length > 3) score += 5;
+    if (value.length > 10) score += 5;
+  }
+  
+  if (source === 'postcall') score += 15;
+  if (source === 'transcript_confirmed') score += 25;
+  if (source === 'transcript_unconfirmed') score += 5;
+  if (source === 'structured') score += 20;
+  
+  if (context.field === 'phone') {
+    const digits = value.replace(/\D/g, '');
+    if (digits.length === 10) score += 20;
+    if (digits.startsWith('3')) score += 10;
+    if (context.userConfirmed) score += 30;
+  }
+  
+  if (context.field === 'guests') {
+    const num = parseInt(value);
+    if (num > 0 && num < 20) score += 20;
+    if (context.userConfirmed) score += 30;
+  }
+  
+  if (context.field === 'time') {
+    if (value.match(/^([01]?[0-9]|2[0-3]):[0-5][0-9]$/)) score += 20;
+    if (context.userConfirmed) score += 30;
+  }
+  
+  if (context.field === 'date') {
+    if (value.match(/^\d{2}-\d{2}-\d{4}$/)) score += 20;
+    if (context.userConfirmed) score += 30;
+  }
+  
+  return score;
+}
+
+function getBestFieldValue(postcallValue, transcriptValue, fieldName, transcriptContext = {}) {
+  const postcallScore = calculateFieldConfidence(postcallValue, 'postcall', { field: fieldName });
+  const transcriptScore = calculateFieldConfidence(transcriptValue, 'transcript_confirmed', { field: fieldName, ...transcriptContext });
+  
+  console.log(`📊 ${fieldName}: postcall="${postcallValue}" (${postcallScore}) vs transcript="${transcriptValue}" (${transcriptScore})`);
+  
+  if (postcallScore === 0 && transcriptScore === 0) return null;
+  if (postcallScore > transcriptScore) return postcallValue;
+  if (transcriptScore > postcallScore) return transcriptValue;
+  
+  return transcriptValue || postcallValue;
+}
+
+// ============================================
+// ===== COMPREHENSIVE RESERVATION EXTRACTION =====
+// ============================================
+function convertDayToDate(dayName) {
+  const today = new Date();
+  const dayMap = {
+    'sunday': 0, 'monday': 1, 'tuesday': 2, 'wednesday': 3,
+    'thursday': 4, 'friday': 5, 'saturday': 6,
+    'domenica': 0, 'lunedì': 1, 'lunedi': 1, 'martedì': 2, 'martedi': 2,
+    'mercoledì': 3, 'mercoledi': 3, 'giovedì': 4, 'giovedi': 4, 
+    'venerdì': 5, 'venerdi': 5, 'sabato': 6,
+    'today': 'today', 'oggi': 'today', 'tomorrow': 'tomorrow', 'domani': 'tomorrow',
+    'tonight': 'today', 'stasera': 'today', 'questa sera': 'today'
+  };
+  
+  const targetDay = dayMap[dayName.toLowerCase()];
+  
+  if (targetDay === 'today') {
+    return formatInTimeZone(today, ROME_TIMEZONE, 'dd-MM-yyyy');
+  } else if (targetDay === 'tomorrow') {
+    const tomorrow = new Date(today);
+    tomorrow.setDate(today.getDate() + 1);
+    return formatInTimeZone(tomorrow, ROME_TIMEZONE, 'dd-MM-yyyy');
+  } else if (targetDay !== undefined) {
+    const daysUntil = (targetDay - today.getDay() + 7) % 7 || 7;
+    const targetDate = new Date(today);
+    targetDate.setDate(today.getDate() + daysUntil);
+    return formatInTimeZone(targetDate, ROME_TIMEZONE, 'dd-MM-yyyy');
+  }
+  
+  const tomorrow = new Date(today);
+  tomorrow.setDate(today.getDate() + 1);
+  return formatInTimeZone(tomorrow, ROME_TIMEZONE, 'dd-MM-yyyy');
+}
+
+// ============================================
+// ===== MAIN RESERVATION WEBHOOK ENDPOINT =====
+// ===== THIS IS WHAT RETELL CALLS! =====
+// ============================================
+app.post('/api/reservations', async (req, res) => {
+  console.log('\n' + '='.repeat(80));
+  console.log('📞📞📞 RETELL RESERVATION WEBHOOK RECEIVED 📞📞📞');
+  console.log('='.repeat(80));
+  console.log('Event:', req.body.event);
+  console.log('Full request body:', JSON.stringify(req.body, null, 2));
+  
+  const { event, call } = req.body;
+  
+  if (event !== 'call_analyzed') {
+    console.log(`⚠️ Ignoring event type: ${event}`);
+    return res.json({ status: 'received', event: event });
+  }
+  
+  console.log('🎯 Processing call_analyzed event...');
+  console.log('Call ID:', call?.call_id);
+  console.log('Call duration:', call?.duration_seconds, 'seconds');
+  
+  const conversationText = call?.transcript_object
+    ?.map(msg => msg.content || '')
+    .join(' ')
+    .toLowerCase() || '';
+  
+  console.log('\n📝 Conversation transcript:');
+  call?.transcript_object?.forEach((msg, idx) => {
+    console.log(`   ${idx}: ${msg.role.toUpperCase()} - "${msg.content}"`);
+  });
+  
+  const intentResult = detectReservationIntent(conversationText, call?.transcript_object || []);
+  
+  if (!intentResult.wantsReservation) {
+    console.log('\n❌ No reservation intent detected. NOT saving to Airtable.');
+    const greeting = getItalianTimeGreeting();
+    return res.json({
+      response: `${greeting}! Grazie per aver chiamato il Jazzamore. Come posso aiutarti?`,
+      saveToAirtable: false,
+      reason: 'No reservation intent detected'
+    });
+  }
+  
+  console.log('\n✅ Reservation intent detected. Proceeding with data extraction...');
+  
+  const reservationId = generateReservationId();
+  console.log(`🆔 Generated Reservation ID: ${reservationId}`);
+  
+  // Extract post-call analysis data
+  let postCallData = null;
+  if (call?.call_analysis?.custom_analysis_data?.reservation_details) {
+    try {
+      postCallData = JSON.parse(call.call_analysis.custom_analysis_data.reservation_details);
+      console.log('\n📊 Post-call analysis data:', JSON.stringify(postCallData, null, 2));
+    } catch (error) {
+      console.log('❌ Error parsing reservation_details JSON:', error.message);
+    }
+  }
+  
+  // Extract data from transcript
+  let transcriptFirstName = null;
+  let transcriptLastName = null;
+  let transcriptGuests = null;
+  let transcriptDate = null;
+  let transcriptTime = null;
+  
+  console.log('\n🔍 Extracting data from transcript...');
+  
+  for (const msg of call?.transcript_object || []) {
+    if (msg.role === 'user') {
+      const content = msg.content;
+      const lowerContent = content.toLowerCase();
+      
+      // Extract name
+      const nameMatch = content.match(/(?:mi chiamo|my name is|sono|i'm)\s+([A-Z][a-z]+)\s+([A-Z][a-z]+)/i);
+      if (nameMatch && !transcriptFirstName) {
+        transcriptFirstName = nameMatch[1];
+        transcriptLastName = nameMatch[2];
+        console.log(`   Found name: ${transcriptFirstName} ${transcriptLastName}`);
+      }
+      
+      // Extract guests
+      const guestsMatch = lowerContent.match(/(\d+)\s*(?:people|persons|guests|persone|ospiti)/i);
+      if (guestsMatch && !transcriptGuests) {
+        transcriptGuests = parseInt(guestsMatch[1]);
+        console.log(`   Found guests: ${transcriptGuests}`);
+      }
+      
+      // Extract time
+      const timeMatch = content.match(/(\d{1,2})[\s:]?(\d{2})?\s*(?:am|pm|di sera|di mattina)?/i);
+      if (timeMatch && !transcriptTime) {
+        let hour = parseInt(timeMatch[1]);
+        const minute = timeMatch[2] ? parseInt(timeMatch[2]) : 0;
+        if (hour < 12 && lowerContent.includes('pm')) hour += 12;
+        if (hour === 12 && lowerContent.includes('am')) hour = 0;
+        transcriptTime = `${hour.toString().padStart(2, '0')}:${minute.toString().padStart(2, '0')}`;
+        console.log(`   Found time: ${transcriptTime}`);
+      }
+    }
+  }
+  
+  // Extract phone from transcript
+  const transcriptPhone = extractPhoneFromTranscript(call?.transcript_object);
+  console.log(`\n📱 Extracted phone: ${transcriptPhone || 'None'}`);
+  
+  // Extract WhatsApp and newsletter confirmations
+  const whatsappFromTranscript = extractWhatsappConfirmation(call?.transcript_object);
+  const newsletterFromTranscript = extractNewsletterConfirmation(call?.transcript_object);
+  console.log(`📱 WhatsApp confirmation: ${whatsappFromTranscript}`);
+  console.log(`📧 Newsletter confirmation: ${newsletterFromTranscript}`);
+  
+  // ===== FIELD COMPARISON =====
+  console.log('\n📊 COMPARING FIELDS: Post-call vs Transcript');
+  console.log('='.repeat(50));
+  
+  const bestFirstName = getBestFieldValue(
+    postCallData?.first_name || postCallData?.firstName || null,
+    transcriptFirstName,
+    'firstName'
+  );
+  
+  const bestLastName = getBestFieldValue(
+    postCallData?.last_name || postCallData?.lastName || null,
+    transcriptLastName,
+    'lastName'
+  );
+  
+  let postCallGuests = null;
+  if (postCallData?.guests) {
+    postCallGuests = parseInt(postCallData.guests);
+  }
+  const bestGuests = getBestFieldValue(postCallGuests, transcriptGuests, 'guests');
+  
+  let postCallDate = null;
+  if (postCallData?.date) {
+    postCallDate = convertDayToDate(postCallData.date);
+  }
+  const bestDate = getBestFieldValue(postCallDate, transcriptDate, 'date');
+  
+  const bestTime = getBestFieldValue(postCallData?.time || null, transcriptTime, 'time');
+  const bestPhone = getBestFieldValue(postCallData?.phone || null, transcriptPhone, 'phone', { field: 'phone', userConfirmed: true });
+  
+  // Build final reservation data
+  const reservationData = {
+    firstName: bestFirstName || '',
+    lastName: bestLastName || '',
+    phone: bestPhone || '',
+    guests: bestGuests || 2,
+    adults: bestGuests || 2,
+    children: 0,
+    date: bestDate || formatInTimeZone(new Date(Date.now() + 24 * 60 * 60 * 1000), ROME_TIMEZONE, 'dd-MM-yyyy'),
+    time: bestTime || '20:00',
+    specialRequests: postCallData?.special_requests || postCallData?.specialRequests || 'No special requests',
+    newsletter: newsletterFromTranscript !== null ? newsletterFromTranscript : false,
+    whatsapp_confirmation: whatsappFromTranscript !== null ? whatsappFromTranscript : false
+  };
+  
+  console.log('\n✅ FINAL RESERVATION DATA:');
+  console.log(`   Name: ${reservationData.firstName} ${reservationData.lastName}`);
+  console.log(`   Phone: ${reservationData.phone}`);
+  console.log(`   Guests: ${reservationData.guests}`);
+  console.log(`   Date: ${reservationData.date}`);
+  console.log(`   Time: ${reservationData.time}`);
+  console.log(`   Special Requests: ${reservationData.specialRequests}`);
+  console.log(`   WhatsApp: ${reservationData.whatsapp_confirmation}`);
+  console.log(`   Newsletter: ${reservationData.newsletter}`);
+  
+  // ===== CLOSURE CHECK =====
+  console.log('\n🔒 CHECKING CLOSURE STATUS');
+  console.log('='.repeat(40));
+  
+  let validatedDate = reservationData.date;
+  
+  if (validatedDate) {
+    if (isClosedDayByName(validatedDate)) {
+      const closedResponse = getClosedDayResponse(validatedDate);
+      console.log(`🚫 CLOSED DAY DETECTED: ${validatedDate}`);
+      const greeting = getItalianTimeGreeting();
+      return res.json({
+        response: `${greeting}! ${closedResponse.message}`,
+        saveToAirtable: false,
+        reason: 'Restaurant closed on Monday/Tuesday',
+        requiresNewDate: true
+      });
+    }
+    
+    const closureCheck = checkIfClosed(validatedDate);
+    if (closureCheck.isClosed) {
+      console.log(`🚫 CLOSED DAY DETECTED: ${validatedDate} is ${closureCheck.dayName}`);
+      const greeting = getItalianTimeGreeting();
+      return res.json({
+        response: `${greeting}! ${closureCheck.message}`,
+        saveToAirtable: false,
+        reason: 'Restaurant closed on Monday/Tuesday',
+        requiresNewDate: true
+      });
+    }
+    
+    console.log(`✅ Date is valid: ${validatedDate} is ${closureCheck.dayName}`);
+  }
+  
+  // Validate required fields
+  const missingRequiredFields = [];
+  if (!reservationData.firstName) missingRequiredFields.push('firstName');
+  if (!reservationData.lastName) missingRequiredFields.push('lastName');
+  if (!reservationData.phone) missingRequiredFields.push('phone');
+  if (!reservationData.date) missingRequiredFields.push('date');
+  if (!reservationData.time) missingRequiredFields.push('time');
+  if (!reservationData.guests || reservationData.guests < 1) missingRequiredFields.push('guests');
+  
+  if (missingRequiredFields.length > 0) {
+    console.log(`\n❌ Missing required fields: ${missingRequiredFields.join(', ')}`);
+    const greeting = getItalianTimeGreeting();
+    return res.json({
+      response: `${greeting}! Mi dispiace, non ho ricevuto tutte le informazioni necessarie per la prenotazione. Può richiamare per completare?`,
+      saveToAirtable: false,
+      reason: `Missing fields: ${missingRequiredFields.join(', ')}`
+    });
+  }
+  
+  // Format phone number
+  let formattedPhone = reservationData.phone;
+  const phoneDigits = reservationData.phone.replace(/\D/g, '');
+  if (phoneDigits.length >= 9) {
+    formattedPhone = phoneDigits.startsWith('39') ? `+${phoneDigits}` : `+39${phoneDigits}`;
+  }
+  console.log(`\n📱 Formatted phone: ${formattedPhone}`);
+  
+  // Validate and adjust date if in past
+  const [day, month, year] = reservationData.date.split('-');
+  const reservationDateObj = new Date(`${year}-${month}-${day}`);
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  
+  if (reservationDateObj < today) {
+    const tomorrow = new Date(today);
+    tomorrow.setDate(today.getDate() + 1);
+    validatedDate = formatInTimeZone(tomorrow, ROME_TIMEZONE, 'dd-MM-yyyy');
+    console.log(`⚠️ Date was in past, adjusted to: ${validatedDate}`);
+  }
+  
+  const arrivalTimeISO = formatTimeForAirtable(reservationData.time, validatedDate);
+  const whatsappValue = reservationData.whatsapp_confirmation ? "Yes" : "No";
+  
+  let airtableDate = validatedDate;
+  if (validatedDate && validatedDate.match(/^\d{2}-\d{2}-\d{4}$/)) {
+    const [d, m, y] = validatedDate.split('-');
+    airtableDate = `${y}-${m}-${d}`;
+  }
+  
+  const airtableFields = {
+    "Reservation ID": reservationId,
+    "First Name": reservationData.firstName,
+    "Last Name": reservationData.lastName,
+    "Phone Number": formattedPhone,
+    "Reservation Date": airtableDate,
+    "Arrival Time": arrivalTimeISO,
+    "Total People": parseInt(reservationData.guests) || 2,
+    "Dinner Count": parseInt(reservationData.adults) || parseInt(reservationData.guests) || 2,
+    "Show-Only Count": 0,
+    "Kids Count": parseInt(reservationData.children) || 0,
+    "Special Requests": reservationData.specialRequests || '',
+    "Reservation Status": "Confirmed",
+    "Reservation Type": "Dinner + Show",
+    "Newsletter Opt-In": reservationData.newsletter,
+    "Whatsapp Confirmation": whatsappValue
+  };
+  
+  console.log('\n💾 SAVING TO AIRTABLE...');
+  console.log('Airtable fields:', JSON.stringify(airtableFields, null, 2));
+  
+  try {
+    const record = await base('Reservations').create([{ fields: airtableFields }]);
+    
+    console.log('\n🎉🎉🎉 RESERVATION SAVED TO AIRTABLE! 🎉🎉🎉');
+    console.log(`   Reservation ID: ${reservationId}`);
+    console.log(`   Airtable Record ID: ${record[0].id}`);
+    
+    // Send to Make.com if WhatsApp confirmation is true and phone is valid
+    const isPhoneValid = phoneDigits.length >= 9;
+    
+    if (reservationData.whatsapp_confirmation && isPhoneValid) {
+      console.log('\n📤 Sending to Make.com webhook...');
+      await sendToMakeWebhook(reservationData, reservationId);
+    } else {
+      console.log(`\n⚠️ Skipping Make.com webhook: whatsapp_confirmation=${reservationData.whatsapp_confirmation}, phoneValid=${isPhoneValid}`);
+    }
+    
+    const greeting = getItalianTimeGreeting();
+    const farewellMap = {
+      "Buongiorno": "Buona giornata",
+      "Buon pranzo": "Buon pranzo",
+      "Buon pomeriggio": "Buon proseguimento",
+      "Buonasera": "Buona serata",
+      "Buonanotte": "Buona notte"
+    };
+    const farewell = farewellMap[greeting] || "Buona giornata";
+    
+    console.log('\n✅ RESERVATION COMPLETE - Sending success response to Retell');
+    
+    res.json({
+      response: `Perfetto! ${greeting}! Ho prenotato per ${reservationData.guests} persone il ${validatedDate} alle ${reservationData.time} a nome ${reservationData.firstName} ${reservationData.lastName}. Riceverai conferma su WhatsApp. ${farewell}!`,
+      saveToAirtable: true,
+      reservationId,
+      intentDetected: true
+    });
+    
+  } catch (airtableError) {
+    console.error('\n❌❌❌ AIRTABLE ERROR:', airtableError.message);
+    const greeting = getItalianTimeGreeting();
+    res.json({
+      response: `${greeting}! Abbiamo riscontrato un problema con la prenotazione. Ti preghiamo di riprovare o chiamarci direttamente.`,
+      saveToAirtable: false,
+      error: airtableError.message
+    });
+  }
+});
+
 // ===== SERVER STARTUP =====
 app.listen(PORT, () => {
   const romeDateTime = getRomeDateTime();
