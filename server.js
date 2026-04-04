@@ -1047,7 +1047,9 @@ function extractNewsletterConfirmation(transcript) {
 
 // ===== FUNCTION TO SEND WEBHOOK TO MAKE.COM - STRICT VALIDATION =====
 async function sendToMakeWebhook(reservationData, reservationId) {
+  console.log('\n' + '='.repeat(60));
   console.log('🔵 sendToMakeWebhook called - validating all fields...');
+  console.log('='.repeat(60));
   
   // ===== CRITICAL: Check EVERY required field - NO EMPTY VALUES ALLOWED =====
   // If ANY field is empty, null, undefined, or invalid -> DO NOT SEND
@@ -1064,85 +1066,142 @@ async function sendToMakeWebhook(reservationData, reservationId) {
     errors.push('lastName is empty');
   }
   
-  // Check phone
+  // ===== PHONE NUMBER VALIDATION - ACCEPTS 10-12 DIGITS =====
+  let formattedPhoneForWebhook = null;
+  let phoneDigits = null;
+  
   if (!reservationData.phone || reservationData.phone === '' || reservationData.phone === null) {
     errors.push('phone is empty');
   } else {
-    const phoneDigits = reservationData.phone.replace(/\D/g, '');
-    if (phoneDigits.length !== 10) {
-      errors.push(`phone has ${phoneDigits.length} digits (must be exactly 10)`);
+    // Extract only digits
+    phoneDigits = reservationData.phone.replace(/\D/g, '');
+    console.log(`📱 Raw phone input: "${reservationData.phone}"`);
+    console.log(`📱 Digits extracted: ${phoneDigits} (length: ${phoneDigits.length})`);
+    
+    // Accept 10-12 digits (10 raw, 11 with 39, 12 with +39)
+    if (phoneDigits.length < 10 || phoneDigits.length > 12) {
+      errors.push(`phone has ${phoneDigits.length} digits (must be 10-12 digits after stripping non-digits)`);
+    } else {
+      // Get the last 10 digits (works for all formats)
+      const lastTenDigits = phoneDigits.slice(-10);
+      console.log(`📱 Last 10 digits: ${lastTenDigits}`);
+      
+      // Format as +39XXXXXXXXXX for webhook
+      formattedPhoneForWebhook = `+39${lastTenDigits}`;
+      console.log(`📱 Formatted for webhook: ${formattedPhoneForWebhook}`);
+      
+      // Additional validation: Italian mobile numbers start with 3
+      if (!lastTenDigits.startsWith('3')) {
+        errors.push(`phone does not appear to be an Italian mobile number (should start with 3, got ${lastTenDigits.charAt(0)})`);
+      }
     }
   }
   
-  // Check date
+  // Check date format
   if (!reservationData.date || reservationData.date === '' || reservationData.date === null) {
     errors.push('date is empty');
   } else if (!reservationData.date.match(/^\d{2}-\d{2}-\d{4}$/)) {
-    errors.push(`date format invalid: ${reservationData.date}`);
+    errors.push(`date format invalid: ${reservationData.date} (expected DD-MM-YYYY)`);
   }
   
-  // Check time
+  // Check time format
   if (!reservationData.time || reservationData.time === '' || reservationData.time === null) {
     errors.push('time is empty');
   } else if (!reservationData.time.match(/^([01]?[0-9]|2[0-3]):[0-5][0-9]$/)) {
-    errors.push(`time format invalid: ${reservationData.time}`);
+    errors.push(`time format invalid: ${reservationData.time} (expected HH:MM)`);
   }
   
   // Check guests
   if (!reservationData.guests || reservationData.guests === '' || reservationData.guests === null) {
     errors.push('guests is empty');
   } else if (reservationData.guests < 1 || reservationData.guests > 20) {
-    errors.push(`guests count invalid: ${reservationData.guests}`);
+    errors.push(`guests count invalid: ${reservationData.guests} (must be 1-20)`);
   }
+  
+  // ===== CHECK WHATSAPP CONFIRMATION =====
+  const wantsWhatsapp = reservationData.whatsapp_confirmation === true || 
+                        reservationData.whatsapp_confirmation === 'yes' || 
+                        reservationData.whatsapp_confirmation === 'true';
+  
+  console.log(`📱 WhatsApp confirmation: ${wantsWhatsapp}`);
   
   // If ANY errors, DO NOT SEND
   if (errors.length > 0) {
-    console.log(`❌ Webhook NOT sent to Make.com - validation failed:`);
+    console.log(`\n❌❌❌ Webhook NOT sent to Make.com - validation failed:`);
     errors.forEach(err => console.log(`   - ${err}`));
-    console.log(`   Reservation data:`, JSON.stringify(reservationData, null, 2));
-    console.log(`   This prevents queue issues and bad WhatsApp messages.`);
+    console.log(`\n📋 Reservation data that failed validation:`);
+    console.log(`   Name: ${reservationData.firstName} ${reservationData.lastName}`);
+    console.log(`   Phone: ${reservationData.phone} -> formatted: ${formattedPhoneForWebhook}`);
+    console.log(`   Date: ${reservationData.date}`);
+    console.log(`   Time: ${reservationData.time}`);
+    console.log(`   Guests: ${reservationData.guests}`);
+    console.log(`   WhatsApp: ${reservationData.whatsapp_confirmation}`);
+    console.log(`   Newsletter: ${reservationData.newsletter}`);
+    console.log(`\n⚠️ This prevents queue issues and bad WhatsApp messages.`);
     return false;
   }
   
-  console.log('✅ All required fields validated. Sending to Make.com...');
+  // ===== IF WHATSAPP IS FALSE, DO NOT SEND (customer doesn't want WhatsApp message) =====
+  if (!wantsWhatsapp) {
+    console.log(`\n⚠️ Webhook NOT sent - customer declined WhatsApp confirmation (whatsapp_confirmation = false)`);
+    console.log(`   Customer ${reservationData.firstName} ${reservationData.lastName} does not want WhatsApp messages.`);
+    return false;
+  }
   
+  console.log('\n✅ All required fields validated successfully!');
+  console.log(`   Name: ${reservationData.firstName} ${reservationData.lastName}`);
+  console.log(`   Phone: ${formattedPhoneForWebhook}`);
+  console.log(`   Date: ${reservationData.date}`);
+  console.log(`   Time: ${reservationData.time}`);
+  console.log(`   Guests: ${reservationData.guests}`);
+  console.log(`   WhatsApp: ${wantsWhatsapp}`);
+  console.log(`   Newsletter: ${reservationData.newsletter === true}`);
+  
+  // ===== PREPARE PAYLOAD FOR MAKE.COM =====
   try {
+    // Format date for Make.com (ensure DD-MM-YYYY)
     let formattedDate = reservationData.date;
-    if (formattedDate && formattedDate.match(/^\d{2}-\d{2}-\d{4}$/)) {
-      // Already correct format
-    } else if (formattedDate && formattedDate.match(/^\d{4}-\d{2}-\d{2}$/)) {
+    if (formattedDate && formattedDate.match(/^\d{4}-\d{2}-\d{2}$/)) {
       const [year, month, day] = formattedDate.split('-');
       formattedDate = `${day}-${month}-${year}`;
+      console.log(`📅 Converted date from YYYY-MM-DD to DD-MM-YYYY: ${formattedDate}`);
+    } else if (formattedDate && formattedDate.match(/^\d{2}-\d{2}-\d{4}$/)) {
+      console.log(`📅 Date already in correct DD-MM-YYYY format: ${formattedDate}`);
     }
     
     // Clean specialRequests - remove internal notes
     let cleanSpecialRequests = reservationData.specialRequests || 'No special requests';
-    // Remove any "Calendar Note:" internal messages
+    // Remove any "Calendar Note:" internal messages (these are for internal use only)
     if (cleanSpecialRequests.includes('Calendar Note:')) {
       cleanSpecialRequests = cleanSpecialRequests.split('Calendar Note:')[0].trim();
       if (!cleanSpecialRequests || cleanSpecialRequests === '') {
         cleanSpecialRequests = 'No special requests';
       }
+      console.log(`🧹 Removed internal "Calendar Note" from special requests`);
     }
     
+    // Build the payload
     const payload = {
       reservationId: reservationId,
       firstName: reservationData.firstName,
       lastName: reservationData.lastName,
-      phone: reservationData.phone,
+      phone: formattedPhoneForWebhook,  // Always +39XXXXXXXXXX format
       date: formattedDate,
       time: reservationData.time,
-      guests: reservationData.guests,
-      adults: reservationData.adults || reservationData.guests,
-      children: reservationData.children || 0,
+      guests: parseInt(reservationData.guests),
+      adults: parseInt(reservationData.adults) || parseInt(reservationData.guests),
+      children: parseInt(reservationData.children) || 0,
       specialRequests: cleanSpecialRequests,
       newsletter: reservationData.newsletter === true,
-      whatsappConfirmation: reservationData.whatsapp_confirmation === true
+      whatsappConfirmation: wantsWhatsapp
     };
     
-    console.log('📤 SENDING TO MAKE.COM:');
-    console.log('Payload:', JSON.stringify(payload, null, 2));
-
+    console.log('\n📤 SENDING TO MAKE.COM:');
+    console.log(`   URL: ${MAKE_WEBHOOK_URL}`);
+    console.log(`   Payload:`, JSON.stringify(payload, null, 2));
+    console.log(`   Payload size: ${JSON.stringify(payload).length} bytes`);
+    
+    // Send to Make.com
     const response = await fetch(MAKE_WEBHOOK_URL, {
       method: 'POST',
       headers: {
@@ -1150,33 +1209,32 @@ async function sendToMakeWebhook(reservationData, reservationId) {
       },
       body: JSON.stringify(payload)
     });
-
+    
     const responseText = await response.text();
-    console.log('📨 MAKE.COM RESPONSE:', response.status, responseText);
-
+    console.log(`\n📨 MAKE.COM RESPONSE:`);
+    console.log(`   Status: ${response.status} ${response.statusText}`);
+    console.log(`   Body: ${responseText}`);
+    
     if (response.ok) {
-      console.log('✅ Webhook sent to Make.com successfully', { reservationId });
+      console.log(`\n✅✅✅ Webhook sent to Make.com successfully!`);
+      console.log(`   Reservation ID: ${reservationId}`);
+      console.log(`   Phone sent: ${formattedPhoneForWebhook}`);
       return true;
     } else {
-      console.log('⚠️ Webhook to Make.com failed', { 
-        reservationId, 
-        status: response.status,
-        statusText: response.statusText,
-        responseBody: responseText
-      });
+      console.log(`\n⚠️⚠️⚠️ Webhook to Make.com failed!`);
+      console.log(`   Status: ${response.status}`);
+      console.log(`   Response: ${responseText}`);
       return false;
     }
+    
   } catch (error) {
-    console.error('❌ Webhook error:', error.message);
-    console.error('❌ Error sending webhook to Make.com', { 
-      reservationId, 
-      error: error.message,
-      stack: error.stack
-    });
+    console.error(`\n❌❌❌ Webhook error:`);
+    console.error(`   Error message: ${error.message}`);
+    console.error(`   Stack: ${error.stack}`);
+    console.error(`   Reservation ID: ${reservationId}`);
     return false;
   }
 }
-
 // ============================================
 // ===== FIELD COMPARISON WITH CONFIDENCE SCORES =====
 // ============================================
