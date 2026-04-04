@@ -1,6 +1,3 @@
-// ===== FORCE TIMEZONE - MUST BE FIRST LINE =====
-process.env.TZ = 'Europe/Rome';
-
 const express = require('express');
 const Airtable = require('airtable');
 const cors = require('cors');
@@ -239,6 +236,276 @@ function convertToISODate(dateString) {
   }
   return dateString;
 }
+
+// ===== CLOSURE CHECK FOR MONDAYS & TUESDAYS =====
+const CLOSED_DAYS = {
+  monday: 1,
+  tuesday: 2,
+  lunedì: 1,
+  lunedi: 1,
+  martedì: 2,
+  martedi: 2
+};
+
+const CLOSED_DAY_NAMES = {
+  'monday': 'Monday',
+  'tuesday': 'Tuesday',
+  'lunedì': 'Monday (Lunedì)',
+  'lunedi': 'Monday (Lunedì)',
+  'martedì': 'Tuesday (Martedì)',
+  'martedi': 'Tuesday (Martedì)'
+};
+
+/**
+ * Check if a date falls on a closed day (Monday or Tuesday)
+ * Returns object with closure status and helpful message
+ */
+function checkIfClosed(dateInput) {
+  const resolvedDate = resolveDate(dateInput);
+  
+  if (!resolvedDate || !resolvedDate.match(/^\d{2}-\d{2}-\d{4}$/)) {
+    return {
+      isClosed: false,
+      error: `Invalid date: ${dateInput}`,
+      message: "I couldn't understand that date. Could you please specify another day?"
+    };
+  }
+  
+  const [day, month, year] = resolvedDate.split('-');
+  const dateObj = new Date(`${year}-${month}-${day}`);
+  const dayOfWeek = dateObj.getDay(); // 0 = Sunday, 1 = Monday, 2 = Tuesday, etc.
+  
+  // Monday = 1, Tuesday = 2
+  const isClosed = (dayOfWeek === 1 || dayOfWeek === 2);
+  
+  const dayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+  const dayNameItalian = ['Domenica', 'Lunedì', 'Martedì', 'Mercoledì', 'Giovedì', 'Venerdì', 'Sabato'];
+  const dayNameEn = dayNames[dayOfWeek];
+  const dayNameIt = dayNameItalian[dayOfWeek];
+  
+  let message = '';
+  if (isClosed) {
+    message = `I'm sorry, but Jazzamore is closed on ${dayNameEn} (${dayNameIt}). We are open from Wednesday to Sunday. Could you please choose a different day between Wednesday and Sunday?`;
+  }
+  
+  return {
+    isClosed,
+    date: resolvedDate,
+    dayOfWeek,
+    dayName: dayNameEn,
+    dayNameItalian: dayNameIt,
+    message,
+    closedDays: ['Monday', 'Tuesday', 'Lunedì', 'Martedì'],
+    openDays: 'Wednesday to Sunday (Mercoledì a Domenica)'
+  };
+}
+
+/**
+ * Check if a date string mentions a closed day by name
+ * Useful for catching "next monday" before resolving the date
+ */
+function isClosedDayByName(dateInput) {
+  const lowerInput = dateInput.toLowerCase().trim();
+  
+  // Check for explicit Monday/Tuesday references
+  const closedDayPatterns = [
+    /^monday$/i, /^tuesday$/i,
+    /^luned[iì]$/i, /^marted[iì]$/i,
+    /next\s+monday/i, /next\s+tuesday/i,
+    /next\s+luned[iì]/i, /next\s+marted[iì]/i,
+    /this\s+monday/i, /this\s+tuesday/i,
+    /prossim[oa]\s+luned[iì]/i, /prossim[oa]\s+marted[iì]/i
+  ];
+  
+  for (const pattern of closedDayPatterns) {
+    if (pattern.test(lowerInput)) {
+      return true;
+    }
+  }
+  
+  return false;
+}
+
+/**
+ * Get a helpful response for closed day requests
+ */
+function getClosedDayResponse(dateInput) {
+  const lowerInput = dateInput.toLowerCase().trim();
+  
+  // Determine which day they asked for
+  let requestedDay = '';
+  if (lowerInput.includes('monday') || lowerInput.includes('lunedì') || lowerInput.includes('lunedi')) {
+    requestedDay = 'Monday (Lunedì)';
+  } else if (lowerInput.includes('tuesday') || lowerInput.includes('martedì') || lowerInput.includes('martedi')) {
+    requestedDay = 'Tuesday (Martedì)';
+  } else {
+    const check = checkIfClosed(dateInput);
+    if (check.isClosed) {
+      requestedDay = check.dayName;
+    }
+  }
+  
+  return {
+    success: false,
+    isClosed: true,
+    message: `I'm sorry, but Jazzamore is closed on ${requestedDay}. We are open Wednesday through Sunday (Mercoledì a Domenica). Would you like to book for Wednesday, Thursday, Friday, Saturday, or Sunday instead?`,
+    suggestedAlternatives: ['Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'],
+    suggestedAlternativesItalian: ['Mercoledì', 'Giovedì', 'Venerdì', 'Sabato', 'Domenica']
+  };
+}
+
+// ===================================================================
+// ===== CLOSURE CHECK TOOL FOR RETELL AGENT =====
+// ===================================================================
+
+/**
+ * Check if Jazzamore is closed on a given date
+ * Returns: { isClosed, dayName, date, message, suggestedAlternatives }
+ */
+app.post('/api/check-closure', async (req, res) => {
+  try {
+    const { date } = req.body;
+    const dateArg = req.body.args?.date || date;
+    
+    if (!dateArg) {
+      return res.status(400).json({
+        success: false,
+        error: 'Missing date parameter',
+        message: 'Please provide a date to check'
+      });
+    }
+    
+    console.log(`🔍 Closure check requested for: "${dateArg}"`);
+    
+    // Step 1: Resolve the date using your existing resolve_date function
+    let resolvedDate;
+    try {
+      resolvedDate = resolveDate(dateArg);
+      console.log(`📅 Resolved date: ${resolvedDate}`);
+    } catch (error) {
+      console.log(`❌ Date resolution failed: ${error.message}`);
+      return res.status(400).json({
+        success: false,
+        isClosed: false,
+        error: 'Invalid date',
+        message: 'I could not understand that date. Could you please specify a different date?'
+      });
+    }
+    
+    // Step 2: Parse the resolved date (DD-MM-YYYY)
+    if (!resolvedDate || !resolvedDate.match(/^\d{2}-\d{2}-\d{4}$/)) {
+      return res.status(400).json({
+        success: false,
+        isClosed: false,
+        error: 'Invalid date format',
+        message: 'I could not understand that date format. Please try another date.'
+      });
+    }
+    
+    const [day, month, year] = resolvedDate.split('-');
+    const dateObj = new Date(`${year}-${month}-${day}`);
+    
+    // Step 3: Get day of week (0 = Sunday, 1 = Monday, 2 = Tuesday, etc.)
+    const dayOfWeek = dateObj.getDay();
+    const isClosed = (dayOfWeek === 1 || dayOfWeek === 2); // Monday or Tuesday
+    
+    const dayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+    const dayNamesItalian = ['Domenica', 'Lunedì', 'Martedì', 'Mercoledì', 'Giovedì', 'Venerdì', 'Sabato'];
+    
+    const dayName = dayNames[dayOfWeek];
+    const dayNameItalian = dayNamesItalian[dayOfWeek];
+    
+    // Step 4: Build response
+    const response = {
+      success: true,
+      isClosed: isClosed,
+      date: resolvedDate,
+      dayOfWeek: dayOfWeek,
+      dayName: dayName,
+      dayNameItalian: dayNameItalian,
+      originalRequest: dateArg
+    };
+    
+    if (isClosed) {
+      response.message = `Jazzamore is closed on ${dayName}s (${dayNameItalian}). We are open Wednesday through Sunday.`;
+      response.rejectionPhrase = {
+        english: "I'm sorry, Jazzamore is closed on Mondays and Tuesdays. We are open Wednesday through Sunday. Which day would you prefer between Wednesday, Thursday, Friday, Saturday, or Sunday?",
+        italian: "Mi dispiace, il Jazzamore è chiuso il Lunedì e il Martedì. Siamo aperti da Mercoledì a Domenica. Che giorno preferisce tra Mercoledì, Giovedì, Venerdì, Sabato o Domenica?"
+      };
+      response.suggestedAlternatives = ['Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
+      response.suggestedAlternativesItalian = ['Mercoledì', 'Giovedì', 'Venerdì', 'Sabato', 'Domenica'];
+    } else {
+      response.message = `Jazzamore is open on ${dayName} (${dayNameItalian}).`;
+      response.confirmationPhrase = {
+        english: `Jazzamore is open on ${dayName}. Would you like to make a reservation?`,
+        italian: `Il Jazzamore è aperto ${dayNameItalian}. Desidera fare una prenotazione?`
+      };
+    }
+    
+    console.log(`📤 Closure check response: isClosed=${isClosed}, day=${dayName}`);
+    res.json(response);
+    
+  } catch (error) {
+    console.error('❌ Error in /api/check-closure:', error.message);
+    res.status(500).json({
+      success: false,
+      isClosed: false,
+      error: 'Internal server error',
+      message: 'I had trouble checking if we are open that day. Could you please try another date?'
+    });
+  }
+});
+
+// GET endpoint for testing (optional)
+app.get('/api/check-closure', async (req, res) => {
+  try {
+    const { date } = req.query;
+    
+    if (!date) {
+      return res.status(400).json({
+        success: false,
+        error: 'Missing date parameter',
+        message: 'Please provide a date to check (e.g., "today", "tomorrow", "monday", "15-04-2025")'
+      });
+    }
+    
+    // Reuse the same logic as POST
+    const resolvedDate = resolveDate(date);
+    
+    if (!resolvedDate || !resolvedDate.match(/^\d{2}-\d{2}-\d{4}$/)) {
+      return res.status(400).json({
+        success: false,
+        error: 'Invalid date',
+        message: 'Could not understand that date'
+      });
+    }
+    
+    const [day, month, year] = resolvedDate.split('-');
+    const dateObj = new Date(`${year}-${month}-${day}`);
+    const dayOfWeek = dateObj.getDay();
+    const isClosed = (dayOfWeek === 1 || dayOfWeek === 2);
+    
+    const dayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+    const dayNamesItalian = ['Domenica', 'Lunedì', 'Martedì', 'Mercoledì', 'Giovedì', 'Venerdì', 'Sabato'];
+    
+    res.json({
+      success: true,
+      input: date,
+      resolvedDate: resolvedDate,
+      isClosed: isClosed,
+      dayOfWeek: dayOfWeek,
+      dayName: dayNames[dayOfWeek],
+      dayNameItalian: dayNamesItalian[dayOfWeek],
+      message: isClosed 
+        ? `Jazzamore is closed on ${dayNames[dayOfWeek]}s. Open Wednesday through Sunday.`
+        : `Jazzamore is open on ${dayNames[dayOfWeek]}.`
+    });
+    
+  } catch (error) {
+    console.error('❌ Error in GET /api/check-closure:', error.message);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
 
 // ===== PHONE EXTRACTION FROM TRANSCRIPT =====
 function extractPhoneFromTranscript(transcript) {
@@ -778,340 +1045,84 @@ function extractNewsletterConfirmation(transcript) {
   return false;
 }
 
-// ===== CLOSURE CHECK FOR MONDAYS & TUESDAYS =====
-const CLOSED_DAYS = {
-  monday: 1,
-  tuesday: 2,
-  lunedì: 1,
-  lunedi: 1,
-  martedì: 2,
-  martedi: 2
-};
-
-const CLOSED_DAY_NAMES = {
-  'monday': 'Monday',
-  'tuesday': 'Tuesday',
-  'lunedì': 'Monday (Lunedì)',
-  'lunedi': 'Monday (Lunedì)',
-  'martedì': 'Tuesday (Martedì)',
-  'martedi': 'Tuesday (Martedì)'
-};
-
-/**
- * Check if a date falls on a closed day (Monday or Tuesday)
- * Returns object with closure status and helpful message
- */
-function checkIfClosed(dateInput) {
-  const resolvedDate = resolveDate(dateInput);
-  
-  if (!resolvedDate || !resolvedDate.match(/^\d{2}-\d{2}-\d{4}$/)) {
-    return {
-      isClosed: false,
-      error: `Invalid date: ${dateInput}`,
-      message: "I couldn't understand that date. Could you please specify another day?"
-    };
-  }
-  
-  const [day, month, year] = resolvedDate.split('-');
-  const dateObj = new Date(`${year}-${month}-${day}`);
-  const dayOfWeek = dateObj.getDay(); // 0 = Sunday, 1 = Monday, 2 = Tuesday, etc.
-  
-  // Monday = 1, Tuesday = 2
-  const isClosed = (dayOfWeek === 1 || dayOfWeek === 2);
-  
-  const dayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
-  const dayNameItalian = ['Domenica', 'Lunedì', 'Martedì', 'Mercoledì', 'Giovedì', 'Venerdì', 'Sabato'];
-  const dayNameEn = dayNames[dayOfWeek];
-  const dayNameIt = dayNameItalian[dayOfWeek];
-  
-  let message = '';
-  if (isClosed) {
-    message = `I'm sorry, but Jazzamore is closed on ${dayNameEn} (${dayNameIt}). We are open from Wednesday to Sunday. Could you please choose a different day between Wednesday and Sunday?`;
-  }
-  
-  return {
-    isClosed,
-    date: resolvedDate,
-    dayOfWeek,
-    dayName: dayNameEn,
-    dayNameItalian: dayNameIt,
-    message,
-    closedDays: ['Monday', 'Tuesday', 'Lunedì', 'Martedì'],
-    openDays: 'Wednesday to Sunday (Mercoledì a Domenica)'
-  };
-}
-
-/**
- * Check if a date string mentions a closed day by name
- * Useful for catching "next monday" before resolving the date
- */
-function isClosedDayByName(dateInput) {
-  const lowerInput = dateInput.toLowerCase().trim();
-  
-  // Check for explicit Monday/Tuesday references
-  const closedDayPatterns = [
-    /^monday$/i, /^tuesday$/i,
-    /^luned[iì]$/i, /^marted[iì]$/i,
-    /next\s+monday/i, /next\s+tuesday/i,
-    /next\s+luned[iì]/i, /next\s+marted[iì]/i,
-    /this\s+monday/i, /this\s+tuesday/i,
-    /prossim[oa]\s+luned[iì]/i, /prossim[oa]\s+marted[iì]/i
-  ];
-  
-  for (const pattern of closedDayPatterns) {
-    if (pattern.test(lowerInput)) {
-      return true;
-    }
-  }
-  
-  return false;
-}
-
-/**
- * Get a helpful response for closed day requests
- */
-function getClosedDayResponse(dateInput) {
-  const lowerInput = dateInput.toLowerCase().trim();
-  
-  // Determine which day they asked for
-  let requestedDay = '';
-  if (lowerInput.includes('monday') || lowerInput.includes('lunedì') || lowerInput.includes('lunedi')) {
-    requestedDay = 'Monday (Lunedì)';
-  } else if (lowerInput.includes('tuesday') || lowerInput.includes('martedì') || lowerInput.includes('martedi')) {
-    requestedDay = 'Tuesday (Martedì)';
-  } else {
-    const check = checkIfClosed(dateInput);
-    if (check.isClosed) {
-      requestedDay = check.dayName;
-    }
-  }
-  
-  return {
-    success: false,
-    isClosed: true,
-    message: `I'm sorry, but Jazzamore is closed on ${requestedDay}. We are open Wednesday through Sunday (Mercoledì a Domenica). Would you like to book for Wednesday, Thursday, Friday, Saturday, or Sunday instead?`,
-    suggestedAlternatives: ['Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'],
-    suggestedAlternativesItalian: ['Mercoledì', 'Giovedì', 'Venerdì', 'Sabato', 'Domenica']
-  };
-}
-
-// ===================================================================
-// ===== CLOSURE CHECK TOOL FOR RETELL AGENT =====
-// ===================================================================
-
-/**
- * Check if Jazzamore is closed on a given date
- * Returns: { isClosed, dayName, date, message, suggestedAlternatives }
- */
-app.post('/api/check-closure', async (req, res) => {
-  try {
-    const { date } = req.body;
-    const dateArg = req.body.args?.date || date;
-    
-    if (!dateArg) {
-      return res.status(400).json({
-        success: false,
-        error: 'Missing date parameter',
-        message: 'Please provide a date to check'
-      });
-    }
-    
-    console.log(`🔍 Closure check requested for: "${dateArg}"`);
-    
-    // Step 1: Resolve the date using your existing resolve_date function
-    let resolvedDate;
-    try {
-      resolvedDate = resolveDate(dateArg);
-      console.log(`📅 Resolved date: ${resolvedDate}`);
-    } catch (error) {
-      console.log(`❌ Date resolution failed: ${error.message}`);
-      return res.status(400).json({
-        success: false,
-        isClosed: false,
-        error: 'Invalid date',
-        message: 'I could not understand that date. Could you please specify a different date?'
-      });
-    }
-    
-    // Step 2: Parse the resolved date (DD-MM-YYYY)
-    if (!resolvedDate || !resolvedDate.match(/^\d{2}-\d{2}-\d{4}$/)) {
-      return res.status(400).json({
-        success: false,
-        isClosed: false,
-        error: 'Invalid date format',
-        message: 'I could not understand that date format. Please try another date.'
-      });
-    }
-    
-    const [day, month, year] = resolvedDate.split('-');
-    const dateObj = new Date(`${year}-${month}-${day}`);
-    
-    // Step 3: Get day of week (0 = Sunday, 1 = Monday, 2 = Tuesday, etc.)
-    const dayOfWeek = dateObj.getDay();
-    const isClosed = (dayOfWeek === 1 || dayOfWeek === 2); // Monday or Tuesday
-    
-    const dayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
-    const dayNamesItalian = ['Domenica', 'Lunedì', 'Martedì', 'Mercoledì', 'Giovedì', 'Venerdì', 'Sabato'];
-    
-    const dayName = dayNames[dayOfWeek];
-    const dayNameItalian = dayNamesItalian[dayOfWeek];
-    
-    // Step 4: Build response
-    const response = {
-      success: true,
-      isClosed: isClosed,
-      date: resolvedDate,
-      dayOfWeek: dayOfWeek,
-      dayName: dayName,
-      dayNameItalian: dayNameItalian,
-      originalRequest: dateArg
-    };
-    
-    if (isClosed) {
-      response.message = `Jazzamore is closed on ${dayName}s (${dayNameItalian}). We are open Wednesday through Sunday.`;
-      response.rejectionPhrase = {
-        english: "I'm sorry, Jazzamore is closed on Mondays and Tuesdays. We are open Wednesday through Sunday. Which day would you prefer between Wednesday, Thursday, Friday, Saturday, or Sunday?",
-        italian: "Mi dispiace, il Jazzamore è chiuso il Lunedì e il Martedì. Siamo aperti da Mercoledì a Domenica. Che giorno preferisce tra Mercoledì, Giovedì, Venerdì, Sabato o Domenica?"
-      };
-      response.suggestedAlternatives = ['Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
-      response.suggestedAlternativesItalian = ['Mercoledì', 'Giovedì', 'Venerdì', 'Sabato', 'Domenica'];
-    } else {
-      response.message = `Jazzamore is open on ${dayName} (${dayNameItalian}).`;
-      response.confirmationPhrase = {
-        english: `Jazzamore is open on ${dayName}. Would you like to make a reservation?`,
-        italian: `Il Jazzamore è aperto ${dayNameItalian}. Desidera fare una prenotazione?`
-      };
-    }
-    
-    console.log(`📤 Closure check response: isClosed=${isClosed}, day=${dayName}`);
-    res.json(response);
-    
-  } catch (error) {
-    console.error('❌ Error in /api/check-closure:', error.message);
-    res.status(500).json({
-      success: false,
-      isClosed: false,
-      error: 'Internal server error',
-      message: 'I had trouble checking if we are open that day. Could you please try another date?'
-    });
-  }
-});
-
-// GET endpoint for testing (optional)
-app.get('/api/check-closure', async (req, res) => {
-  try {
-    const { date } = req.query;
-    
-    if (!date) {
-      return res.status(400).json({
-        success: false,
-        error: 'Missing date parameter',
-        message: 'Please provide a date to check (e.g., "today", "tomorrow", "monday", "15-04-2025")'
-      });
-    }
-    
-    // Reuse the same logic as POST
-    const resolvedDate = resolveDate(date);
-    
-    if (!resolvedDate || !resolvedDate.match(/^\d{2}-\d{2}-\d{4}$/)) {
-      return res.status(400).json({
-        success: false,
-        error: 'Invalid date',
-        message: 'Could not understand that date'
-      });
-    }
-    
-    const [day, month, year] = resolvedDate.split('-');
-    const dateObj = new Date(`${year}-${month}-${day}`);
-    const dayOfWeek = dateObj.getDay();
-    const isClosed = (dayOfWeek === 1 || dayOfWeek === 2);
-    
-    const dayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
-    const dayNamesItalian = ['Domenica', 'Lunedì', 'Martedì', 'Mercoledì', 'Giovedì', 'Venerdì', 'Sabato'];
-    
-    res.json({
-      success: true,
-      input: date,
-      resolvedDate: resolvedDate,
-      isClosed: isClosed,
-      dayOfWeek: dayOfWeek,
-      dayName: dayNames[dayOfWeek],
-      dayNameItalian: dayNamesItalian[dayOfWeek],
-      message: isClosed 
-        ? `Jazzamore is closed on ${dayNames[dayOfWeek]}s. Open Wednesday through Sunday.`
-        : `Jazzamore is open on ${dayNames[dayOfWeek]}.`
-    });
-    
-  } catch (error) {
-    console.error('❌ Error in GET /api/check-closure:', error.message);
-    res.status(500).json({ success: false, error: error.message });
-  }
-});
-
-// ===== FUNCTION TO SEND WEBHOOK TO MAKE.COM =====
+// ===== FUNCTION TO SEND WEBHOOK TO MAKE.COM - STRICT VALIDATION =====
 async function sendToMakeWebhook(reservationData, reservationId) {
-  console.log('🔵 sendToMakeWebhook RECEIVED:');
-  console.log('reservationId:', reservationId);
-  console.log('reservationData:', JSON.stringify(reservationData, null, 2));
+  console.log('🔵 sendToMakeWebhook called - validating all fields...');
   
-  // ===== CRITICAL: Validate required fields - NO PLACEHOLDERS =====
-  // If any required field is missing, DO NOT send the webhook
+  // ===== CRITICAL: Check EVERY required field - NO EMPTY VALUES ALLOWED =====
+  // If ANY field is empty, null, undefined, or invalid -> DO NOT SEND
   
-  const requiredFields = ['phone', 'firstName', 'lastName', 'date', 'time', 'guests'];
-  const missingFields = [];
+  const errors = [];
   
-  for (const field of requiredFields) {
-    if (!reservationData[field] || reservationData[field] === '' || reservationData[field] === null) {
-      missingFields.push(field);
+  // Check firstName
+  if (!reservationData.firstName || reservationData.firstName === '' || reservationData.firstName === null) {
+    errors.push('firstName is empty');
+  }
+  
+  // Check lastName
+  if (!reservationData.lastName || reservationData.lastName === '' || reservationData.lastName === null) {
+    errors.push('lastName is empty');
+  }
+  
+  // Check phone
+  if (!reservationData.phone || reservationData.phone === '' || reservationData.phone === null) {
+    errors.push('phone is empty');
+  } else {
+    const phoneDigits = reservationData.phone.replace(/\D/g, '');
+    if (phoneDigits.length !== 10) {
+      errors.push(`phone has ${phoneDigits.length} digits (must be exactly 10)`);
     }
   }
   
-  if (missingFields.length > 0) {
-    console.log(`❌ Webhook NOT sent to Make.com - missing required fields: ${missingFields.join(', ')}`);
+  // Check date
+  if (!reservationData.date || reservationData.date === '' || reservationData.date === null) {
+    errors.push('date is empty');
+  } else if (!reservationData.date.match(/^\d{2}-\d{2}-\d{4}$/)) {
+    errors.push(`date format invalid: ${reservationData.date}`);
+  }
+  
+  // Check time
+  if (!reservationData.time || reservationData.time === '' || reservationData.time === null) {
+    errors.push('time is empty');
+  } else if (!reservationData.time.match(/^([01]?[0-9]|2[0-3]):[0-5][0-9]$/)) {
+    errors.push(`time format invalid: ${reservationData.time}`);
+  }
+  
+  // Check guests
+  if (!reservationData.guests || reservationData.guests === '' || reservationData.guests === null) {
+    errors.push('guests is empty');
+  } else if (reservationData.guests < 1 || reservationData.guests > 20) {
+    errors.push(`guests count invalid: ${reservationData.guests}`);
+  }
+  
+  // If ANY errors, DO NOT SEND
+  if (errors.length > 0) {
+    console.log(`❌ Webhook NOT sent to Make.com - validation failed:`);
+    errors.forEach(err => console.log(`   - ${err}`));
     console.log(`   Reservation data:`, JSON.stringify(reservationData, null, 2));
     console.log(`   This prevents queue issues and bad WhatsApp messages.`);
     return false;
-  }
-
-   // Validate phone number - MINIMUM 10 DIGITS REQUIRED
-  const phoneDigits = reservationData.phone.replace(/\D/g, '');
-  if (phoneDigits.length < 10) {
-    console.log(`❌ Webhook NOT sent - invalid phone number: ${reservationData.phone} (${phoneDigits.length} digits, minimum 10 required)`);
-    return false;
-  }
-  
-  // Validate date format
-  if (!reservationData.date.match(/^\d{2}-\d{2}-\d{4}$/)) {
-    console.log(`❌ Webhook NOT sent - invalid date format: ${reservationData.date}`);
-    return false;
-  }
-  
-  // Validate time format
-  if (!reservationData.time.match(/^([01]?[0-9]|2[0-3]):[0-5][0-9]$/)) {
-    console.log(`❌ Webhook NOT sent - invalid time format: ${reservationData.time}`);
-    return false;
-  }
-  
-  // Remove any internal notes from specialRequests
-  let cleanSpecialRequests = reservationData.specialRequests || 'No special requests';
-  if (cleanSpecialRequests.includes('Calendar Note:')) {
-    cleanSpecialRequests = cleanSpecialRequests.split('Calendar Note:')[0].trim();
-    if (!cleanSpecialRequests || cleanSpecialRequests === '') {
-      cleanSpecialRequests = 'No special requests';
-    }
   }
   
   console.log('✅ All required fields validated. Sending to Make.com...');
   
   try {
     let formattedDate = reservationData.date;
-    
-    if (formattedDate && formattedDate.match(/^\d{4}-\d{2}-\d{2}$/)) {
+    if (formattedDate && formattedDate.match(/^\d{2}-\d{2}-\d{4}$/)) {
+      // Already correct format
+    } else if (formattedDate && formattedDate.match(/^\d{4}-\d{2}-\d{2}$/)) {
       const [year, month, day] = formattedDate.split('-');
       formattedDate = `${day}-${month}-${year}`;
-      console.log('📅 Date format converted (YYYY-MM-DD → DD-MM-YYYY):', reservationData.date, '→', formattedDate);
-    } else if (formattedDate && formattedDate.match(/^\d{2}-\d{2}-\d{4}$/)) {
-      console.log('📅 Date already in DD-MM-YYYY format:', formattedDate);
+    }
+    
+    // Clean specialRequests - remove internal notes
+    let cleanSpecialRequests = reservationData.specialRequests || 'No special requests';
+    // Remove any "Calendar Note:" internal messages
+    if (cleanSpecialRequests.includes('Calendar Note:')) {
+      cleanSpecialRequests = cleanSpecialRequests.split('Calendar Note:')[0].trim();
+      if (!cleanSpecialRequests || cleanSpecialRequests === '') {
+        cleanSpecialRequests = 'No special requests';
+      }
     }
     
     const payload = {
@@ -1125,11 +1136,11 @@ async function sendToMakeWebhook(reservationData, reservationId) {
       adults: reservationData.adults || reservationData.guests,
       children: reservationData.children || 0,
       specialRequests: cleanSpecialRequests,
-      newsletter: reservationData.newsletter || false,
-      whatsappConfirmation: reservationData.whatsapp_confirmation || false
+      newsletter: reservationData.newsletter === true,
+      whatsappConfirmation: reservationData.whatsapp_confirmation === true
     };
+    
     console.log('📤 SENDING TO MAKE.COM:');
-    console.log('Payload size:', JSON.stringify(payload).length, 'bytes');
     console.log('Payload:', JSON.stringify(payload, null, 2));
 
     const response = await fetch(MAKE_WEBHOOK_URL, {
@@ -3388,7 +3399,6 @@ app.post('/api/time-greeting', (req, res) => {
     res.json({
       response: responseText,
       greeting: greetingResult.greeting,
-      fullGreeting: greetingResult.fullGreeting,
       hour: greetingResult.hour,
       timezone: greetingResult.timezone,
       success: true
@@ -3487,99 +3497,8 @@ app.get('/api/test/google-calendar', async (req, res) => {
   }
 });
 
-// ===================================================================
-// ===== API ENDPOINTS =====
-// ===================================================================
-
-// A) Authoritative time context endpoint
-app.get('/api/now', (req, res) => {
-  try {
-    const romeDateTime = getRomeDateTime();
-    const greeting = getItalianTimeGreeting();
-    
-    res.json({
-      success: true,
-      timezone: ROME_TIMEZONE,
-      now: romeDateTime.iso,
-      date: romeDateTime.date,
-      time: romeDateTime.time,
-      year: romeDateTime.year,
-      month: romeDateTime.month,
-      day: romeDateTime.day,
-      hour: romeDateTime.hour,
-      minute: romeDateTime.minute,
-      greeting: greeting,
-      note: "All dates and times are based on Europe/Rome timezone"
-    });
-  } catch (error) {
-    safeLog('Error in /api/now endpoint', { error: error.message }, 'error');
-    res.status(500).json({ success: false, error: 'Failed to get Rome time', message: error.message });
-  }
-});
-
-// B) Resolve date — POST (Retell format)
-app.post('/api/resolve_date', (req, res) => {
-  try {
-    const text = req.body.text || req.body.args?.text || req.body.date || req.body.args?.date;
-    
-    if (!text) {
-      return res.status(400).json({
-        error: 'Missing text parameter',
-        message: 'Please provide a date text like "the 13th", "tomorrow", "next friday", etc.'
-      });
-    }
-    
-    const todayInRome = getRomeDateToday();
-    const resolvedDate = resolveDate(text);
-    
-    res.json({ 
-      resolvedDate, originalText: text, todayInRome, timezone: ROME_TIMEZONE
-    });
-    
-  } catch (error) {
-    safeLog('Error in /api/resolve_date endpoint', { error: error.message }, 'error');
-    res.status(500).json({
-      error: 'Failed to resolve date', message: error.message, resolvedDate: getRomeDateToday()
-    });
-  }
-});
-
-// B2) Resolve date — GET (legacy)
-app.get('/api/resolve-date', (req, res) => {
-  try {
-    const { text } = req.query;
-    
-    if (!text) {
-      return res.status(400).json({
-        success: false,
-        error: 'Missing text parameter',
-        message: 'Please provide a date text like "the 13th", "tomorrow", "next friday", etc.'
-      });
-    }
-    
-    const resolvedDate = resolveDate(text);
-    const romeDateTime = getRomeDateTime();
-    
-    res.json({
-      success: true,
-      originalText: text,
-      resolvedDate,
-      timezone: ROME_TIMEZONE,
-      todayInRome: romeDateTime.date,
-      source: 'Rome-timezone-aware parsing',
-      message: `"${text}" resolved to ${resolvedDate} based on Rome time (today: ${romeDateTime.date})`
-    });
-    
-  } catch (error) {
-    safeLog('Error in /api/resolve-date endpoint', { error: error.message }, 'error');
-    res.status(500).json({
-      success: false, error: 'Failed to resolve date', message: error.message, todayInRome: getRomeDateToday()
-    });
-  }
-});
-
-// C) Single day — POST (Retell format, primary)
-app.post('/api/calendar/date', async (req, res) => {
+// J) Check if a date is closed (POST - for Retell agent)
+app.post('/api/check-closure', (req, res) => {
   try {
     const date = req.body.date || req.body.args?.date;
     
@@ -3587,46 +3506,60 @@ app.post('/api/calendar/date', async (req, res) => {
       return res.status(400).json({
         success: false,
         error: 'Missing date parameter',
-        message: 'Please provide a date (DD-MM-YYYY or relative date like "tomorrow", "the fourth", etc.)'
+        message: 'Please provide a date to check'
       });
     }
     
-    safeLog('🤖 Retell AI agent requesting events via POST', { originalDate: date, source: 'Google Calendar only' });
-    
-    try {
-      const result = await get_events_by_date(date);
-      
-      res.json({
-        success: result.success,
-        date: result.resolvedDate,
-        originalDate: date,
-        eventCount: result.events?.length || 0,
-        events: result.events || [],
-        message: result.message,
-        source: result.source
-      });
-      
-    } catch (calendarError) {
-      safeLog('Calendar error in POST /api/calendar/date', { error: calendarError.message }, 'error');
-      res.status(500).json({
+    if (isClosedDayByName(date)) {
+      const closedResponse = getClosedDayResponse(date);
+      return res.json({
         success: false,
-        error: 'Failed to fetch events from Google Calendar',
-        message: calendarError.message,
-        date, eventCount: 0, events: []
+        isClosed: true,
+        ...closedResponse,
+        originalDate: date
       });
     }
+    
+    const closureCheck = checkIfClosed(date);
+    
+    if (closureCheck.isClosed) {
+      return res.json({
+        success: false,
+        isClosed: true,
+        date: closureCheck.date,
+        dayOfWeek: closureCheck.dayOfWeek,
+        dayName: closureCheck.dayName,
+        dayNameItalian: closureCheck.dayNameItalian,
+        message: closureCheck.message,
+        suggestedAlternatives: ['Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'],
+        suggestedAlternativesItalian: ['Mercoledì', 'Giovedì', 'Venerdì', 'Sabato', 'Domenica'],
+        originalDate: date
+      });
+    }
+    
+    return res.json({
+      success: true,
+      isClosed: false,
+      date: closureCheck.date,
+      dayOfWeek: closureCheck.dayOfWeek,
+      dayName: closureCheck.dayName,
+      dayNameItalian: closureCheck.dayNameItalian,
+      message: `Jazzamore is open on ${closureCheck.dayName} (${closureCheck.dayNameItalian}). Would you like to make a reservation for ${closureCheck.date}?`,
+      originalDate: date
+    });
     
   } catch (error) {
-    safeLog('Error in POST /api/calendar/date endpoint', { error: error.message }, 'error');
+    safeLog('Error in /api/check-closure endpoint', { error: error.message }, 'error');
     res.status(500).json({
-      success: false, error: 'Failed to process request', message: error.message,
-      date: req.body.date || req.body.args?.date, eventCount: 0, events: []
+      success: false,
+      error: 'Failed to check closure status',
+      message: 'I had trouble checking if we are open that day. Could you please try another date?'
     });
   }
 });
 
-// C2) Single day — GET (legacy)
-app.get('/api/calendar/date', async (req, res) => {
+// J2) Check if a date is closed (GET - for testing)
+app.get('/api/check-closure', (req, res) => {
   try {
     const { date } = req.query;
     
@@ -3634,919 +3567,408 @@ app.get('/api/calendar/date', async (req, res) => {
       return res.status(400).json({
         success: false,
         error: 'Missing date parameter',
-        message: 'Please provide a date (DD-MM-YYYY or relative date like "tomorrow", "the fourth", etc.)'
+        message: 'Please provide a date to check (e.g., "tomorrow", "next monday", "15-04-2026")'
       });
     }
     
-    try {
-      const result = await get_events_by_date(date);
-      
-      res.json({
-        success: result.success,
-        originalDate: date,
-        resolvedDate: result.resolvedDate,
-        eventCount: result.events?.length || 0,
-        events: result.events || [],
-        message: result.message,
-        source: result.source,
-        summary: result.events?.length === 0 
-          ? `No events found for ${date} in Google Calendar.` 
-          : `Found ${result.events.length} event(s) for ${result.resolvedDate} in Google Calendar.`,
-        note: 'Google Calendar is the only source of truth'
-      });
-      
-    } catch (calendarError) {
-      safeLog('Calendar error in GET /api/calendar/date', { error: calendarError.message }, 'error');
-      res.status(500).json({
-        success: false,
-        error: 'Failed to fetch events from Google Calendar',
-        message: calendarError.message,
-        todayInRome: getRomeDateToday()
-      });
-    }
-    
-  } catch (error) {
-    safeLog('Error in GET calendar/date endpoint', { error: error.message }, 'error');
-    res.status(500).json({
-      success: false, error: 'Failed to process request', message: error.message, todayInRome: getRomeDateToday()
-    });
-  }
-});
-
-// D) Full week — POST (Retell format, primary)
-app.post('/api/calendar/week', async (req, res) => {
-  try {
-    const startDate = req.body.startDate || req.body.args?.startDate || req.body.date || req.body.args?.date;
-    
-    if (!startDate) {
-      return res.status(400).json({
-        success: false,
-        error: 'Missing startDate parameter',
-        message: 'Please provide a start date (DD-MM-YYYY or relative date like "tomorrow", "next monday", etc.)'
-      });
-    }
-    
-    safeLog('🤖 Retell AI agent requesting week events via POST', { originalStartDate: startDate, source: 'Google Calendar only' });
-    
-    try {
-      const result = await get_events_for_week(startDate);
-      
-      res.json({
-        success: result.success,
-        startDate: result.startDate,
-        endDate: result.endDate,
-        totalEvents: result.totalEvents || 0,
-        daysWithEvents: result.daysWithEvents || 0,
-        soldOutEvents: result.soldOutEvents || 0,
-        weekEvents: result.weekEvents || [],
-        message: result.message,
-        source: result.source
-      });
-      
-    } catch (calendarError) {
-      safeLog('Calendar error in POST /api/calendar/week', { error: calendarError.message }, 'error');
-      res.status(500).json({
-        success: false,
-        error: 'Failed to fetch week events from Google Calendar',
-        message: calendarError.message,
-        startDate, totalEvents: 0, weekEvents: []
-      });
-    }
-    
-  } catch (error) {
-    safeLog('Error in POST /api/calendar/week endpoint', { error: error.message }, 'error');
-    res.status(500).json({
-      success: false, error: 'Failed to process request', message: error.message,
-      startDate: req.body.startDate || req.body.args?.startDate, totalEvents: 0, weekEvents: []
-    });
-  }
-});
-
-// D2) Full week — GET (legacy)
-app.get('/api/calendar/week', async (req, res) => {
-  try {
-    const { startDate } = req.query;
-    
-    if (!startDate) {
-      return res.status(400).json({
-        success: false,
-        error: 'Missing startDate parameter',
-        message: 'Please provide a start date (DD-MM-YYYY or relative date like "tomorrow", "next monday", etc.)'
-      });
-    }
-    
-    try {
-      const result = await get_events_for_week(startDate);
-      
-      res.json({
-        success: result.success,
-        startDate: result.startDate,
-        endDate: result.endDate,
-        totalEvents: result.totalEvents || 0,
-        daysWithEvents: result.daysWithEvents || 0,
-        soldOutEvents: result.soldOutEvents || 0,
-        weekEvents: result.weekEvents || [],
-        message: result.message,
-        source: result.source,
-        summary: result.totalEvents === 0 
-          ? `No events found from ${result.startDate} to ${result.endDate} in Google Calendar.` 
-          : `Found ${result.totalEvents} event(s) from ${result.startDate} to ${result.endDate} in Google Calendar.`,
-        note: 'Google Calendar is the only source of truth'
-      });
-      
-    } catch (calendarError) {
-      safeLog('Calendar error in GET /api/calendar/week', { error: calendarError.message }, 'error');
-      res.status(500).json({
-        success: false,
-        error: 'Failed to fetch week events from Google Calendar',
-        message: calendarError.message,
-        note: 'Google Calendar is the only source of truth - please check calendar connectivity'
-      });
-    }
-    
-  } catch (error) {
-    safeLog('Error in GET calendar/week endpoint', { error: error.message }, 'error');
-    res.status(500).json({
-      success: false, error: 'Failed to process request', message: error.message
-    });
-  }
-});
-
-// E) Date range — POST (Retell format, primary)
-app.post('/api/calendar/range', async (req, res) => {
-  try {
-    const startDate = req.body.startDate || req.body.args?.startDate;
-    const endDate   = req.body.endDate   || req.body.args?.endDate;
-    
-    if (!startDate || !endDate) {
-      return res.status(400).json({
-        success: false,
-        error: 'Missing startDate or endDate parameter',
-        message: 'Please provide both startDate and endDate (DD-MM-YYYY or relative dates).'
-      });
-    }
-    
-    safeLog('🤖 Retell AI agent requesting date range events via POST', { 
-      originalStartDate: startDate, originalEndDate: endDate, source: 'Google Calendar only' 
-    });
-    
-    try {
-      const result = await get_events_for_date_range(startDate, endDate);
-      
-      res.json({
-        success: result.success,
-        startDate: result.startDate,
-        endDate: result.endDate,
-        totalDays: result.totalDays || 0,
-        totalEvents: result.totalEvents || 0,
-        daysWithEvents: result.daysWithEvents || 0,
-        soldOutEvents: result.soldOutEvents || 0,
-        rangeEvents: result.rangeEvents || [],
-        message: result.message,
-        source: result.source
-      });
-      
-    } catch (calendarError) {
-      safeLog('Calendar error in POST /api/calendar/range', { error: calendarError.message }, 'error');
-      res.status(500).json({
-        success: false,
-        error: 'Failed to fetch range events from Google Calendar',
-        message: calendarError.message,
-        startDate, endDate, totalEvents: 0, rangeEvents: []
-      });
-    }
-    
-  } catch (error) {
-    safeLog('Error in POST /api/calendar/range endpoint', { error: error.message }, 'error');
-    res.status(500).json({
-      success: false, error: 'Failed to process request', message: error.message,
-      startDate: req.body.startDate, endDate: req.body.endDate, totalEvents: 0, rangeEvents: []
-    });
-  }
-});
-
-// E2) Date range — GET (legacy / testing)
-app.get('/api/calendar/range', async (req, res) => {
-  try {
-    const { startDate, endDate } = req.query;
-    
-    if (!startDate || !endDate) {
-      return res.status(400).json({
-        success: false,
-        error: 'Missing startDate or endDate query parameter',
-        message: 'Please provide both startDate and endDate (DD-MM-YYYY or relative dates).'
-      });
-    }
-    
-    try {
-      const result = await get_events_for_date_range(startDate, endDate);
-      
-      res.json({
-        success: result.success,
-        startDate: result.startDate,
-        endDate: result.endDate,
-        totalDays: result.totalDays || 0,
-        totalEvents: result.totalEvents || 0,
-        daysWithEvents: result.daysWithEvents || 0,
-        soldOutEvents: result.soldOutEvents || 0,
-        rangeEvents: result.rangeEvents || [],
-        message: result.message,
-        source: result.source,
-        summary: result.totalEvents === 0
-          ? `No events found from ${result.startDate} to ${result.endDate} in Google Calendar.`
-          : `Found ${result.totalEvents} event(s) from ${result.startDate} to ${result.endDate} (${result.totalDays} days).`,
-        note: 'Google Calendar is the only source of truth. Max range: 31 days.'
-      });
-      
-    } catch (calendarError) {
-      safeLog('Calendar error in GET /api/calendar/range', { error: calendarError.message }, 'error');
-      res.status(500).json({
-        success: false,
-        error: 'Failed to fetch range events from Google Calendar',
-        message: calendarError.message
-      });
-    }
-    
-  } catch (error) {
-    safeLog('Error in GET calendar/range endpoint', { error: error.message }, 'error');
-    res.status(500).json({
-      success: false, error: 'Failed to process request', message: error.message
-    });
-  }
-});
-
-// F) Check availability for specific date and time
-app.get('/api/calendar/availability', async (req, res) => {
-  try {
-    const { date, time } = req.query;
-    
-    if (!date || !time) {
-      return res.status(400).json({
-        success: false,
-        error: 'Missing parameters',
-        message: 'Please provide both date (DD-MM-YYYY or relative date) and time (HH:MM)'
-      });
-    }
-    
-    safeLog('🤖 AI Agent checking availability', { date, time, source: 'Google Calendar only' });
-    
-    try {
-      const calendarCheck = await checkCalendarForConflicts(date, time);
-      
-      res.json({
-        success: true,
-        date,
-        resolvedDate: calendarCheck.date,
-        time,
-        available: !calendarCheck.hasConflicts,
-        hasConflicts: calendarCheck.hasConflicts,
-        conflictingEventsCount: calendarCheck.conflictingEvents.length,
-        conflictingEvents: calendarCheck.conflictingEvents.map(e => ({
-          title: e.title, time: e.time, isSoldOut: e.isSoldOut
-        })),
-        reservationDuration: calendarCheck.reservationWindow?.durationMinutes || 120,
-        message: calendarCheck.hasConflicts 
-          ? `Time slot ${time} on ${calendarCheck.date} conflicts with ${calendarCheck.conflictingEvents.length} event(s).` 
-          : `Time slot ${time} on ${calendarCheck.date} is available.`,
-        source: calendarCheck.source || 'Google Calendar',
-        note: 'Google Calendar is the only source of truth for event scheduling'
-      });
-      
-    } catch (calendarError) {
-      safeLog('Calendar error in /api/calendar/availability', { error: calendarError.message }, 'error');
-      res.status(500).json({
-        success: false, error: 'Failed to check calendar availability', message: calendarError.message
-      });
-    }
-    
-  } catch (error) {
-    safeLog('Error in calendar/availability endpoint', { error: error.message }, 'error');
-    res.status(500).json({
-      success: false, error: 'Failed to process request', message: error.message
-    });
-  }
-});
-
-// G) Time-based greeting — GET
-app.get('/api/time-greeting', (req, res) => {
-  try {
-    const { format } = req.query;
-    const greetingResult = get_time_greeting(format || 'italian');
+    const closureCheck = checkIfClosed(date);
     
     res.json({
       success: true,
-      greeting: greetingResult.greeting,
-      fullGreeting: greetingResult.fullGreeting,
-      hour: greetingResult.hour,
-      timezone: greetingResult.timezone,
-      localTime: greetingResult.localTime,
-      date: greetingResult.date,
-      format: greetingResult.format,
-      suggestedUse: "Use this greeting at the beginning of conversations or when welcoming callers",
-      examples: {
-        opening: `${greetingResult.fullGreeting}`,
-        confirmation: `Perfetto! ${greetingResult.greeting}! Ho prenotato per voi...`,
-        farewell: `Grazie per aver chiamato! ${greetingResult.greeting} e arrivederci!`
-      }
+      input: date,
+      resolvedDate: closureCheck.date,
+      isClosed: closureCheck.isClosed,
+      dayOfWeek: closureCheck.dayOfWeek,
+      dayName: closureCheck.dayName,
+      dayNameItalian: closureCheck.dayNameItalian,
+      message: closureCheck.message,
+      openDays: closureCheck.openDays,
+      closedDays: closureCheck.closedDays
     });
     
   } catch (error) {
-    safeLog('Error in /api/time-greeting endpoint', { error: error.message }, 'error');
-    res.status(500).json({ success: false, error: 'Failed to generate time greeting', message: error.message });
+    safeLog('Error in GET /api/check-closure endpoint', { error: error.message }, 'error');
+    res.status(500).json({
+      success: false,
+      error: 'Failed to check closure status',
+      message: error.message
+    });
   }
 });
 
-// G2) Time-based greeting — POST (Retell format)
-app.post('/api/time-greeting', (req, res) => {
+// ===================================================================
+// ===== MAIN WEBHOOK ENDPOINT =====
+// ===================================================================
+app.post('/api/reservations', async (req, res) => {
   try {
-    const { format, context } = req.body;
-    const greetingResult = get_time_greeting(format || 'italian');
+    console.log('\n📞 RETELL WEBHOOK RECEIVED');
+    console.log('Event:', req.body.event);
     
-    let responseText;
-    if (context === 'call_opening') {
-      responseText = `${greetingResult.fullGreeting}`;
-    } else if (context === 'confirmation') {
-      responseText = `Perfetto! ${greetingResult.greeting}!`;
-    } else {
-      responseText = `${greetingResult.greeting}!`;
+    const { event, call } = req.body;
+    
+    if (event !== 'call_analyzed') {
+      return res.json({ status: 'received', event: event });
     }
     
-    res.json({
-      response: responseText,
-      greeting: greetingResult.greeting,
-      fullGreeting: greetingResult.fullGreeting,
-      hour: greetingResult.hour,
-      timezone: greetingResult.timezone,
-      success: true
-    });
+    console.log('🎯 Processing call_analyzed event...');
     
-  } catch (error) {
-    safeLog('Error in POST /api/time-greeting endpoint', { error: error.message }, 'error');
-    res.status(500).json({
-      response: "Buongiorno! Benvenuti al Jazzamore.", success: false, error: error.message
-    });
-  }
-});
-
-// H) Diagnostic endpoint
-app.get('/api/calendar/diagnostic', async (req, res) => {
-  try {
-    const calendar = await getCalendarClient();
+    const conversationText = call?.transcript_object
+      ?.map(msg => msg.content || '')
+      .join(' ')
+      .toLowerCase() || '';
     
-    if (!calendar) {
+    const intentResult = detectReservationIntent(conversationText, call?.transcript_object || []);
+    
+    if (!intentResult.wantsReservation) {
+      console.log('❌ No reservation intent detected. NOT saving to Airtable.');
+      const greeting = getItalianTimeGreeting();
       return res.json({
-        success: false,
-        step: 'authentication',
-        error: 'Failed to authenticate with Google Calendar',
-        serviceAccount: serviceAccount.client_email,
-        action: 'Check service account credentials'
+        response: `${greeting}! Grazie per aver chiamato il Jazzamore. Se hai bisogno di fare una prenotazione, siamo a tua disposizione. Arrivederci!`,
+        saveToAirtable: false,
+        reason: 'No reservation intent detected',
+        detectionDetails: intentResult
       });
     }
+    
+    console.log('✅ Reservation intent detected. Proceeding with data extraction...');
+    
+    const reservationId = generateReservationId();
+    let reservationData = {};
+    
+    let postCallData = null;
+    if (call?.call_analysis?.custom_analysis_data?.reservation_details) {
+      try {
+        postCallData = JSON.parse(call.call_analysis.custom_analysis_data.reservation_details);
+      } catch (error) {
+        console.log('❌ Error parsing reservation_details JSON:', error.message);
+      }
+    } else if (call?.post_call_analysis?.reservation_details) {
+      postCallData = call.post_call_analysis.reservation_details;
+    } else if (call?.analysis?.reservation_details) {
+      postCallData = call.analysis.reservation_details;
+    } else if (call?.call_analysis?.reservation_details) {
+      postCallData = call.call_analysis.reservation_details;
+    }
+    
+    // Extract data from transcript as fallback
+    let transcriptFirstName = null;
+    let transcriptLastName = null;
+    let transcriptGuests = null;
+    let transcriptDate = null;
+    let transcriptTime = null;
+    
+    if (call?.transcript_object) {
+      for (const msg of call.transcript_object) {
+        if (msg.role === 'user') {
+          const content = msg.content.toLowerCase();
+          
+          // Extract name
+          const nameMatch = content.match(/(?:mi chiamo|my name is|sono|i'm)\s+([A-Z][a-z]+)\s+([A-Z][a-z]+)/i);
+          if (nameMatch && !transcriptFirstName) {
+            transcriptFirstName = nameMatch[1];
+            transcriptLastName = nameMatch[2];
+          }
+          
+          // Extract guests
+          const guestsMatch = content.match(/(\d+)\s*(?:people|persons|guests|persone|ospiti)/i);
+          if (guestsMatch && !transcriptGuests) {
+            transcriptGuests = parseInt(guestsMatch[1]);
+          }
+          
+          // Extract time
+          const timeMatch = content.match(/(\d{1,2})[\s:]?(\d{2})?\s*(?:am|pm|di sera|di mattina)?/i);
+          if (timeMatch && !transcriptTime) {
+            let hour = parseInt(timeMatch[1]);
+            const minute = timeMatch[2] ? parseInt(timeMatch[2]) : 0;
+            if (hour < 12 && content.includes('pm')) hour += 12;
+            if (hour === 12 && content.includes('am')) hour = 0;
+            transcriptTime = `${hour.toString().padStart(2, '0')}:${minute.toString().padStart(2, '0')}`;
+          }
+        }
+      }
+    }
+    
+    // Extract phone from transcript
+    const transcriptPhone = extractPhoneFromTranscript(call?.transcript_object);
+    
+    // Extract WhatsApp and newsletter confirmations from transcript
+    const whatsappFromTranscript = extractWhatsappConfirmation(call?.transcript_object);
+    const newsletterFromTranscript = extractNewsletterConfirmation(call?.transcript_object);
+    
+    // ============================================
+    // ===== FIELD COMPARISON USING CONFIDENCE SCORES =====
+    // ============================================
+    
+    console.log('\n📊 Comparing fields between post-call and transcript...');
+    
+    // Compare FIRST NAME
+    const bestFirstName = getBestFieldValue(
+      postCallData?.first_name || postCallData?.firstName || null,
+      transcriptFirstName,
+      'firstName'
+    );
+    
+    // Compare LAST NAME
+    const bestLastName = getBestFieldValue(
+      postCallData?.last_name || postCallData?.lastName || null,
+      transcriptLastName,
+      'lastName'
+    );
+    
+    // Compare GUESTS
+    let postCallGuests = null;
+    if (postCallData?.guests) {
+      postCallGuests = parseInt(postCallData.guests);
+    }
+    const bestGuests = getBestFieldValue(postCallGuests, transcriptGuests, 'guests');
+    
+    // Compare DATE
+    let postCallDate = null;
+    if (postCallData?.date) {
+      postCallDate = convertDayToDate(postCallData.date);
+    }
+    const bestDate = getBestFieldValue(postCallDate, transcriptDate, 'date');
+    
+    // Compare TIME
+    const bestTime = getBestFieldValue(postCallData?.time || null, transcriptTime, 'time');
+    
+    // Compare PHONE (with highest confidence scoring)
+    const phoneContext = {
+      field: 'phone',
+      userConfirmed: true,
+      agentReadBack: true
+    };
+    const bestPhone = getBestFieldValue(postCallData?.phone || null, transcriptPhone, 'phone', phoneContext);
+    
+    // Build final reservation data with best values
+    reservationData = {
+      firstName: bestFirstName || '',
+      lastName: bestLastName || '',
+      phone: bestPhone || '',
+      guests: bestGuests || 2,
+      adults: bestGuests || 2,
+      children: 0,
+      date: bestDate || formatInTimeZone(new Date(Date.now() + 24 * 60 * 60 * 1000), ROME_TIMEZONE, 'dd-MM-yyyy'),
+      time: bestTime || '20:00',
+      specialRequests: postCallData?.special_requests || postCallData?.specialRequests || 'No special requests',
+      newsletter: newsletterFromTranscript !== null ? newsletterFromTranscript : (postCallData?.newsletter === 'yes' || false),
+      whatsapp_confirmation: whatsappFromTranscript !== null ? whatsappFromTranscript : (postCallData?.whatsapp_confirmation === 'yes' || false)
+    };
+    
+    console.log('\n✅ Final reservation data after comparison:');
+    console.log(`   Name: ${reservationData.firstName} ${reservationData.lastName}`);
+    console.log(`   Phone: ${reservationData.phone}`);
+    console.log(`   Guests: ${reservationData.guests}`);
+    console.log(`   Date: ${reservationData.date}`);
+    console.log(`   Time: ${reservationData.time}`);
+    console.log(`   WhatsApp: ${reservationData.whatsapp_confirmation}`);
+    console.log(`   Newsletter: ${reservationData.newsletter}`);
+    
+    // ===== CLOSURE CHECK - BLOCK MONDAYS & TUESDAYS =====
+    console.log('\n🔒 Checking if date is on a closed day...');
+    
+    let reservationDate = reservationData.date;
+    
+    if (reservationDate) {
+      if (isClosedDayByName(reservationDate)) {
+        const closedResponse = getClosedDayResponse(reservationDate);
+        console.log(`🚫 CLOSED DAY DETECTED: ${reservationDate} is a closed day`);
+        const greeting = getItalianTimeGreeting();
+        return res.json({
+          response: `${greeting}! ${closedResponse.message}`,
+          saveToAirtable: false,
+          reason: 'Restaurant closed on Monday/Tuesday',
+          closureDetails: closedResponse,
+          requiresNewDate: true
+        });
+      }
+      
+      const closureCheck = checkIfClosed(reservationDate);
+      
+      if (closureCheck.isClosed) {
+        console.log(`🚫 CLOSED DAY DETECTED: ${reservationDate} resolves to ${closureCheck.dayName} (${closureCheck.date})`);
+        const greeting = getItalianTimeGreeting();
+        return res.json({
+          response: `${greeting}! ${closureCheck.message}`,
+          saveToAirtable: false,
+          reason: 'Restaurant closed on Monday/Tuesday',
+          closureDetails: closureCheck,
+          requiresNewDate: true
+        });
+      }
+      
+      console.log(`✅ Date is valid: ${reservationDate} is on ${closureCheck.dayName}`);
+    }
+    
+    // ===== VALIDATE ALL REQUIRED FIELDS BEFORE SAVING =====
+    const missingRequiredFields = [];
+    if (!reservationData.firstName || reservationData.firstName === '') missingRequiredFields.push('firstName');
+    if (!reservationData.lastName || reservationData.lastName === '') missingRequiredFields.push('lastName');
+    if (!reservationData.phone || reservationData.phone === '') missingRequiredFields.push('phone');
+    if (!reservationData.date || reservationData.date === '') missingRequiredFields.push('date');
+    if (!reservationData.time || reservationData.time === '') missingRequiredFields.push('time');
+    if (!reservationData.guests || reservationData.guests < 1) missingRequiredFields.push('guests');
+    
+    if (missingRequiredFields.length > 0) {
+      console.log(`❌ Cannot save reservation - missing required fields: ${missingRequiredFields.join(', ')}`);
+      const greeting = getItalianTimeGreeting();
+      return res.json({
+        response: `${greeting}! Mi dispiace, non ho ricevuto tutte le informazioni necessarie. Può richiamare per completare la prenotazione?`,
+        saveToAirtable: false,
+        reason: `Missing fields: ${missingRequiredFields.join(', ')}`
+      });
+    }
+    
+    // Format phone number
+    let formattedPhone = reservationData.phone;
+    if (reservationData.phone) {
+      const digits = reservationData.phone.replace(/\D/g, '');
+      if (digits.length >= 9) {
+        formattedPhone = digits.startsWith('39') ? `+${digits}` : `+39${digits}`;
+      }
+    }
+    
+    // Validate and adjust date if in past
+    let validatedDate = reservationData.date;
+    const [day, month, year] = reservationData.date.split('-');
+    const reservationDateObj = new Date(`${year}-${month}-${day}`);
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    
+    if (reservationDateObj < today) {
+      const tomorrow = new Date(today);
+      tomorrow.setDate(today.getDate() + 1);
+      validatedDate = formatInTimeZone(tomorrow, ROME_TIMEZONE, 'dd-MM-yyyy');
+      console.log(`⚠️ Date in past, adjusted to: ${validatedDate}`);
+    }
+    
+    // Check calendar conflicts
+    let calendarCheck;
+    try {
+      calendarCheck = await checkCalendarForConflicts(validatedDate, reservationData.time);
+      
+      if (calendarCheck.hasConflicts) {
+        // Do NOT add internal notes to specialRequests - they are for internal use only
+        // The customer should NOT see "Calendar Note" in their WhatsApp message
+        console.log(`ℹ️ Calendar conflict detected but not shown to customer`);
+      }
+    } catch (calendarError) {
+      calendarCheck = { hasConflicts: false, conflictingEvents: [], error: calendarError.message };
+    }
+    
+    const arrivalTimeISO = formatTimeForAirtable(reservationData.time, validatedDate);
+    
+    const whatsappValue = (reservationData.whatsapp_confirmation === true || 
+                           reservationData.whatsapp_confirmation === 'yes' || 
+                           reservationData.whatsapp_confirmation === 'true') ? "Yes" : "No";
+    
+    const newsletterValue = (reservationData.newsletter === true || 
+                             reservationData.newsletter === 'yes' || 
+                             reservationData.newsletter === 'true');
+    
+    let airtableDate = validatedDate;
+    if (validatedDate && validatedDate.match(/^\d{2}-\d{2}-\d{4}$/)) {
+      const [d, m, y] = validatedDate.split('-');
+      airtableDate = `${y}-${m}-${d}`;
+    }
+    
+    const airtableFields = {
+      "Reservation ID": reservationId,
+      "First Name": reservationData.firstName,
+      "Last Name": reservationData.lastName,
+      "Phone Number": formattedPhone,
+      "Reservation Date": airtableDate,
+      "Arrival Time": arrivalTimeISO,
+      "Total People": parseInt(reservationData.guests) || 2,
+      "Dinner Count": parseInt(reservationData.adults) || parseInt(reservationData.guests) || 2,
+      "Show-Only Count": 0,
+      "Kids Count": parseInt(reservationData.children) || 0,
+      "Special Requests": reservationData.specialRequests || '',
+      "Reservation Status": "Confirmed",
+      "Reservation Type": "Dinner + Show",
+      "Newsletter Opt-In": newsletterValue,
+      "Whatsapp Confirmation": whatsappValue
+    };
     
     try {
-      const todayRome = getRomeDateToday();
-      const [day, month, year] = todayRome.split('-');
-      const isoDateForCalendar = `${year}-${month}-${day}`;
-      const startUTC = zonedTimeToUtc(`${isoDateForCalendar}T00:00:00`, ROME_TIMEZONE);
-      const endUTC = zonedTimeToUtc(`${isoDateForCalendar}T23:59:59`, ROME_TIMEZONE);
+      const record = await base('Reservations').create([{ fields: airtableFields }]);
       
-      const response = await calendar.events.list({
-        calendarId: JAZZAMORE_CALENDAR_ID,
-        timeMin: startUTC.toISOString(),
-        timeMax: endUTC.toISOString(),
-        maxResults: 5,
-      });
+      console.log('🎉 RESERVATION SAVED TO AIRTABLE!');
+      console.log('Reservation ID:', reservationId);
+      console.log('Airtable Record ID:', record[0].id);
+      
+      // ===== STRICT CHECK - ONLY SEND TO MAKE.COM IF ALL FIELDS ARE VALID =====
+      const hasAllRequiredFields = 
+        reservationData.firstName && reservationData.firstName !== '' &&
+        reservationData.lastName && reservationData.lastName !== '' &&
+        reservationData.phone && reservationData.phone !== '' &&
+        reservationData.date && reservationData.date !== '' &&
+        reservationData.time && reservationData.time !== '' &&
+        reservationData.guests && reservationData.guests > 0;
+      
+      const phoneDigitsForMake = reservationData.phone ? reservationData.phone.replace(/\D/g, '') : '';
+      const isPhoneValidForMake = phoneDigitsForMake.length === 10;
+      
+      // ONLY send if ALL conditions are met
+      const shouldSendToMake = 
+        reservationData.whatsapp_confirmation === true &&
+        hasAllRequiredFields &&
+        isPhoneValidForMake;
+      
+      if (shouldSendToMake) {
+        console.log('✅ All conditions met. Sending to Make.com...');
+        await sendToMakeWebhook(reservationData, reservationId);
+      } else {
+        console.log(`❌ NOT sending to Make.com - conditions not met:`);
+        console.log(`   whatsapp_confirmation: ${reservationData.whatsapp_confirmation}`);
+        console.log(`   hasAllRequiredFields: ${hasAllRequiredFields}`);
+        console.log(`   isPhoneValid (10 digits): ${isPhoneValidForMake} (${phoneDigitsForMake.length} digits)`);
+      }
+      
+      const greeting = getItalianTimeGreeting();
+      const farewellMap = {
+        "Buongiorno": "Buona giornata",
+        "Buon pranzo": "Buon pranzo",
+        "Buon pomeriggio": "Buon proseguimento",
+        "Buonasera": "Buona serata",
+        "Buonanotte": "Buona notte"
+      };
+      const farewell = farewellMap[greeting] || "Buona giornata";
       
       res.json({
-        success: true,
-        diagnostic: {
-          authentication: '✅ OK',
-          jazzamoreCalendar: `✅ Accessible (${JAZZAMORE_CALENDAR_ID})`,
-          eventsFound: response.data.items?.length || 0,
-          serviceAccount: serviceAccount.client_email,
-          scope: 'calendar.readonly',
-          timezone: ROME_TIMEZONE,
-          romeToday: formatInTimeZone(new Date(), ROME_TIMEZONE, 'dd-MM-yyyy HH:mm:ss'),
-          message: 'Google Calendar is accessible and ready'
+        response: `Perfetto! ${greeting}! Ho prenotato per ${reservationData.guests} persone il ${validatedDate} alle ${reservationData.time}. La tua conferma è ${reservationId}. ${farewell}!`,
+        saveToAirtable: true,
+        reservationId,
+        intentDetected: true,
+        detectionDetails: intentResult,
+        calendarCheck: {
+          hasConflicts: calendarCheck.hasConflicts || false,
+          error: calendarCheck.error
         }
       });
       
-    } catch (error) {
-      return res.json({
-        success: false,
-        step: 'calendar_access',
-        error: `Cannot access Jazzamore calendar: ${error.message}`,
-        jazzamoreCalendarId: JAZZAMORE_CALENDAR_ID,
-        serviceAccount: serviceAccount.client_email,
-        action: 'Share your Google Calendar with the service account email above with "See all event details" permission'
+    } catch (airtableError) {
+      console.error('❌ Airtable error:', airtableError.message);
+      const greeting = getItalianTimeGreeting();
+      res.json({
+        response: `${greeting}! Abbiamo riscontrato un problema con la prenotazione. Ti preghiamo di riprovare o chiamarci direttamente.`,
+        saveToAirtable: false,
+        error: airtableError.message
       });
     }
     
   } catch (error) {
-    res.status(500).json({ success: false, error: error.message });
-  }
-});
-
-// I) Test Google Calendar integration
-app.get('/api/test/google-calendar', async (req, res) => {
-  try {
-    const { date } = req.query;
-    const testDate = date || 'tomorrow';
-    const result = await getEventsForDate(testDate);
-    
-    res.json({
-      success: true,
-      test: 'Google Calendar Integration Test',
-      input: testDate,
-      result,
-      verification: {
-        source: result.source,
-        isUsingGoogleCalendar: result.source === 'Google Calendar',
-        hasEvents: result.events?.length > 0,
-        eventCount: result.events?.length || 0
-      },
-      message: result.message
-    });
-    
-  } catch (error) {
-    res.status(500).json({ success: false, error: error.message });
-  }
-});
-
-// ============================================
-// ===== RESERVATION INTENT DETECTION =====
-// ============================================
-function detectReservationIntent(conversationText, transcript = []) {
-  console.log('\n🔍 DETECTING RESERVATION INTENT');
-  console.log('='.repeat(40));
-  
-  const lowerText = conversationText.toLowerCase();
-  
-  const reservationKeywords = [
-    'reservation', 'reserve', 'book', 'booking', 'make a reservation',
-    'table for', 'reserve a table', 'book a table', 'make a booking',
-    'dinner reservation', 'reserve seats', 'book seats', 'make reservation',
-    'reserve for', 'book for', 'I want to reserve', 'I want to book',
-    'I would like to reserve', 'I would like to book', 'can i reserve',
-    'can i book', 'could i reserve', 'could i book',
-    'make a table reservation', 'table booking', 'seat reservation',
-    'prenotazione', 'prenotare', 'prenota', 'prenotiamo', 'prenotato',
-    'prenotati', 'vorrei prenotare', 'desidero prenotare', 'posso prenotare',
-    'faccio una prenotazione', 'fare una prenotazione', 'per prenotare',
-    'prenotare un tavolo', 'prenotazione tavolo', 'tavolo per',
-    'riservare', 'riservazione', 'riserva', 'vorrei riservare',
-    'posto a sedere', 'posti a sedere', 'sedie', 'tavoli',
-    'voglio prenotare', 'devo prenotare', 'ho bisogno di prenotare',
-    'mi piacerebbe prenotare', 'avrei bisogno di prenotare',
-    'vorrei riservare un tavolo', 'riservazione tavolo',
-    'for dinner', 'per cena', 'for lunch', 'per pranzo',
-    'for tonight', 'per stasera', 'for tomorrow', 'per domani'
-  ];
-  
-  for (const keyword of reservationKeywords) {
-    if (lowerText.includes(keyword.toLowerCase())) {
-      console.log(`✅ Found keyword: "${keyword}"`);
-      return { wantsReservation: true, reason: `Keyword: ${keyword}` };
-    }
-  }
-  
-  const patterns = [
-    /(for|per)\s+(\d+)\s+(people|persons|guests|persone|ospiti)/i,
-    /(\d+)\s+(people|persons|guests|persone|ospiti)\s+(for|per)/i,
-    /(table|tavolo)\s+(for|per)\s+(\d+)/i,
-    /(i'd like|i would like|i want|vorrei|desidero)\s+(to\s+)?(reserve|book|prenotare)/i,
-    /(can|could|may|posso|potrei)\s+(i|we|io|noi)\s+(reserve|book|prenotare)/i,
-    /(un|due|tre|quattro|cinque|sei|sette|otto|nove|dieci)\s+(persone|ospiti)/i,
-    /(per|a)\s+(nome|nome e cognome)/i,
-    /(numero|telefono|cellulare)\s+(di|da)/i,
-    /(che\s+ora|a\s+che\s+ora|what time)/i,
-    /(che\s+giorno|che\s+data|what date)/i
-  ];
-  
-  for (const pattern of patterns) {
-    const match = lowerText.match(pattern);
-    if (match) {
-      console.log(`✅ Found pattern: "${match[0]}"`);
-      return { wantsReservation: true, reason: `Pattern: ${match[0]}` };
-    }
-  }
-  
-  console.log(`❌ No reservation intent detected`);
-  return { wantsReservation: false, reason: 'No indicators found' };
-}
-
-// ============================================
-// ===== FIELD COMPARISON WITH CONFIDENCE SCORES =====
-// ============================================
-function calculateFieldConfidence(value, source, context = {}) {
-  if (!value || value === '' || value === null) return 0;
-  
-  let score = 10;
-  
-  if (typeof value === 'string') {
-    if (value.length > 3) score += 5;
-    if (value.length > 10) score += 5;
-  }
-  
-  if (source === 'postcall') score += 15;
-  if (source === 'transcript_confirmed') score += 25;
-  if (source === 'transcript_unconfirmed') score += 5;
-  if (source === 'structured') score += 20;
-  
-  if (context.field === 'phone') {
-    const digits = value.replace(/\D/g, '');
-    if (digits.length === 10) score += 20;
-    if (digits.startsWith('3')) score += 10;
-    if (context.userConfirmed) score += 30;
-  }
-  
-  if (context.field === 'guests') {
-    const num = parseInt(value);
-    if (num > 0 && num < 20) score += 20;
-    if (context.userConfirmed) score += 30;
-  }
-  
-  if (context.field === 'time') {
-    if (value.match(/^([01]?[0-9]|2[0-3]):[0-5][0-9]$/)) score += 20;
-    if (context.userConfirmed) score += 30;
-  }
-  
-  if (context.field === 'date') {
-    if (value.match(/^\d{2}-\d{2}-\d{4}$/)) score += 20;
-    if (context.userConfirmed) score += 30;
-  }
-  
-  return score;
-}
-
-function getBestFieldValue(postcallValue, transcriptValue, fieldName, transcriptContext = {}) {
-  const postcallScore = calculateFieldConfidence(postcallValue, 'postcall', { field: fieldName });
-  const transcriptScore = calculateFieldConfidence(transcriptValue, 'transcript_confirmed', { field: fieldName, ...transcriptContext });
-  
-  console.log(`📊 ${fieldName}: postcall="${postcallValue}" (${postcallScore}) vs transcript="${transcriptValue}" (${transcriptScore})`);
-  
-  if (postcallScore === 0 && transcriptScore === 0) return null;
-  if (postcallScore > transcriptScore) return postcallValue;
-  if (transcriptScore > postcallScore) return transcriptValue;
-  
-  return transcriptValue || postcallValue;
-}
-
-// ============================================
-// ===== COMPREHENSIVE RESERVATION EXTRACTION =====
-// ============================================
-function convertDayToDate(dayName) {
-  const today = new Date();
-  const dayMap = {
-    'sunday': 0, 'monday': 1, 'tuesday': 2, 'wednesday': 3,
-    'thursday': 4, 'friday': 5, 'saturday': 6,
-    'domenica': 0, 'lunedì': 1, 'lunedi': 1, 'martedì': 2, 'martedi': 2,
-    'mercoledì': 3, 'mercoledi': 3, 'giovedì': 4, 'giovedi': 4, 
-    'venerdì': 5, 'venerdi': 5, 'sabato': 6,
-    'today': 'today', 'oggi': 'today', 'tomorrow': 'tomorrow', 'domani': 'tomorrow',
-    'tonight': 'today', 'stasera': 'today', 'questa sera': 'today'
-  };
-  
-  const targetDay = dayMap[dayName.toLowerCase()];
-  
-  if (targetDay === 'today') {
-    return formatInTimeZone(today, ROME_TIMEZONE, 'dd-MM-yyyy');
-  } else if (targetDay === 'tomorrow') {
-    const tomorrow = new Date(today);
-    tomorrow.setDate(today.getDate() + 1);
-    return formatInTimeZone(tomorrow, ROME_TIMEZONE, 'dd-MM-yyyy');
-  } else if (targetDay !== undefined) {
-    const daysUntil = (targetDay - today.getDay() + 7) % 7 || 7;
-    const targetDate = new Date(today);
-    targetDate.setDate(today.getDate() + daysUntil);
-    return formatInTimeZone(targetDate, ROME_TIMEZONE, 'dd-MM-yyyy');
-  }
-  
-  const tomorrow = new Date(today);
-  tomorrow.setDate(today.getDate() + 1);
-  return formatInTimeZone(tomorrow, ROME_TIMEZONE, 'dd-MM-yyyy');
-}
-
-// ============================================
-// ===== MAIN RESERVATION WEBHOOK ENDPOINT =====
-// ===== THIS IS WHAT RETELL CALLS! =====
-// ============================================
-app.post('/api/reservations', async (req, res) => {
-  console.log('\n' + '='.repeat(80));
-  console.log('📞📞📞 RETELL RESERVATION WEBHOOK RECEIVED 📞📞📞');
-  console.log('='.repeat(80));
-  console.log('Event:', req.body.event);
-  console.log('Full request body:', JSON.stringify(req.body, null, 2));
-  
-  const { event, call } = req.body;
-  
-  if (event !== 'call_analyzed') {
-    console.log(`⚠️ Ignoring event type: ${event}`);
-    return res.json({ status: 'received', event: event });
-  }
-  
-  console.log('🎯 Processing call_analyzed event...');
-  console.log('Call ID:', call?.call_id);
-  console.log('Call duration:', call?.duration_seconds, 'seconds');
-  
-  const conversationText = call?.transcript_object
-    ?.map(msg => msg.content || '')
-    .join(' ')
-    .toLowerCase() || '';
-  
-  console.log('\n📝 Conversation transcript:');
-  call?.transcript_object?.forEach((msg, idx) => {
-    console.log(`   ${idx}: ${msg.role.toUpperCase()} - "${msg.content}"`);
-  });
-  
-  const intentResult = detectReservationIntent(conversationText, call?.transcript_object || []);
-  
-  if (!intentResult.wantsReservation) {
-    console.log('\n❌ No reservation intent detected. NOT saving to Airtable.');
-    const greeting = getItalianTimeGreeting();
-    return res.json({
-      response: `${greeting}! Grazie per aver chiamato il Jazzamore. Come posso aiutarti?`,
-      saveToAirtable: false,
-      reason: 'No reservation intent detected'
-    });
-  }
-  
-  console.log('\n✅ Reservation intent detected. Proceeding with data extraction...');
-  
-  const reservationId = generateReservationId();
-  console.log(`🆔 Generated Reservation ID: ${reservationId}`);
-  
-  // Extract post-call analysis data
-  let postCallData = null;
-  if (call?.call_analysis?.custom_analysis_data?.reservation_details) {
-    try {
-      postCallData = JSON.parse(call.call_analysis.custom_analysis_data.reservation_details);
-      console.log('\n📊 Post-call analysis data:', JSON.stringify(postCallData, null, 2));
-    } catch (error) {
-      console.log('❌ Error parsing reservation_details JSON:', error.message);
-    }
-  }
-  
-  // Extract data from transcript
-  let transcriptFirstName = null;
-  let transcriptLastName = null;
-  let transcriptGuests = null;
-  let transcriptDate = null;
-  let transcriptTime = null;
-  
-  console.log('\n🔍 Extracting data from transcript...');
-  
-  for (const msg of call?.transcript_object || []) {
-    if (msg.role === 'user') {
-      const content = msg.content;
-      const lowerContent = content.toLowerCase();
-      
-      // Extract name
-      const nameMatch = content.match(/(?:mi chiamo|my name is|sono|i'm)\s+([A-Z][a-z]+)\s+([A-Z][a-z]+)/i);
-      if (nameMatch && !transcriptFirstName) {
-        transcriptFirstName = nameMatch[1];
-        transcriptLastName = nameMatch[2];
-        console.log(`   Found name: ${transcriptFirstName} ${transcriptLastName}`);
-      }
-      
-      // Extract guests
-      const guestsMatch = lowerContent.match(/(\d+)\s*(?:people|persons|guests|persone|ospiti)/i);
-      if (guestsMatch && !transcriptGuests) {
-        transcriptGuests = parseInt(guestsMatch[1]);
-        console.log(`   Found guests: ${transcriptGuests}`);
-      }
-      
-      // Extract time
-      const timeMatch = content.match(/(\d{1,2})[\s:]?(\d{2})?\s*(?:am|pm|di sera|di mattina)?/i);
-      if (timeMatch && !transcriptTime) {
-        let hour = parseInt(timeMatch[1]);
-        const minute = timeMatch[2] ? parseInt(timeMatch[2]) : 0;
-        if (hour < 12 && lowerContent.includes('pm')) hour += 12;
-        if (hour === 12 && lowerContent.includes('am')) hour = 0;
-        transcriptTime = `${hour.toString().padStart(2, '0')}:${minute.toString().padStart(2, '0')}`;
-        console.log(`   Found time: ${transcriptTime}`);
-      }
-    }
-  }
-  
-  // Extract phone from transcript
-  const transcriptPhone = extractPhoneFromTranscript(call?.transcript_object);
-  console.log(`\n📱 Extracted phone: ${transcriptPhone || 'None'}`);
-  
-  // Extract WhatsApp and newsletter confirmations
-  const whatsappFromTranscript = extractWhatsappConfirmation(call?.transcript_object);
-  const newsletterFromTranscript = extractNewsletterConfirmation(call?.transcript_object);
-  console.log(`📱 WhatsApp confirmation: ${whatsappFromTranscript}`);
-  console.log(`📧 Newsletter confirmation: ${newsletterFromTranscript}`);
-  
-  // ===== FIELD COMPARISON =====
-  console.log('\n📊 COMPARING FIELDS: Post-call vs Transcript');
-  console.log('='.repeat(50));
-  
-  const bestFirstName = getBestFieldValue(
-    postCallData?.first_name || postCallData?.firstName || null,
-    transcriptFirstName,
-    'firstName'
-  );
-  
-  const bestLastName = getBestFieldValue(
-    postCallData?.last_name || postCallData?.lastName || null,
-    transcriptLastName,
-    'lastName'
-  );
-  
-  let postCallGuests = null;
-  if (postCallData?.guests) {
-    postCallGuests = parseInt(postCallData.guests);
-  }
-  const bestGuests = getBestFieldValue(postCallGuests, transcriptGuests, 'guests');
-  
-  let postCallDate = null;
-  if (postCallData?.date) {
-    postCallDate = convertDayToDate(postCallData.date);
-  }
-  const bestDate = getBestFieldValue(postCallDate, transcriptDate, 'date');
-  
-  const bestTime = getBestFieldValue(postCallData?.time || null, transcriptTime, 'time');
-  const bestPhone = getBestFieldValue(postCallData?.phone || null, transcriptPhone, 'phone', { field: 'phone', userConfirmed: true });
-  
-  // Build final reservation data
-  const reservationData = {
-    firstName: bestFirstName || '',
-    lastName: bestLastName || '',
-    phone: bestPhone || '',
-    guests: bestGuests || 2,
-    adults: bestGuests || 2,
-    children: 0,
-    date: bestDate || formatInTimeZone(new Date(Date.now() + 24 * 60 * 60 * 1000), ROME_TIMEZONE, 'dd-MM-yyyy'),
-    time: bestTime || '20:00',
-    specialRequests: postCallData?.special_requests || postCallData?.specialRequests || 'No special requests',
-    newsletter: newsletterFromTranscript !== null ? newsletterFromTranscript : false,
-    whatsapp_confirmation: whatsappFromTranscript !== null ? whatsappFromTranscript : false
-  };
-  
-  console.log('\n✅ FINAL RESERVATION DATA:');
-  console.log(`   Name: ${reservationData.firstName} ${reservationData.lastName}`);
-  console.log(`   Phone: ${reservationData.phone}`);
-  console.log(`   Guests: ${reservationData.guests}`);
-  console.log(`   Date: ${reservationData.date}`);
-  console.log(`   Time: ${reservationData.time}`);
-  console.log(`   Special Requests: ${reservationData.specialRequests}`);
-  console.log(`   WhatsApp: ${reservationData.whatsapp_confirmation}`);
-  console.log(`   Newsletter: ${reservationData.newsletter}`);
-  
-  // ===== CLOSURE CHECK =====
-  console.log('\n🔒 CHECKING CLOSURE STATUS');
-  console.log('='.repeat(40));
-  
-  let validatedDate = reservationData.date;
-  
-  if (validatedDate) {
-    if (isClosedDayByName(validatedDate)) {
-      const closedResponse = getClosedDayResponse(validatedDate);
-      console.log(`🚫 CLOSED DAY DETECTED: ${validatedDate}`);
-      const greeting = getItalianTimeGreeting();
-      return res.json({
-        response: `${greeting}! ${closedResponse.message}`,
-        saveToAirtable: false,
-        reason: 'Restaurant closed on Monday/Tuesday',
-        requiresNewDate: true
-      });
-    }
-    
-    const closureCheck = checkIfClosed(validatedDate);
-    if (closureCheck.isClosed) {
-      console.log(`🚫 CLOSED DAY DETECTED: ${validatedDate} is ${closureCheck.dayName}`);
-      const greeting = getItalianTimeGreeting();
-      return res.json({
-        response: `${greeting}! ${closureCheck.message}`,
-        saveToAirtable: false,
-        reason: 'Restaurant closed on Monday/Tuesday',
-        requiresNewDate: true
-      });
-    }
-    
-    console.log(`✅ Date is valid: ${validatedDate} is ${closureCheck.dayName}`);
-  }
-  
-  // Validate required fields
-  const missingRequiredFields = [];
-  if (!reservationData.firstName) missingRequiredFields.push('firstName');
-  if (!reservationData.lastName) missingRequiredFields.push('lastName');
-  if (!reservationData.phone) missingRequiredFields.push('phone');
-  if (!reservationData.date) missingRequiredFields.push('date');
-  if (!reservationData.time) missingRequiredFields.push('time');
-  if (!reservationData.guests || reservationData.guests < 1) missingRequiredFields.push('guests');
-  
-  if (missingRequiredFields.length > 0) {
-    console.log(`\n❌ Missing required fields: ${missingRequiredFields.join(', ')}`);
-    const greeting = getItalianTimeGreeting();
-    return res.json({
-      response: `${greeting}! Mi dispiace, non ho ricevuto tutte le informazioni necessarie per la prenotazione. Può richiamare per completare?`,
-      saveToAirtable: false,
-      reason: `Missing fields: ${missingRequiredFields.join(', ')}`
-    });
-  }
-  
-  // Format phone number
-  let formattedPhone = reservationData.phone;
-  const phoneDigits = reservationData.phone.replace(/\D/g, '');
-  if (phoneDigits.length >= 9) {
-    formattedPhone = phoneDigits.startsWith('39') ? `+${phoneDigits}` : `+39${phoneDigits}`;
-  }
-  console.log(`\n📱 Formatted phone: ${formattedPhone}`);
-  
-  // Validate and adjust date if in past
-  const [day, month, year] = reservationData.date.split('-');
-  const reservationDateObj = new Date(`${year}-${month}-${day}`);
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  
-  if (reservationDateObj < today) {
-    const tomorrow = new Date(today);
-    tomorrow.setDate(today.getDate() + 1);
-    validatedDate = formatInTimeZone(tomorrow, ROME_TIMEZONE, 'dd-MM-yyyy');
-    console.log(`⚠️ Date was in past, adjusted to: ${validatedDate}`);
-  }
-  
-  const arrivalTimeISO = formatTimeForAirtable(reservationData.time, validatedDate);
-  const whatsappValue = reservationData.whatsapp_confirmation ? "Yes" : "No";
-  
-  let airtableDate = validatedDate;
-  if (validatedDate && validatedDate.match(/^\d{2}-\d{2}-\d{4}$/)) {
-    const [d, m, y] = validatedDate.split('-');
-    airtableDate = `${y}-${m}-${d}`;
-  }
-  
-  const airtableFields = {
-    "Reservation ID": reservationId,
-    "First Name": reservationData.firstName,
-    "Last Name": reservationData.lastName,
-    "Phone Number": formattedPhone,
-    "Reservation Date": airtableDate,
-    "Arrival Time": arrivalTimeISO,
-    "Total People": parseInt(reservationData.guests) || 2,
-    "Dinner Count": parseInt(reservationData.adults) || parseInt(reservationData.guests) || 2,
-    "Show-Only Count": 0,
-    "Kids Count": parseInt(reservationData.children) || 0,
-    "Special Requests": reservationData.specialRequests || '',
-    "Reservation Status": "Confirmed",
-    "Reservation Type": "Dinner + Show",
-    "Newsletter Opt-In": reservationData.newsletter,
-    "Whatsapp Confirmation": whatsappValue
-  };
-  
-  console.log('\n💾 SAVING TO AIRTABLE...');
-  console.log('Airtable fields:', JSON.stringify(airtableFields, null, 2));
-  
-  try {
-    const record = await base('Reservations').create([{ fields: airtableFields }]);
-    
-    console.log('\n🎉🎉🎉 RESERVATION SAVED TO AIRTABLE! 🎉🎉🎉');
-    console.log(`   Reservation ID: ${reservationId}`);
-    console.log(`   Airtable Record ID: ${record[0].id}`);
-    
-    // Send to Make.com if WhatsApp confirmation is true and phone is valid
-    const isPhoneValid = phoneDigits.length >= 9;
-    
-    if (reservationData.whatsapp_confirmation && isPhoneValid) {
-      console.log('\n📤 Sending to Make.com webhook...');
-      await sendToMakeWebhook(reservationData, reservationId);
-    } else {
-      console.log(`\n⚠️ Skipping Make.com webhook: whatsapp_confirmation=${reservationData.whatsapp_confirmation}, phoneValid=${isPhoneValid}`);
-    }
-    
-    const greeting = getItalianTimeGreeting();
-    const farewellMap = {
-      "Buongiorno": "Buona giornata",
-      "Buon pranzo": "Buon pranzo",
-      "Buon pomeriggio": "Buon proseguimento",
-      "Buonasera": "Buona serata",
-      "Buonanotte": "Buona notte"
-    };
-    const farewell = farewellMap[greeting] || "Buona giornata";
-    
-    console.log('\n✅ RESERVATION COMPLETE - Sending success response to Retell');
-    
-    res.json({
-      response: `Perfetto! ${greeting}! Ho prenotato per ${reservationData.guests} persone il ${validatedDate} alle ${reservationData.time} a nome ${reservationData.firstName} ${reservationData.lastName}. Riceverai conferma su WhatsApp. ${farewell}!`,
-      saveToAirtable: true,
-      reservationId,
-      intentDetected: true
-    });
-    
-  } catch (airtableError) {
-    console.error('\n❌❌❌ AIRTABLE ERROR:', airtableError.message);
+    console.error('❌ Error in main webhook endpoint:', error.message);
     const greeting = getItalianTimeGreeting();
     res.json({
-      response: `${greeting}! Abbiamo riscontrato un problema con la prenotazione. Ti preghiamo di riprovare o chiamarci direttamente.`,
+      response: `${greeting}! Grazie per la tua chiamata! Abbiamo riscontrato un problema. Ti preghiamo di riprovare più tardi.`,
       saveToAirtable: false,
-      error: airtableError.message
+      error: error.message
     });
   }
 });
 
-// ===== SERVER STARTUP =====
+// ===== SERVER STARTUP ====
 app.listen(PORT, () => {
   const romeDateTime = getRomeDateTime();
   const greeting = getItalianTimeGreeting();
