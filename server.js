@@ -2506,6 +2506,39 @@ function detectReservationIntent(conversationText, transcript = []) {
   return { wantsReservation: false, reason: 'No indicators found' };
 }
 
+// ===== HELPER: Convert day name to actual date =====
+function convertDayToDate(dayName) {
+  const today = new Date();
+  const dayMap = {
+    'sunday': 0, 'monday': 1, 'tuesday': 2, 'wednesday': 3,
+    'thursday': 4, 'friday': 5, 'saturday': 6,
+    'domenica': 0, 'lunedì': 1, 'lunedi': 1, 'martedì': 2, 'martedi': 2,
+    'mercoledì': 3, 'mercoledi': 3, 'giovedì': 4, 'giovedi': 4, 
+    'venerdì': 5, 'venerdi': 5, 'sabato': 6,
+    'today': 'today', 'oggi': 'today', 'tomorrow': 'tomorrow', 'domani': 'tomorrow',
+    'tonight': 'today', 'stasera': 'today', 'questa sera': 'today'
+  };
+  
+  const targetDay = dayMap[dayName.toLowerCase()];
+  
+  if (targetDay === 'today') {
+    return formatInTimeZone(today, ROME_TIMEZONE, 'dd-MM-yyyy');
+  } else if (targetDay === 'tomorrow') {
+    const tomorrow = new Date(today);
+    tomorrow.setDate(today.getDate() + 1);
+    return formatInTimeZone(tomorrow, ROME_TIMEZONE, 'dd-MM-yyyy');
+  } else if (targetDay !== undefined) {
+    const daysUntil = (targetDay - today.getDay() + 7) % 7 || 7;
+    const targetDate = new Date(today);
+    targetDate.setDate(today.getDate() + daysUntil);
+    return formatInTimeZone(targetDate, ROME_TIMEZONE, 'dd-MM-yyyy');
+  }
+  
+  const tomorrow = new Date(today);
+  tomorrow.setDate(today.getDate() + 1);
+  return formatInTimeZone(tomorrow, ROME_TIMEZONE, 'dd-MM-yyyy');
+}
+
 // ===== COMPREHENSIVE RESERVATION EXTRACTION CODE =====
 function extractReservationData(conversation, systemLogs = '') {
   console.log('🔍 Comprehensive reservation data extraction started...');
