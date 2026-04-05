@@ -984,6 +984,111 @@ function extractWhatsappConfirmation(transcript) {
         const userMsg = transcript[j];
         if (userMsg.role === 'user') {
           const userContent = (userMsg.content || '').toLowerCase();
+
+        // ============================================
+// ===== PRE-CALL WEBHOOK - FORCES GREETING =====
+// ============================================
+
+// Store call states
+const callStates = new Map();
+
+app.post('/api/pre-call-init', (req, res) => {
+  try {
+    const { call_id, direction, from_number, to_number, timestamp } = req.body;
+    
+    console.log(`\n📞 PRE-CALL INIT for call: ${call_id}`);
+    console.log(`   From: ${from_number}`);
+    console.log(`   To: ${to_number}`);
+    console.log(`   Time: ${timestamp || new Date().toISOString()}`);
+    
+    // Get correct greeting based on Rome time
+    const romeDate = getRomeDate();
+    const currentHour = romeDate.getHours();
+    let greetingWord = '';
+    
+    if (currentHour >= 5 && currentHour < 12) greetingWord = "Buongiorno";
+    else if (currentHour >= 12 && currentHour < 13) greetingWord = "Buon pranzo";
+    else if (currentHour >= 13 && currentHour < 18) greetingWord = "Buon pomeriggio";
+    else if (currentHour >= 18 && currentHour < 22) greetingWord = "Buonasera";
+    else greetingWord = "Buonanotte";
+    
+    const fullGreeting = `${greetingWord}, benvenuto da Jazzamore. Sono Maya, come posso aiutarla?`;
+    
+    // Store call state
+    callStates.set(call_id, {
+      initialized: true,
+      greetingSent: false,
+      startTime: new Date().toISOString(),
+      greeting: fullGreeting
+    });
+    
+    console.log(`   Greeting: ${fullGreeting}`);
+    
+    // Return instructions for Retell
+    res.json({
+      success: true,
+      call_id: call_id,
+      greeting: fullGreeting,
+      greeting_word: greetingWord,
+      should_greet_first: true,
+      message: "Call initialized. Play greeting immediately."
+    });
+    
+    // Clean up after 1 hour
+    setTimeout(() => {
+      if (callStates.has(call_id)) {
+        callStates.delete(call_id);
+        console.log(`🗑️ Cleaned up call ${call_id}`);
+      }
+    }, 3600000);
+    
+  } catch (error) {
+    console.error('❌ Pre-call init error:', error.message);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// Endpoint to check if call is initialized
+app.post('/api/check-call-state', (req, res) => {
+  try {
+    const { call_id } = req.body;
+    
+    const state = callStates.get(call_id);
+    
+    res.json({
+      success: true,
+      call_id: call_id,
+      initialized: state?.initialized || false,
+      greeting_sent: state?.greetingSent || false,
+      greeting: state?.greeting || null
+    });
+    
+  } catch (error) {
+    console.error('❌ Check call state error:', error.message);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// Endpoint to mark greeting as sent
+app.post('/api/mark-greeting-sent', (req, res) => {
+  try {
+    const { call_id } = req.body;
+    
+    if (callStates.has(call_id)) {
+      const state = callStates.get(call_id);
+      state.greetingSent = true;
+      callStates.set(call_id, state);
+      console.log(`✅ Greeting marked as sent for call ${call_id}`);
+    }
+    
+    res.json({ success: true });
+    
+  } catch (error) {
+    console.error('❌ Mark greeting error:', error.message);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+          
           
           // ===== AFFIRMATIVE RESPONSES (EXPANDED) =====
           const affirmativeResponses = [
