@@ -4273,6 +4273,50 @@ app.post('/api/reservations', async (req, res) => {
   }
 });
 
+// ============================================
+// ===== PRE-CALL WEBHOOK - FORCES GREETING =====
+// ============================================
+
+// Store call states
+const callStates = new Map();
+
+app.post('/api/pre-call-init', (req, res) => {
+  try {
+    console.log('\n📞 PRE-CALL INIT webhook called');
+    console.log('Request body:', JSON.stringify(req.body, null, 2));
+    
+    const { call_id, timestamp, direction } = req.body;
+    
+    // Get correct greeting based on Rome time
+    const romeDate = getRomeDate();
+    const currentHour = romeDate.getHours();
+    let greetingWord = '';
+    
+    if (currentHour >= 5 && currentHour < 12) greetingWord = "Buongiorno";
+    else if (currentHour >= 12 && currentHour < 13) greetingWord = "Buon pranzo";
+    else if (currentHour >= 13 && currentHour < 18) greetingWord = "Buon pomeriggio";
+    else if (currentHour >= 18 && currentHour < 22) greetingWord = "Buonasera";
+    else greetingWord = "Buonanotte";
+    
+    const fullGreeting = `${greetingWord}, benvenuto da Jazzamore. Sono Maya, come posso aiutarla?`;
+    
+    console.log(`   Greeting: ${fullGreeting}`);
+    
+    res.json({
+      success: true,
+      greeting: greetingWord,
+      fullGreeting: fullGreeting,
+      should_greet_first: true,
+      message: "Call initialized. Play greeting immediately."
+    });
+    
+  } catch (error) {
+    console.error('❌ Pre-call init error:', error.message);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+
 // ===== SERVER STARTUP ====
 app.listen(PORT, () => {
   const romeDateTime = getRomeDateTime();
