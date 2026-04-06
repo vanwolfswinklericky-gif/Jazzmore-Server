@@ -966,6 +966,8 @@ function extractWhatsappConfirmation(transcript) {
       content.includes('conferma su whatsapp') ||
       content.includes('vuole ricevere la conferma su whatsapp') ||
       content.includes('conferma tramite whatsapp') ||
+      content.includes('messaggio di conferma della prenotazione su whatsapp') ||
+      content.includes('conferma della prenotazione su whatsapp') ||
       // English phrases
       content.includes('confirmation message on whatsapp') ||
       content.includes('receive the confirmation message') ||
@@ -984,7 +986,76 @@ function extractWhatsappConfirmation(transcript) {
         const userMsg = transcript[j];
         if (userMsg.role === 'user') {
           const userContent = (userMsg.content || '').toLowerCase();
-
+          
+          // ===== AFFIRMATIVE RESPONSES =====
+          const affirmativeResponses = [
+            // Italian
+            'sì', 'si', 'sisi', 'si si', 'certo', 'certamente', 
+            'sicuro', 'assolutamente', 'va bene', 'ok', 'okay',
+            'perfetto', 'grazie', 'sì grazie', 'si grazie',
+            'volentieri', 'con piacere',
+            
+            // English
+            'yes', 'yeah', 'yep', 'sure', 'of course', 'definitely',
+            'please', 'please do', 'go ahead',
+            
+            // Spanish
+            'sí', 'claro', 'vale'
+          ];
+          
+          // ===== NEGATIVE RESPONSES =====
+          const negativeResponses = [
+            // Italian
+            'no', 'non', 'no grazie', 'grazie no', 'non voglio',
+            'non serve', 'non necessario',
+            
+            // English
+            'no', 'nope', 'no thanks', 'not necessary', 'skip',
+            
+            // Spanish
+            'no', 'no gracias'
+          ];
+          
+          // Check for affirmative response
+          let isAffirmative = false;
+          for (const affirm of affirmativeResponses) {
+            if (userContent === affirm || userContent.includes(affirm)) {
+              isAffirmative = true;
+              break;
+            }
+          }
+          
+          // Check for negative response
+          let isNegative = false;
+          for (const neg of negativeResponses) {
+            if (userContent === neg || userContent.includes(neg)) {
+              isNegative = true;
+              break;
+            }
+          }
+          
+          // Special case: user says just "Sí" or "Sì"
+          if (userContent === 'sí' || userContent === 'sì' || userContent === 'si') {
+            isAffirmative = true;
+          }
+          
+          if (isAffirmative) {
+            console.log(`✅ User confirmed WhatsApp: "${userMsg.content}"`);
+            return true;
+          }
+          
+          if (isNegative) {
+            console.log(`❌ User declined WhatsApp: "${userMsg.content}"`);
+            return false;
+          }
+        }
+      }
+    }
+  }
+  
+  console.log('⚠️ No WhatsApp confirmation found in transcript, defaulting to false');
+  return false;
+}
         // ============================================
 // ===== PRE-CALL WEBHOOK - FORCES GREETING =====
 // ============================================
