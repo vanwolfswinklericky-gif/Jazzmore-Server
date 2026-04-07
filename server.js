@@ -13,6 +13,9 @@ const { addDays, startOfDay, endOfDay, format, isBefore, isAfter, addMonths } = 
 const app = express();
 const PORT = process.env.PORT || 3000;
 
+let pingCounter = 0;
+let pingHistory = [];
+
 // ===== MAKE.COM WEBHOOK URL =====
 const MAKE_WEBHOOK_URL = 'https://hook.eu1.make.com/6u8gmb2j7s84gtpqw5j8o6es9u8l7mu6';
 
@@ -3068,14 +3071,49 @@ function crossValidateFields(finalData, sources) {
 // ===== API ENDPOINTS =====
 // ===================================================================
 
-// A) Authoritative time context endpoint
+// A) Authoritative time context endpoint with FULL logging
 app.get('/api/now', (req, res) => {
+  // Increment ping counter
+  pingCounter++;
+  
+  // Get current timestamp
+  const now = new Date();
+  const timestamp = now.toISOString();
+  
+  // Log EVERY ping with details
+  console.log('\n' + '='.repeat(60));
+  console.log(`🏓🏓🏓 PING #${pingCounter} RECEIVED 🏓🏓🏓`);
+  console.log(`   Time: ${timestamp}`);
+  console.log(`   Local Italy Time: ${formatInTimeZone(now, ROME_TIMEZONE, 'dd-MM-yyyy HH:mm:ss')}`);
+  console.log(`   IP: ${req.ip || req.socket.remoteAddress || 'unknown'}`);
+  console.log(`   User Agent: ${req.get('user-agent') || 'unknown'}`);
+  console.log('='.repeat(60));
+  
+  // Store in history (keep last 100 pings)
+  pingHistory.unshift({
+    pingNumber: pingCounter,
+    timestamp: timestamp,
+    localTime: formatInTimeZone(now, ROME_TIMEZONE, 'dd-MM-yyyy HH:mm:ss')
+  });
+  
+  // Keep only last 100 pings in memory
+  if (pingHistory.length > 100) {
+    pingHistory.pop();
+  }
+  
   try {
     const romeDateTime = getRomeDateTime();
     const greeting = getItalianTimeGreeting();
     
+    console.log(`📤 Responding to ping #${pingCounter}:`);
+    console.log(`   Rome time: ${romeDateTime.date} ${romeDateTime.time}`);
+    console.log(`   Greeting: ${greeting}`);
+    
     res.json({
       success: true,
+      pingCount: pingCounter,
+      pingTimestamp: timestamp,
+      pingLocalTime: formatInTimeZone(now, ROME_TIMEZONE, 'dd-MM-yyyy HH:mm:ss'),
       timezone: ROME_TIMEZONE,
       now: romeDateTime.iso,
       date: romeDateTime.date,
@@ -3086,41 +3124,34 @@ app.get('/api/now', (req, res) => {
       hour: romeDateTime.hour,
       minute: romeDateTime.minute,
       greeting: greeting,
-      note: "All dates and times are based on Europe/Rome timezone"
-    });
-  } catch (error) {
-    safeLog('Error in /api/now endpoint', { error: error.message }, 'error');
-    res.status(500).json({ success: false, error: 'Failed to get Rome time', message: error.message });
-  }
-});
-
-// B) Resolve date — POST (Retell format)
-app.post('/api/resolve_date', (req, res) => {
-  try {
-    const text = req.body.text || req.body.args?.text || req.body.date || req.body.args?.date;
-    
-    if (!text) {
-      return res.status(400).json({
-        error: 'Missing text parameter',
-        message: 'Please provide a date text like "the 13th", "tomorrow", "next friday", etc.'
-      });
-    }
-    
-    const todayInRome = getRomeDateToday();
-    const resolvedDate = resolveDate(text);
-    
-    res.json({ 
-      resolvedDate, originalText: text, todayInRome, timezone: ROME_TIMEZONE
+      note: "All dates and times are based on Europe/Rome timezone",
+      serverStatus: "active"
     });
     
+    console.log(`✅ Ping #${pingCounter} response sent successfully`);
+    
   } catch (error) {
-    safeLog('Error in /api/resolve_date endpoint', { error: error.message }, 'error');
-    res.status(500).json({
-      error: 'Failed to resolve date', message: error.message, resolvedDate: getRomeDateToday()
+    console.error(`❌ Error in ping #${pingCounter}:`, error.message);
+    res.status(500).json({ 
+      success: false, 
+      error: 'Failed to get Rome time', 
+      message: error.message,
+      pingCount: pingCounter
     });
   }
 });
 
+// Optional: Endpoint to view ping history (for debugging)
+app.get('/api/ping-history', (req, res) => {
+  console.log(`\n📊 Ping history requested - Total pings: ${pingCounter}`);
+  res.json({
+    success: true,
+    totalPings: pingCounter,
+    last100Pings: pingHistory,
+    serverUptime: process.uptime(),
+    serverStartTime: new Date(Date.now() - process.uptime() * 1000).toISOString()
+  });
+});
 // B2) Resolve date — GET (legacy)
 app.get('/api/resolve-date', (req, res) => {
   try {
