@@ -2663,6 +2663,76 @@ function detectReservationIntent(conversationText, transcript = []) {
 // ===== HELPER: Convert day name to actual date =====
 function convertDayToDate(dayName) {
   const today = new Date();
+  const romeToday = getRomeDate();
+  
+  // ===== FIRST: Check for absolute date patterns (e.g., "11 aprile 2026", "April 11 2026") =====
+  
+  // Italian pattern: "11 aprile 2026" or "11 aprile"
+  const italianAbsoluteMatch = dayName.match(/(\d{1,2})\s+(gennaio|febbraio|marzo|aprile|maggio|giugno|luglio|agosto|settembre|ottobre|novembre|dicembre)(?:\s+(\d{4}))?/i);
+  if (italianAbsoluteMatch) {
+    const day = parseInt(italianAbsoluteMatch[1]);
+    const monthMap = {
+      'gennaio': 1, 'febbraio': 2, 'marzo': 3, 'aprile': 4, 'maggio': 5, 'giugno': 6,
+      'luglio': 7, 'agosto': 8, 'settembre': 9, 'ottobre': 10, 'novembre': 11, 'dicembre': 12
+    };
+    const month = monthMap[italianAbsoluteMatch[2].toLowerCase()];
+    let year = italianAbsoluteMatch[3] ? parseInt(italianAbsoluteMatch[3]) : romeToday.getFullYear();
+    
+    // If the date has passed this year, use next year
+    const testDate = new Date(year, month - 1, day);
+    if (testDate < romeToday && !italianAbsoluteMatch[3]) {
+      year++;
+    }
+    
+    const formattedDay = day.toString().padStart(2, '0');
+    const formattedMonth = month.toString().padStart(2, '0');
+    return `${formattedDay}-${formattedMonth}-${year}`;
+  }
+  
+  // English pattern: "April 11 2026" or "April 11" or "11 April"
+  const englishAbsoluteMatch = dayName.match(/(?:(\d{1,2})\s+)?(january|february|march|april|may|june|july|august|september|october|november|december)(?:\s+(\d{1,2}))?(?:\s+(\d{4}))?/i);
+  if (englishAbsoluteMatch) {
+    const monthMap = {
+      'january': 1, 'february': 2, 'march': 3, 'april': 4, 'may': 5, 'june': 6,
+      'july': 7, 'august': 8, 'september': 9, 'october': 10, 'november': 11, 'december': 12
+    };
+    const month = monthMap[englishAbsoluteMatch[2].toLowerCase()];
+    let day = englishAbsoluteMatch[3] ? parseInt(englishAbsoluteMatch[3]) : (englishAbsoluteMatch[1] ? parseInt(englishAbsoluteMatch[1]) : null);
+    let year = englishAbsoluteMatch[4] ? parseInt(englishAbsoluteMatch[4]) : romeToday.getFullYear();
+    
+    if (day && day >= 1 && day <= 31) {
+      const testDate = new Date(year, month - 1, day);
+      if (testDate < romeToday && !englishAbsoluteMatch[4]) {
+        year++;
+      }
+      const formattedDay = day.toString().padStart(2, '0');
+      const formattedMonth = month.toString().padStart(2, '0');
+      return `${formattedDay}-${formattedMonth}-${year}`;
+    }
+  }
+  
+  // Pattern: "11th April" or "April 11th"
+  const ordinalMatch = dayName.match(/(\d{1,2})(?:st|nd|rd|th)?\s+(?:of\s+)?(january|february|march|april|may|june|july|august|september|october|november|december)/i);
+  if (ordinalMatch) {
+    const day = parseInt(ordinalMatch[1]);
+    const monthMap = {
+      'january': 1, 'february': 2, 'march': 3, 'april': 4, 'may': 5, 'june': 6,
+      'july': 7, 'august': 8, 'september': 9, 'october': 10, 'november': 11, 'december': 12
+    };
+    const month = monthMap[ordinalMatch[2].toLowerCase()];
+    let year = romeToday.getFullYear();
+    
+    const testDate = new Date(year, month - 1, day);
+    if (testDate < romeToday) {
+      year++;
+    }
+    
+    const formattedDay = day.toString().padStart(2, '0');
+    const formattedMonth = month.toString().padStart(2, '0');
+    return `${formattedDay}-${formattedMonth}-${year}`;
+  }
+  
+  // ===== SECOND: Handle relative day names =====
   const dayMap = {
     'sunday': 0, 'monday': 1, 'tuesday': 2, 'wednesday': 3,
     'thursday': 4, 'friday': 5, 'saturday': 6,
@@ -2676,17 +2746,24 @@ function convertDayToDate(dayName) {
   const targetDay = dayMap[dayName.toLowerCase()];
   
   if (targetDay === 'today') {
-    return formatInTimeZone(today, ROME_TIMEZONE, 'dd-MM-yyyy');
+    return formatInTimeZone(romeToday, ROME_TIMEZONE, 'dd-MM-yyyy');
   } else if (targetDay === 'tomorrow') {
-    const tomorrow = new Date(today);
-    tomorrow.setDate(today.getDate() + 1);
+    const tomorrow = new Date(romeToday);
+    tomorrow.setDate(romeToday.getDate() + 1);
     return formatInTimeZone(tomorrow, ROME_TIMEZONE, 'dd-MM-yyyy');
   } else if (targetDay !== undefined) {
-    const daysUntil = (targetDay - today.getDay() + 7) % 7 || 7;
-    const targetDate = new Date(today);
-    targetDate.setDate(today.getDate() + daysUntil);
+    const daysUntil = (targetDay - romeToday.getDay() + 7) % 7 || 7;
+    const targetDate = new Date(romeToday);
+    targetDate.setDate(romeToday.getDate() + daysUntil);
     return formatInTimeZone(targetDate, ROME_TIMEZONE, 'dd-MM-yyyy');
   }
+  
+  // ===== FALLBACK: If nothing matches, return tomorrow =====
+  console.log(`⚠️ convertDayToDate could not parse "${dayName}", defaulting to tomorrow`);
+  const tomorrow = new Date(romeToday);
+  tomorrow.setDate(romeToday.getDate() + 1);
+  return formatInTimeZone(tomorrow, ROME_TIMEZONE, 'dd-MM-yyyy');
+}
   
   const tomorrow = new Date(today);
   tomorrow.setDate(today.getDate() + 1);
