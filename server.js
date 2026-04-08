@@ -3992,10 +3992,17 @@ app.post('/api/reservations', async (req, res) => {
     }
     const bestGuests = getBestFieldValue(postCallGuests, transcriptGuests, 'guests');
     
-    let postCallDate = null;
-    if (postCallData?.date) {
-      postCallDate = convertDayToDate(postCallData.date);
-    }
+   let postCallDate = null;
+if (postCallData?.date) {
+  // Check if date is already in DD-MM-YYYY format
+  const isAlreadyFormatted = postCallData.date.match(/^\d{2}-\d{2}-\d{4}$/);
+  if (isAlreadyFormatted) {
+    postCallDate = postCallData.date;
+    console.log(`📅 Date already in correct format: ${postCallDate}`);
+  } else {
+    postCallDate = convertDayToDate(postCallData.date);
+  }
+}
     const bestDate = getBestFieldValue(postCallDate, transcriptDate, 'date');
     
     const bestTime = getBestFieldValue(postCallData?.time || null, transcriptTime, 'time');
