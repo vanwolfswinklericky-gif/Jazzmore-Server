@@ -2662,6 +2662,20 @@ function detectReservationIntent(conversationText, transcript = []) {
 
 // ===== HELPER: Convert day name to actual date =====
 function convertDayToDate(dayName) {
+  // SAFETY: If already in DD-MM-YYYY format, return as-is (prevents recursion)
+  if (dayName && typeof dayName === 'string' && dayName.match(/^\d{2}-\d{2}-\d{4}$/)) {
+    console.log(`📅 convertDayToDate: "${dayName}" is already formatted, returning as-is`);
+    return dayName;
+  }
+  
+  // SAFETY: If already in YYYY-MM-DD format, convert to DD-MM-YYYY
+  if (dayName && typeof dayName === 'string' && dayName.match(/^\d{4}-\d{2}-\d{2}$/)) {
+    const [year, month, day] = dayName.split('-');
+    const converted = `${day}-${month}-${year}`;
+    console.log(`📅 convertDayToDate: Converted "${dayName}" to "${converted}"`);
+    return converted;
+  }
+  
   const romeToday = getRomeDate();
   
   // ===== FIRST: Check for absolute date patterns (e.g., "11 aprile 2026", "April 11 2026") =====
