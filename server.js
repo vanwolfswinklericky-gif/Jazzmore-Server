@@ -2662,7 +2662,6 @@ function detectReservationIntent(conversationText, transcript = []) {
 
 // ===== HELPER: Convert day name to actual date =====
 function convertDayToDate(dayName) {
-  const today = new Date();
   const romeToday = getRomeDate();
   
   // ===== FIRST: Check for absolute date patterns (e.g., "11 aprile 2026", "April 11 2026") =====
@@ -2764,12 +2763,6 @@ function convertDayToDate(dayName) {
   tomorrow.setDate(romeToday.getDate() + 1);
   return formatInTimeZone(tomorrow, ROME_TIMEZONE, 'dd-MM-yyyy');
 }
-  
-  const tomorrow = new Date(today);
-  tomorrow.setDate(today.getDate() + 1);
-  return formatInTimeZone(tomorrow, ROME_TIMEZONE, 'dd-MM-yyyy');
-}
-
 // ===== COMPREHENSIVE RESERVATION EXTRACTION CODE =====
 function extractReservationData(conversation, systemLogs = '') {
   console.log('🔍 Comprehensive reservation data extraction started...');
