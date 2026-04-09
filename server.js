@@ -1401,7 +1401,7 @@ function calculateFieldConfidence(value, source, context = {}) {
  * Compare two field values and return the best one based on confidence scores
  */
 function getBestFieldValue(postcallValue, transcriptValue, fieldName, transcriptContext = {}) {
-  // SPECIAL RULE: For first and last names, ALWAYS trust post-call analysis
+  // SPECIAL RULE 1: For first and last names, ALWAYS trust post-call analysis
   if (fieldName === 'firstName' || fieldName === 'lastName') {
     if (postcallValue && postcallValue !== 'null' && postcallValue !== 'undefined' && postcallValue !== '') {
       console.log(`📊 Name field "${fieldName}": Prioritizing POST-CALL value "${postcallValue}" (more reliable than transcript extraction)`);
@@ -1414,6 +1414,34 @@ function getBestFieldValue(postcallValue, transcriptValue, fieldName, transcript
     }
     console.log(`   ❌ No valid name value for ${fieldName}`);
     return null;
+  }
+  
+  // SPECIAL RULE 2: For WhatsApp confirmation, ALWAYS trust post-call analysis
+  if (fieldName === 'whatsapp_confirmation') {
+    if (postcallValue !== undefined && postcallValue !== null && postcallValue !== '') {
+      console.log(`📱 WhatsApp confirmation: Prioritizing POST-CALL value "${postcallValue}" (more reliable than transcript extraction)`);
+      return postcallValue;
+    }
+    // Only use transcript if post-call has nothing
+    if (transcriptValue !== undefined && transcriptValue !== null && transcriptValue !== '') {
+      console.log(`📱 WhatsApp confirmation: No post-call value, using transcript "${transcriptValue}"`);
+      return transcriptValue;
+    }
+    return false; // Default to false
+  }
+  
+  // SPECIAL RULE 3: For newsletter opt-in, ALWAYS trust post-call analysis
+  if (fieldName === 'newsletter') {
+    if (postcallValue !== undefined && postcallValue !== null && postcallValue !== '') {
+      console.log(`📧 Newsletter: Prioritizing POST-CALL value "${postcallValue}" (more reliable than transcript extraction)`);
+      return postcallValue;
+    }
+    // Only use transcript if post-call has nothing
+    if (transcriptValue !== undefined && transcriptValue !== null && transcriptValue !== '') {
+      console.log(`📧 Newsletter: No post-call value, using transcript "${transcriptValue}"`);
+      return transcriptValue;
+    }
+    return false; // Default to false
   }
   
   // For all other fields (guests, date, time, phone), use confidence scoring
@@ -1448,17 +1476,6 @@ function getBestFieldValue(postcallValue, transcriptValue, fieldName, transcript
   console.log(`   ⚖️ Scores equal - using TRANSCRIPT for ${fieldName}`);
   return transcriptValue;
 }
-  
-  // Scores are equal - prefer transcript if available (more direct from conversation)
-  if (transcriptScore > 0) {
-    console.log(`   ⚖️ Scores equal - using TRANSCRIPT for ${fieldName}`);
-    return transcriptValue;
-  }
-  
-  console.log(`   ⚖️ Scores equal - using POST-CALL for ${fieldName}`);
-  return postcallValue;
-}
-
 // ===== GOOGLE CALENDAR INTEGRATION =====
 const SCOPES = ['https://www.googleapis.com/auth/calendar.readonly'];
 const JAZZAMORE_CALENDAR_ID = 'jazzamorecesena@gmail.com';
