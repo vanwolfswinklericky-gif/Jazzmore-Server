@@ -1401,6 +1401,22 @@ function calculateFieldConfidence(value, source, context = {}) {
  * Compare two field values and return the best one based on confidence scores
  */
 function getBestFieldValue(postcallValue, transcriptValue, fieldName, transcriptContext = {}) {
+  // SPECIAL RULE: For first and last names, ALWAYS trust post-call analysis
+  if (fieldName === 'firstName' || fieldName === 'lastName') {
+    if (postcallValue && postcallValue !== 'null' && postcallValue !== 'undefined' && postcallValue !== '') {
+      console.log(`📊 Name field "${fieldName}": Prioritizing POST-CALL value "${postcallValue}" (more reliable than transcript extraction)`);
+      return postcallValue;
+    }
+    // Only use transcript if post-call has nothing
+    if (transcriptValue && transcriptValue !== 'null' && transcriptValue !== '') {
+      console.log(`📊 Name field "${fieldName}": No post-call value, using transcript "${transcriptValue}"`);
+      return transcriptValue;
+    }
+    console.log(`   ❌ No valid name value for ${fieldName}`);
+    return null;
+  }
+  
+  // For all other fields (guests, date, time, phone), use confidence scoring
   const postcallScore = calculateFieldConfidence(postcallValue, 'postcall', { field: fieldName, ...transcriptContext });
   const transcriptScore = calculateFieldConfidence(transcriptValue, 'transcript_confirmed', { field: fieldName, ...transcriptContext });
   
@@ -1422,6 +1438,16 @@ function getBestFieldValue(postcallValue, transcriptValue, fieldName, transcript
     console.log(`   ✅ Using TRANSCRIPT value for ${fieldName}`);
     return transcriptValue;
   }
+  
+  // Scores are equal - prefer post-call for reliability
+  if (postcallScore > 0) {
+    console.log(`   ⚖️ Scores equal - using POST-CALL for ${fieldName}`);
+    return postcallValue;
+  }
+  
+  console.log(`   ⚖️ Scores equal - using TRANSCRIPT for ${fieldName}`);
+  return transcriptValue;
+}
   
   // Scores are equal - prefer transcript if available (more direct from conversation)
   if (transcriptScore > 0) {
