@@ -1142,80 +1142,103 @@ function extractNewsletterConfirmation(transcript) {
   return false;
 }
 // ===== FUNCTION TO SEND WEBHOOK TO MAKE.COM - STRICT VALIDATION =====
-// ===== STRICT CHECK - ONLY SEND TO MAKE.COM IF ALL FIELDS ARE VALID =====
-const hasAllRequiredFields = 
-  reservationData.firstName && reservationData.firstName !== '' &&
-  reservationData.lastName && reservationData.lastName !== '' &&
-  reservationData.phone && reservationData.phone !== '' &&
-  reservationData.date && reservationData.date !== '' &&
-  reservationData.time && reservationData.time !== '' &&
-  reservationData.guests && reservationData.guests > 0;
+// Inside app.post('/api/reservations', async (req, res) => {
+// ... previous code (Airtable save, etc.) ...
 
-// Extract phone digits and get last 10 (works for any format: 3351340532, +393351340532, 393351340532)
-const phoneDigitsForMake = reservationData.phone ? reservationData.phone.replace(/\D/g, '') : '';
-const lastTenDigitsForMake = phoneDigitsForMake.slice(-10);
-const isPhoneValidForMake = lastTenDigitsForMake.length === 10 && lastTenDigitsForMake.startsWith('3');
+    // ===== STRICT CHECK - ONLY SEND TO MAKE.COM IF ALL FIELDS ARE VALID =====
+    const hasAllRequiredFields = 
+      reservationData.firstName && reservationData.firstName !== '' &&
+      reservationData.lastName && reservationData.lastName !== '' &&
+      reservationData.phone && reservationData.phone !== '' &&
+      reservationData.date && reservationData.date !== '' &&
+      reservationData.time && reservationData.time !== '' &&
+      reservationData.guests && reservationData.guests > 0;
 
-console.log(`\n📱 Phone validation for Make.com:`);
-console.log(`   Raw phone: "${reservationData.phone}"`);
-console.log(`   Digits extracted: "${phoneDigitsForMake}" (length: ${phoneDigitsForMake.length})`);
-console.log(`   Last 10 digits: "${lastTenDigitsForMake}" (length: ${lastTenDigitsForMake.length})`);
-console.log(`   Valid for Make.com: ${isPhoneValidForMake}`);
+    // Extract phone digits and get last 10 (works for any format: 3351340532, +393351340532, 393351340532)
+    const phoneDigitsForMake = reservationData.phone ? reservationData.phone.replace(/\D/g, '') : '';
+    const lastTenDigitsForMake = phoneDigitsForMake.slice(-10);
+    const isPhoneValidForMake = lastTenDigitsForMake.length === 10 && lastTenDigitsForMake.startsWith('3');
 
-// ONLY send if ALL conditions are met
-const shouldSendToMake = 
-  reservationData.whatsapp_confirmation === true &&
-  hasAllRequiredFields &&
-  isPhoneValidForMake;
+    console.log(`\n📱 Phone validation for Make.com:`);
+    console.log(`   Raw phone: "${reservationData.phone}"`);
+    console.log(`   Digits extracted: "${phoneDigitsForMake}" (length: ${phoneDigitsForMake.length})`);
+    console.log(`   Last 10 digits: "${lastTenDigitsForMake}" (length: ${lastTenDigitsForMake.length})`);
+    console.log(`   Valid for Make.com: ${isPhoneValidForMake}`);
 
-// ===== ULTIMATE SAFETY CHECK AT CALL SITE =====
-// This catches any edge cases that might have slipped through
-const hasInvalidData = 
-  reservationData.firstName === 'null' || 
-  reservationData.firstName === 'undefined' ||
-  reservationData.lastName === 'null' || 
-  reservationData.lastName === 'undefined' ||
-  reservationData.phone === 'null' || 
-  reservationData.phone === 'undefined' ||
-  !reservationData.phone ||
-  reservationData.phone.replace(/\D/g, '').length < 10;
+    // ONLY send if ALL conditions are met
+    const shouldSendToMake = 
+      reservationData.whatsapp_confirmation === true &&
+      hasAllRequiredFields &&
+      isPhoneValidForMake;
 
-if (shouldSendToMake && !hasInvalidData) {
-  console.log('\n✅ All conditions met. Sending to Make.com...');
-  const webhookResult = await sendToMakeWebhook(reservationData, reservationId);
-  console.log(`   Webhook result: ${webhookResult}`);
-} else {
-  console.log(`\n❌ NOT sending to Make.com - conditions not met:`);
-  console.log(`   whatsapp_confirmation: ${reservationData.whatsapp_confirmation}`);
-  console.log(`   hasAllRequiredFields: ${hasAllRequiredFields}`);
-  console.log(`   isPhoneValidForMake: ${isPhoneValidForMake} (last 10 digits: ${lastTenDigitsForMake.length} digits)`);
-  if (hasInvalidData) {
-    console.log(`   🚫 hasInvalidData: TRUE - detected "null"/"undefined" strings or invalid phone`);
-    console.log(`      firstName: ${reservationData.firstName}`);
-    console.log(`      lastName: ${reservationData.lastName}`);
-    console.log(`      phone: ${reservationData.phone}`);
+    // ===== ULTIMATE SAFETY CHECK AT CALL SITE =====
+    // This catches any edge cases that might have slipped through
+    const hasInvalidData = 
+      reservationData.firstName === 'null' || 
+      reservationData.firstName === 'undefined' ||
+      reservationData.lastName === 'null' || 
+      reservationData.lastName === 'undefined' ||
+      reservationData.phone === 'null' || 
+      reservationData.phone === 'undefined' ||
+      !reservationData.phone ||
+      reservationData.phone.replace(/\D/g, '').length < 10;
+
+    if (shouldSendToMake && !hasInvalidData) {
+      console.log('\n✅ All conditions met. Sending to Make.com...');
+      const webhookResult = await sendToMakeWebhook(reservationData, reservationId);
+      console.log(`   Webhook result: ${webhookResult}`);
+    } else {
+      console.log(`\n❌ NOT sending to Make.com - conditions not met:`);
+      console.log(`   whatsapp_confirmation: ${reservationData.whatsapp_confirmation}`);
+      console.log(`   hasAllRequiredFields: ${hasAllRequiredFields}`);
+      console.log(`   isPhoneValidForMake: ${isPhoneValidForMake} (last 10 digits: ${lastTenDigitsForMake.length} digits)`);
+      if (hasInvalidData) {
+        console.log(`   🚫 hasInvalidData: TRUE - detected "null"/"undefined" strings or invalid phone`);
+        console.log(`      firstName: ${reservationData.firstName}`);
+        console.log(`      lastName: ${reservationData.lastName}`);
+        console.log(`      phone: ${reservationData.phone}`);
+      }
+    }
+
+    const greeting = getItalianTimeGreeting();
+    const farewellMap = {
+      "Buongiorno": "Buona giornata",
+      "Buon pranzo": "Buon pranzo",
+      "Buon pomeriggio": "Buon proseguimento",
+      "Buonasera": "Buona serata",
+      "Buonanotte": "Buona notte"
+    };
+    const farewell = farewellMap[greeting] || "Buona giornata";
+
+    console.log('\n✅ RESERVATION COMPLETE - Sending success response to Retell');
+
+    res.json({
+      response: `Perfetto! ${greeting}! Ho prenotato per ${reservationData.guests} persone il ${validatedDate} alle ${reservationData.time} a nome ${reservationData.firstName} ${reservationData.lastName}. Riceverai conferma su WhatsApp. ${farewell}!`,
+      saveToAirtable: true,
+      reservationId,
+      intentDetected: true,
+      webhookSent: shouldSendToMake && !hasInvalidData
+    });
+
+  } catch (airtableError) {
+    console.error('\n❌❌❌ AIRTABLE ERROR:', airtableError.message);
+    const greeting = getItalianTimeGreeting();
+    res.json({
+      response: `${greeting}! Abbiamo riscontrato un problema con la prenotazione. Ti preghiamo di riprovare o chiamarci direttamente.`,
+      saveToAirtable: false,
+      error: airtableError.message
+    });
   }
+  
+} catch (error) {
+  console.error('\n❌❌❌ ERROR IN MAIN WEBHOOK:', error.message);
+  const greeting = getItalianTimeGreeting();
+  res.json({
+    response: `${greeting}! Grazie per la tua chiamata! Abbiamo riscontrato un problema. Ti preghiamo di riprovare più tardi.`,
+    saveToAirtable: false,
+    error: error.message
+  });
 }
-
-const greeting = getItalianTimeGreeting();
-const farewellMap = {
-  "Buongiorno": "Buona giornata",
-  "Buon pranzo": "Buon pranzo",
-  "Buon pomeriggio": "Buon proseguimento",
-  "Buonasera": "Buona serata",
-  "Buonanotte": "Buona notte"
-};
-const farewell = farewellMap[greeting] || "Buona giornata";
-
-console.log('\n✅ RESERVATION COMPLETE - Sending success response to Retell');
-
-res.json({
-  response: `Perfetto! ${greeting}! Ho prenotato per ${reservationData.guests} persone il ${validatedDate} alle ${reservationData.time} a nome ${reservationData.firstName} ${reservationData.lastName}. Riceverai conferma su WhatsApp. ${farewell}!`,
-  saveToAirtable: true,
-  reservationId,
-  intentDetected: true,
-  webhookSent: shouldSendToMake && !hasInvalidData
-});
 // ============================================
 // ===== FIELD COMPARISON WITH CONFIDENCE SCORES =====
 // ============================================
