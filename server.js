@@ -1142,193 +1142,57 @@ function extractNewsletterConfirmation(transcript) {
   return false;
 }
 // ===== FUNCTION TO SEND WEBHOOK TO MAKE.COM - STRICT VALIDATION =====
-async function sendToMakeWebhook(reservationData, reservationId) {
-  console.log('\n' + '='.repeat(60));
-  console.log('🔵 sendToMakeWebhook called - validating all fields...');
-  console.log('='.repeat(60));
-  
-  // ===== CRITICAL: Check EVERY required field - NO EMPTY VALUES ALLOWED =====
-  // If ANY field is empty, null, undefined, or invalid -> DO NOT SEND
-  
-  const errors = [];
-  
-  // Check firstName
-  if (!reservationData.firstName || reservationData.firstName === '' || reservationData.firstName === null) {
-    errors.push('firstName is empty');
-  }
-  
-  // Check lastName
-  if (!reservationData.lastName || reservationData.lastName === '' || reservationData.lastName === null) {
-    errors.push('lastName is empty');
-  }
-  
-  // ===== PHONE NUMBER VALIDATION - ACCEPTS 10-12 DIGITS =====
-  let formattedPhoneForWebhook = null;
-  let phoneDigits = null;
-  
-  if (!reservationData.phone || reservationData.phone === '' || reservationData.phone === null) {
-    errors.push('phone is empty');
-  } else {
-    // Extract only digits
-    phoneDigits = reservationData.phone.replace(/\D/g, '');
-    console.log(`📱 Raw phone input: "${reservationData.phone}"`);
-    console.log(`📱 Digits extracted: ${phoneDigits} (length: ${phoneDigits.length})`);
-    
-    // Accept 10-12 digits (10 raw, 11 with 39, 12 with +39)
-    if (phoneDigits.length < 10 || phoneDigits.length > 12) {
-      errors.push(`phone has ${phoneDigits.length} digits (must be 10-12 digits after stripping non-digits)`);
-    } else {
-      // Get the last 10 digits (works for all formats)
-      const lastTenDigits = phoneDigits.slice(-10);
-      console.log(`📱 Last 10 digits: ${lastTenDigits}`);
-      
-      // Format as +39XXXXXXXXXX for webhook
-      formattedPhoneForWebhook = `+39${lastTenDigits}`;
-      console.log(`📱 Formatted for webhook: ${formattedPhoneForWebhook}`);
-      
-      // Additional validation: Italian mobile numbers start with 3
-      if (!lastTenDigits.startsWith('3')) {
-        errors.push(`phone does not appear to be an Italian mobile number (should start with 3, got ${lastTenDigits.charAt(0)})`);
-      }
-    }
-  }
-  
-  // Check date format
-  if (!reservationData.date || reservationData.date === '' || reservationData.date === null) {
-    errors.push('date is empty');
-  } else if (!reservationData.date.match(/^\d{2}-\d{2}-\d{4}$/)) {
-    errors.push(`date format invalid: ${reservationData.date} (expected DD-MM-YYYY)`);
-  }
-  
-  // Check time format
-  if (!reservationData.time || reservationData.time === '' || reservationData.time === null) {
-    errors.push('time is empty');
-  } else if (!reservationData.time.match(/^([01]?[0-9]|2[0-3]):[0-5][0-9]$/)) {
-    errors.push(`time format invalid: ${reservationData.time} (expected HH:MM)`);
-  }
-  
-  // Check guests
-  if (!reservationData.guests || reservationData.guests === '' || reservationData.guests === null) {
-    errors.push('guests is empty');
-  } else if (reservationData.guests < 1 || reservationData.guests > 20) {
-    errors.push(`guests count invalid: ${reservationData.guests} (must be 1-20)`);
-  }
-  
-  // ===== CHECK WHATSAPP CONFIRMATION =====
-  const wantsWhatsapp = reservationData.whatsapp_confirmation === true || 
-                        reservationData.whatsapp_confirmation === 'yes' || 
-                        reservationData.whatsapp_confirmation === 'true';
-  
-  console.log(`📱 WhatsApp confirmation: ${wantsWhatsapp}`);
-  
-  // If ANY errors, DO NOT SEND
-  if (errors.length > 0) {
-    console.log(`\n❌❌❌ Webhook NOT sent to Make.com - validation failed:`);
-    errors.forEach(err => console.log(`   - ${err}`));
-    console.log(`\n📋 Reservation data that failed validation:`);
-    console.log(`   Name: ${reservationData.firstName} ${reservationData.lastName}`);
-    console.log(`   Phone: ${reservationData.phone} -> formatted: ${formattedPhoneForWebhook}`);
-    console.log(`   Date: ${reservationData.date}`);
-    console.log(`   Time: ${reservationData.time}`);
-    console.log(`   Guests: ${reservationData.guests}`);
-    console.log(`   WhatsApp: ${reservationData.whatsapp_confirmation}`);
-    console.log(`   Newsletter: ${reservationData.newsletter}`);
-    console.log(`\n⚠️ This prevents queue issues and bad WhatsApp messages.`);
-    return false;
-  }
-  
-  // ===== IF WHATSAPP IS FALSE, DO NOT SEND (customer doesn't want WhatsApp message) =====
-  if (!wantsWhatsapp) {
-    console.log(`\n⚠️ Webhook NOT sent - customer declined WhatsApp confirmation (whatsapp_confirmation = false)`);
-    console.log(`   Customer ${reservationData.firstName} ${reservationData.lastName} does not want WhatsApp messages.`);
-    return false;
-  }
-  
-  console.log('\n✅ All required fields validated successfully!');
-  console.log(`   Name: ${reservationData.firstName} ${reservationData.lastName}`);
-  console.log(`   Phone: ${formattedPhoneForWebhook}`);
-  console.log(`   Date: ${reservationData.date}`);
-  console.log(`   Time: ${reservationData.time}`);
-  console.log(`   Guests: ${reservationData.guests}`);
-  console.log(`   WhatsApp: ${wantsWhatsapp}`);
-  console.log(`   Newsletter: ${reservationData.newsletter === true}`);
-  
-  // ===== PREPARE PAYLOAD FOR MAKE.COM =====
-  try {
-    // Format date for Make.com (ensure DD-MM-YYYY)
-    let formattedDate = reservationData.date;
-    if (formattedDate && formattedDate.match(/^\d{4}-\d{2}-\d{2}$/)) {
-      const [year, month, day] = formattedDate.split('-');
-      formattedDate = `${day}-${month}-${year}`;
-      console.log(`📅 Converted date from YYYY-MM-DD to DD-MM-YYYY: ${formattedDate}`);
-    } else if (formattedDate && formattedDate.match(/^\d{2}-\d{2}-\d{4}$/)) {
-      console.log(`📅 Date already in correct DD-MM-YYYY format: ${formattedDate}`);
-    }
-    
-    // Clean specialRequests - remove internal notes
-    let cleanSpecialRequests = reservationData.specialRequests || 'No special requests';
-    // Remove any "Calendar Note:" internal messages (these are for internal use only)
-    if (cleanSpecialRequests.includes('Calendar Note:')) {
-      cleanSpecialRequests = cleanSpecialRequests.split('Calendar Note:')[0].trim();
-      if (!cleanSpecialRequests || cleanSpecialRequests === '') {
-        cleanSpecialRequests = 'No special requests';
-      }
-      console.log(`🧹 Removed internal "Calendar Note" from special requests`);
-    }
-    
-    // Build the payload
-    const payload = {
-      reservationId: reservationId,
-      firstName: reservationData.firstName,
-      lastName: reservationData.lastName,
-      phone: formattedPhoneForWebhook,  // Always +39XXXXXXXXXX format
-      date: formattedDate,
-      time: reservationData.time,
-      guests: parseInt(reservationData.guests),
-      adults: parseInt(reservationData.adults) || parseInt(reservationData.guests),
-      children: parseInt(reservationData.children) || 0,
-      specialRequests: cleanSpecialRequests,
-      newsletter: reservationData.newsletter === true,
-      whatsappConfirmation: wantsWhatsapp
-    };
-    
-    console.log('\n📤 SENDING TO MAKE.COM:');
-    console.log(`   URL: ${MAKE_WEBHOOK_URL}`);
-    console.log(`   Payload:`, JSON.stringify(payload, null, 2));
-    console.log(`   Payload size: ${JSON.stringify(payload).length} bytes`);
-    
-    // Send to Make.com
-    const response = await fetch(MAKE_WEBHOOK_URL, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify(payload)
-    });
-    
-    const responseText = await response.text();
-    console.log(`\n📨 MAKE.COM RESPONSE:`);
-    console.log(`   Status: ${response.status} ${response.statusText}`);
-    console.log(`   Body: ${responseText}`);
-    
-    if (response.ok) {
-      console.log(`\n✅✅✅ Webhook sent to Make.com successfully!`);
-      console.log(`   Reservation ID: ${reservationId}`);
-      console.log(`   Phone sent: ${formattedPhoneForWebhook}`);
-      return true;
-    } else {
-      console.log(`\n⚠️⚠️⚠️ Webhook to Make.com failed!`);
-      console.log(`   Status: ${response.status}`);
-      console.log(`   Response: ${responseText}`);
-      return false;
-    }
-    
-  } catch (error) {
-    console.error(`\n❌❌❌ Webhook error:`);
-    console.error(`   Error message: ${error.message}`);
-    console.error(`   Stack: ${error.stack}`);
-    console.error(`   Reservation ID: ${reservationId}`);
-    return false;
+// ===== STRICT CHECK - ONLY SEND TO MAKE.COM IF ALL FIELDS ARE VALID =====
+const hasAllRequiredFields = 
+  reservationData.firstName && reservationData.firstName !== '' &&
+  reservationData.lastName && reservationData.lastName !== '' &&
+  reservationData.phone && reservationData.phone !== '' &&
+  reservationData.date && reservationData.date !== '' &&
+  reservationData.time && reservationData.time !== '' &&
+  reservationData.guests && reservationData.guests > 0;
+
+// Extract phone digits and get last 10 (works for any format: 3351340532, +393351340532, 393351340532)
+const phoneDigitsForMake = reservationData.phone ? reservationData.phone.replace(/\D/g, '') : '';
+const lastTenDigitsForMake = phoneDigitsForMake.slice(-10);
+const isPhoneValidForMake = lastTenDigitsForMake.length === 10 && lastTenDigitsForMake.startsWith('3');
+
+console.log(`\n📱 Phone validation for Make.com:`);
+console.log(`   Raw phone: "${reservationData.phone}"`);
+console.log(`   Digits extracted: "${phoneDigitsForMake}" (length: ${phoneDigitsForMake.length})`);
+console.log(`   Last 10 digits: "${lastTenDigitsForMake}" (length: ${lastTenDigitsForMake.length})`);
+console.log(`   Valid for Make.com: ${isPhoneValidForMake}`);
+
+// ONLY send if ALL conditions are met
+const shouldSendToMake = 
+  reservationData.whatsapp_confirmation === true &&
+  hasAllRequiredFields &&
+  isPhoneValidForMake;
+
+// ===== ULTIMATE SAFETY CHECK AT CALL SITE =====
+// This catches any edge cases that might have slipped through
+const hasInvalidData = 
+  reservationData.firstName === 'null' || 
+  reservationData.firstName === 'undefined' ||
+  reservationData.lastName === 'null' || 
+  reservationData.lastName === 'undefined' ||
+  reservationData.phone === 'null' || 
+  reservationData.phone === 'undefined' ||
+  !reservationData.phone ||
+  reservationData.phone.replace(/\D/g, '').length < 10;
+
+if (shouldSendToMake && !hasInvalidData) {
+  console.log('\n✅ All conditions met. Sending to Make.com...');
+  await sendToMakeWebhook(reservationData, reservationId);
+} else {
+  console.log(`\n❌ NOT sending to Make.com - conditions not met:`);
+  console.log(`   whatsapp_confirmation: ${reservationData.whatsapp_confirmation}`);
+  console.log(`   hasAllRequiredFields: ${hasAllRequiredFields}`);
+  console.log(`   isPhoneValidForMake: ${isPhoneValidForMake} (last 10 digits: ${lastTenDigitsForMake.length} digits)`);
+  if (hasInvalidData) {
+    console.log(`   🚫 hasInvalidData: TRUE - detected "null"/"undefined" strings or invalid phone`);
+    console.log(`      firstName: ${reservationData.firstName}`);
+    console.log(`      lastName: ${reservationData.lastName}`);
+    console.log(`      phone: ${reservationData.phone}`);
   }
 }
 // ============================================
