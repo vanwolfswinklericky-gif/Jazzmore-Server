@@ -4344,32 +4344,42 @@ else greetingWord = "Buonanotte";
   }
 });
 
-// Add POST version for Retell
+// Add this BEFORE app.listen()
 app.post('/api/resolve-date', (req, res) => {
   try {
-    // Get text from query OR body
-    const text = req.query.text || req.body.text || req.body.args?.text;
+    // Handle Retell's payload format
+    let text = req.body.text || req.body.args?.text;
     
-    if (!text) {
+    // If text is an object (sometimes happens), try to extract it
+    if (typeof text === 'object' && text !== null) {
+      text = text.text || JSON.stringify(text);
+    }
+    
+    // Ensure text is a string
+    if (!text || typeof text !== 'string') {
       return res.status(400).json({
         success: false,
-        error: 'Missing text parameter'
+        error: 'Invalid text parameter',
+        message: `Expected string, got ${typeof text}`
       });
     }
     
+    console.log(`📅 Resolving date: "${text}"`);
     const resolvedDate = resolveDate(text);
-    const romeDateTime = getRomeDateTime();
     
     res.json({
       success: true,
       originalText: text,
-      resolvedDate,
-      timezone: ROME_TIMEZONE,
-      todayInRome: romeDateTime.date
+      resolvedDate: resolvedDate,
+      timezone: 'Europe/Rome'
     });
     
   } catch (error) {
-    res.status(500).json({ success: false, error: error.message });
+    console.error('❌ resolve_date error:', error.message);
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
   }
 });
 
