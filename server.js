@@ -4394,11 +4394,10 @@ app.post('/api/pre-call-init', (req, res) => {
     const currentHour = romeDate.getHours();
     let greetingWord = '';
     
-    if (currentHour >= 5 && currentHour < 12) greetingWord = "Buongiorno";
-    else if (currentHour >= 12 && currentHour < 13) greetingWord = "Buon pranzo";
-    else if (currentHour >= 13 && currentHour < 18) greetingWord = "Buon pomeriggio";
-    else if (currentHour >= 18 && currentHour < 22) greetingWord = "Buonasera";
-    else greetingWord = "Buonanotte";
+if (currentHour >= 5 && currentHour < 12) greetingWord = "Buongiorno";
+else if (currentHour >= 12 && currentHour < 18) greetingWord = "Buon pomeriggio";
+else if (currentHour >= 18 && currentHour < 22) greetingWord = "Buonasera";
+else greetingWord = "Buonanotte";
     
     const fullGreeting = `${greetingWord}, benvenuto da Jazzamore. Sono Maya, come posso aiutarla?`;
     
