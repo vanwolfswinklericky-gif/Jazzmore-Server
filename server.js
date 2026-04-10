@@ -4344,6 +4344,34 @@ else greetingWord = "Buonanotte";
   }
 });
 
+// Add POST version for Retell
+app.post('/api/resolve-date', (req, res) => {
+  try {
+    // Get text from query OR body
+    const text = req.query.text || req.body.text || req.body.args?.text;
+    
+    if (!text) {
+      return res.status(400).json({
+        success: false,
+        error: 'Missing text parameter'
+      });
+    }
+    
+    const resolvedDate = resolveDate(text);
+    const romeDateTime = getRomeDateTime();
+    
+    res.json({
+      success: true,
+      originalText: text,
+      resolvedDate,
+      timezone: ROME_TIMEZONE,
+      todayInRome: romeDateTime.date
+    });
+    
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
 
 // ===== SERVER STARTUP ====
 app.listen(PORT, () => {
