@@ -1171,7 +1171,7 @@ async function sendToMakeWebhook(reservationData, reservationId) {
     errors.push('lastName is empty');
   }
   
-  // ===== PHONE NUMBER VALIDATION =====
+  // ===== PHONE NUMBER VALIDATION - STRICT =====
   let formattedPhoneForWebhook = null;
   let phoneDigits = null;
   
@@ -1189,12 +1189,15 @@ async function sendToMakeWebhook(reservationData, reservationId) {
     } else if (phoneDigits.length < 10 || phoneDigits.length > 12) {
       errors.push(`phone has ${phoneDigits.length} digits (must be 10-12 digits after stripping non-digits)`);
     } else {
+      // Get the last 10 digits (works for all formats)
       const lastTenDigits = phoneDigits.slice(-10);
       console.log(`📱 Last 10 digits: ${lastTenDigits}`);
       
+      // Format as +39XXXXXXXXXX for webhook
       formattedPhoneForWebhook = `+39${lastTenDigits}`;
       console.log(`📱 Formatted for webhook: ${formattedPhoneForWebhook}`);
       
+      // Additional validation: Italian mobile numbers start with 3
       if (!lastTenDigits.startsWith('3')) {
         errors.push(`phone does not appear to be an Italian mobile number (should start with 3, got ${lastTenDigits.charAt(0)})`);
       }
@@ -1247,7 +1250,7 @@ async function sendToMakeWebhook(reservationData, reservationId) {
   
   // ===== IF WHATSAPP IS FALSE, DO NOT SEND =====
   if (!wantsWhatsapp) {
-    console.log(`\n⚠️ Webhook NOT sent - customer declined WhatsApp confirmation`);
+    console.log(`\n⚠️ Webhook NOT sent - customer declined WhatsApp confirmation (whatsapp_confirmation = false)`);
     console.log(`   Customer ${reservationData.firstName} ${reservationData.lastName} does not want WhatsApp messages.`);
     return false;
   }
@@ -1275,6 +1278,7 @@ async function sendToMakeWebhook(reservationData, reservationId) {
     
     // Clean specialRequests - remove internal notes
     let cleanSpecialRequests = reservationData.specialRequests || 'No special requests';
+    // Remove any "Calendar Note:" internal messages (these are for internal use only)
     if (cleanSpecialRequests.includes('Calendar Note:')) {
       cleanSpecialRequests = cleanSpecialRequests.split('Calendar Note:')[0].trim();
       if (isEmpty(cleanSpecialRequests)) {
@@ -1288,7 +1292,7 @@ async function sendToMakeWebhook(reservationData, reservationId) {
       reservationId: reservationId,
       firstName: reservationData.firstName,
       lastName: reservationData.lastName,
-      phone: formattedPhoneForWebhook,
+      phone: formattedPhoneForWebhook,  // Always +39XXXXXXXXXX format
       date: formattedDate,
       time: reservationData.time,
       guests: parseInt(reservationData.guests),
@@ -1304,6 +1308,7 @@ async function sendToMakeWebhook(reservationData, reservationId) {
     console.log(`   Payload:`, JSON.stringify(payload, null, 2));
     console.log(`   Payload size: ${JSON.stringify(payload).length} bytes`);
     
+    // Send to Make.com
     const response = await fetch(MAKE_WEBHOOK_URL, {
       method: 'POST',
       headers: {
@@ -1337,7 +1342,6 @@ async function sendToMakeWebhook(reservationData, reservationId) {
     return false;
   }
 }
-
     // ===== STRICT CHECK - ONLY SEND TO MAKE.COM IF ALL FIELDS ARE VALID =====
     const hasAllRequiredFields = 
       reservationData.firstName && reservationData.firstName !== '' &&
