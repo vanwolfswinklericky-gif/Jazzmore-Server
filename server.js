@@ -1182,7 +1182,8 @@ const hasInvalidData =
 
 if (shouldSendToMake && !hasInvalidData) {
   console.log('\n✅ All conditions met. Sending to Make.com...');
-  await sendToMakeWebhook(reservationData, reservationId);
+  const webhookResult = await sendToMakeWebhook(reservationData, reservationId);
+  console.log(`   Webhook result: ${webhookResult}`);
 } else {
   console.log(`\n❌ NOT sending to Make.com - conditions not met:`);
   console.log(`   whatsapp_confirmation: ${reservationData.whatsapp_confirmation}`);
@@ -1195,6 +1196,26 @@ if (shouldSendToMake && !hasInvalidData) {
     console.log(`      phone: ${reservationData.phone}`);
   }
 }
+
+const greeting = getItalianTimeGreeting();
+const farewellMap = {
+  "Buongiorno": "Buona giornata",
+  "Buon pranzo": "Buon pranzo",
+  "Buon pomeriggio": "Buon proseguimento",
+  "Buonasera": "Buona serata",
+  "Buonanotte": "Buona notte"
+};
+const farewell = farewellMap[greeting] || "Buona giornata";
+
+console.log('\n✅ RESERVATION COMPLETE - Sending success response to Retell');
+
+res.json({
+  response: `Perfetto! ${greeting}! Ho prenotato per ${reservationData.guests} persone il ${validatedDate} alle ${reservationData.time} a nome ${reservationData.firstName} ${reservationData.lastName}. Riceverai conferma su WhatsApp. ${farewell}!`,
+  saveToAirtable: true,
+  reservationId,
+  intentDetected: true,
+  webhookSent: shouldSendToMake && !hasInvalidData
+});
 // ============================================
 // ===== FIELD COMPARISON WITH CONFIDENCE SCORES =====
 // ============================================
