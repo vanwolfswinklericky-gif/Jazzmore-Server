@@ -4400,6 +4400,58 @@ else greetingWord = "Buonanotte";
   }
 });
 
+// ===== PRE-CALL INIT ENDPOINT FOR RETELL AGENT =====
+app.post('/api/pre-call-init', (req, res) => {
+  try {
+    console.log('\n📞 PRE-CALL INIT webhook called');
+    console.log('Request body:', JSON.stringify(req.body, null, 2));
+    
+    const { call_id, timestamp, direction } = req.body;
+    
+    // Get the current time in Rome to generate the correct greeting
+    const romeDate = getRomeDate();
+    const currentHour = romeDate.getHours();
+    let greetingWord = '';
+    let fullGreeting = '';
+
+    // Determine greeting in Italian (as your agent is multilingual)
+    if (currentHour >= 5 && currentHour < 12) {
+      greetingWord = "Buongiorno";
+      fullGreeting = `${greetingWord}, benvenuto da Jazzamore. Sono Maya, come posso aiutarla?`;
+    } else if (currentHour >= 12 && currentHour < 13) {
+      greetingWord = "Buon pranzo";
+      fullGreeting = `${greetingWord}, benvenuto da Jazzamore. Sono Maya, come posso aiutarla?`;
+    } else if (currentHour >= 13 && currentHour < 18) {
+      greetingWord = "Buon pomeriggio";
+      fullGreeting = `${greetingWord}, benvenuto da Jazzamore. Sono Maya, come posso aiutarla?`;
+    } else if (currentHour >= 18 && currentHour < 22) {
+      greetingWord = "Buonasera";
+      fullGreeting = `${greetingWord}, benvenuto da Jazzamore. Sono Maya, come posso aiutarla?`;
+    } else {
+      greetingWord = "Buonanotte";
+      fullGreeting = `${greetingWord}, benvenuto da Jazzamore. Sono Maya, come posso aiutarla?`;
+    }
+    
+    console.log(`   Sending greeting: ${fullGreeting}`);
+    
+    res.json({
+      success: true,
+      greeting: greetingWord,
+      fullGreeting: fullGreeting,
+      should_greet_first: true,
+      message: "Call initialized. Play greeting immediately."
+    });
+    
+  } catch (error) {
+    console.error('❌ Pre-call init error:', error.message);
+    res.status(500).json({ 
+      success: false, 
+      error: error.message,
+      message: "Failed to initialize call greeting."
+    });
+  }
+});
+
 // Add this BEFORE app.listen()
 app.post('/api/resolve-date', (req, res) => {
   try {
