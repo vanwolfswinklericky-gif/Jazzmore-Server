@@ -4547,48 +4547,60 @@ app.get('/api/current-time', (req, res) => {
   }
 });
 
-// POST endpoint for Retell
+  // ===== RESTAURANT HOURS - POST (For Retell Agent) =====
+// ===== RESTAURANT HOURS - POST (For Retell Agent) =====
 app.post('/api/restaurant-hours', (req, res) => {
   try {
     res.json({
       success: true,
-      // DINNER + SHOW OPTION
+      // DINNER + SHOW OPTION (PRIMARY - ALWAYS OFFER FIRST)
       dinnerShow: {
-        arrivalWindow: "19:30 - 21:30",
-        description: "Book a table for dinner and attend the show from your dinner table",
-        ticketPrice: "Lower price (included in dinner)",
+        arrivalWindow: "19:30 - 22:00",
+        description: "Cena + spettacolo - prenota un tavolo per cena e assista allo spettacolo dal tuo tavolo",
+        ticketPrice: "Prezzo inferiore (incluso nella cena)",
         recommendedArrival: "19:30",
-        lastArrival: "21:30"
+        kitchenCloses: "22:00",
+        lastOrder: "22:00",
+        musicEnds: "23:30"
       },
-      // SHOW ONLY OPTION
+      // SHOW ONLY OPTION (SECONDARY - ONLY IF CUSTOMER ASKS)
       showOnly: {
-        arrivalWindow: "20:30 - 21:30",
-        description: "Reserve a seat or drink table for the show only",
-        ticketPrice: "Higher price than dinner+show",
+        arrivalWindow: "20:30 onwards",
+        description: "Solo spettacolo - prenota un posto o tavolo per drink e spettacolo",
+        ticketPrice: "Prezzo più alto del dinner+show (varia per evento)",
         recommendedArrival: "20:30",
-        lastArrival: "21:30"
+        notes: "L'arrivo alle 20:30 è consigliato ma non obbligatorio. Ci sono posti dedicati per solo spettacolo.",
+        isMandatory: false
       },
       // SHOW TIMES
       showTimes: {
         start: "21:00 - 21:30",
         end: "23:30",
-        note: "Show start time varies between 21:00 and 21:30 depending on the event"
+        note: "L'orario di inizio spettacolo varia tra le 21:00 e le 21:30 a seconda dell'evento"
       },
-      // CRITICAL RULES
-      rules: [
-        "NO ONE can arrive at 22:00 for a show - that's too late",
-        "If show starts at 21:00, last arrival is 21:30 maximum",
-        "If show starts at 21:30, last arrival is still 21:30 maximum",
-        "After 21:30, no new entries for shows"
-      ],
+      // KITCHEN HOURS
+      kitchen: {
+        closes: "22:00",
+        lastOrder: "22:00",
+        note: "Ultimi ordini alle 22:00"
+      },
+      // APERITIVO
+      aperitivo: {
+        time: "18:00",
+        condition: "SOLO se specificato nel calendario Google Calendar per l'evento",
+        default: "Non menzionare a meno che non sia nell'evento o il cliente chieda"
+      },
       // GENERAL INFO
       daysOpen: ["Wednesday", "Thursday", "Friday", "Saturday", "Sunday"],
       daysClosed: ["Monday", "Tuesday"],
       daysOpenItalian: ["Mercoledì", "Giovedì", "Venerdì", "Sabato", "Domenica"],
       daysClosedItalian: ["Lunedì", "Martedì"],
-      timezone: "Europe/Rome"
+      timezone: "Europe/Rome",
+      // CRITICAL RULE FOR AGENT
+      bookingStrategy: "SEMPRE offrire prima cena+spettacolo. Solo spettacolo è secondario - offrire solo se il cliente chiede esplicitamente o rifiuta la cena."
     });
   } catch (error) {
+    console.error('❌ Error in /api/restaurant-hours:', error.message);
     res.status(500).json({ success: false, error: error.message });
   }
 });
