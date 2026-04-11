@@ -365,7 +365,7 @@ function getClosedDayResponse(dateInput) {
  * Check if Jazzamore is closed on a given date
  * Returns: { isClosed, dayName, date, message, suggestedAlternatives }
  */
-app.post('/api/check-closure', async (req, res) => {
+('/api/check-closure', async (req, res) => {
   try {
     const { date } = req.body;
     const dateArg = req.body.args?.date || date;
@@ -3323,7 +3323,7 @@ app.get('/api/resolve-date', (req, res) => {
 });
 
 // C) Single day — POST (Retell format, primary)
-app.post('/api/calendar/date', async (req, res) => {
+('/api/calendar/date', async (req, res) => {
   try {
     const date = req.body.date || req.body.args?.date;
     
@@ -3418,7 +3418,7 @@ app.get('/api/calendar/date', async (req, res) => {
 });
 
 // D) Full week — POST (Retell format, primary)
-app.post('/api/calendar/week', async (req, res) => {
+('/api/calendar/week', async (req, res) => {
   try {
     const startDate = req.body.startDate || req.body.args?.startDate || req.body.date || req.body.args?.date;
     
@@ -3517,7 +3517,7 @@ app.get('/api/calendar/week', async (req, res) => {
 });
 
 // E) Date range — POST (Retell format, primary)
-app.post('/api/calendar/range', async (req, res) => {
+('/api/calendar/range', async (req, res) => {
   try {
     const startDate = req.body.startDate || req.body.args?.startDate;
     const endDate   = req.body.endDate   || req.body.args?.endDate;
@@ -3701,7 +3701,7 @@ app.get('/api/time-greeting', (req, res) => {
 });
 
 // G2) Time-based greeting — POST (Retell format)
-app.post('/api/time-greeting', (req, res) => {
+('/api/time-greeting', (req, res) => {
   try {
     const { format, context } = req.body;
     const greetingResult = get_time_greeting(format || 'italian');
@@ -3817,7 +3817,7 @@ app.get('/api/test/google-calendar', async (req, res) => {
 });
 
 // J) Check if a date is closed (POST - for Retell agent)
-app.post('/api/check-closure', (req, res) => {
+('/api/check-closure', (req, res) => {
   try {
     const date = req.body.date || req.body.args?.date;
     
@@ -3994,7 +3994,6 @@ app.post('/api/reservations', async (req, res) => {
           const content = msg.content;
           const lowerContent = content.toLowerCase();
           
-          // Extract name
           const nameMatch = content.match(/(?:mi chiamo|my name is|sono|i'm)\s+([A-Z][a-z]+)\s+([A-Z][a-z]+)/i);
           if (nameMatch && !transcriptFirstName) {
             transcriptFirstName = nameMatch[1];
@@ -4002,14 +4001,12 @@ app.post('/api/reservations', async (req, res) => {
             console.log(`   Found name: ${transcriptFirstName} ${transcriptLastName}`);
           }
           
-          // Extract guests
           const guestsMatch = lowerContent.match(/(\d+)\s*(?:people|persons|guests|persone|ospiti)/i);
           if (guestsMatch && !transcriptGuests) {
             transcriptGuests = parseInt(guestsMatch[1]);
             console.log(`   Found guests: ${transcriptGuests}`);
           }
           
-          // Extract time
           const timeMatch = content.match(/(\d{1,2})[\s:]?(\d{2})?\s*(?:am|pm|di sera|di mattina)?/i);
           if (timeMatch && !transcriptTime) {
             let hour = parseInt(timeMatch[1]);
@@ -4023,16 +4020,14 @@ app.post('/api/reservations', async (req, res) => {
       }
     }
     
-    // Extract phone from transcript
     const transcriptPhone = extractPhoneFromTranscript(call?.transcript_object);
     console.log(`\n📱 Extracted phone: ${transcriptPhone || 'None'}`);
     
-    // Extract WhatsApp and newsletter confirmations from transcript
     const whatsappFromTranscript = extractWhatsappConfirmation(call?.transcript_object);
     const newsletterFromTranscript = extractNewsletterConfirmation(call?.transcript_object);
     console.log(`📱 WhatsApp confirmation: ${whatsappFromTranscript}`);
     console.log(`📧 Newsletter confirmation: ${newsletterFromTranscript}`);
-    
+
     // ============================================
     // ===== FIELD COMPARISON USING CONFIDENCE SCORES =====
     // ============================================
@@ -4094,6 +4089,66 @@ app.post('/api/reservations', async (req, res) => {
       whatsapp_confirmation: whatsappFromTranscript !== null ? whatsappFromTranscript : (postCallData?.whatsapp_confirmation === 'yes' || false)
     };
     
+    // ============================================
+    // ===== SHOW-ONLY DETECTION (MOVED HERE - AFTER reservationData EXISTS) =====
+    // ============================================
+    
+    function isShowOnlyReservation(time, specialRequests, transcript) {
+      const [hour, minute] = (time || '').split(':').map(Number);
+      
+      if (hour >= 21 && minute >= 30) {
+        return true;
+      }
+      
+      const showOnlyKeywords = [
+        'solo spettacolo', 'show only', 'after dinner', 'dopo cena',
+        'solo concerto', 'concert only', 'no dinner', 'senza cena'
+      ];
+      
+      const conversationText = transcript
+        ?.map(msg => (msg.content || '').toLowerCase())
+        .join(' ') || '';
+      
+      for (const keyword of showOnlyKeywords) {
+        if (conversationText.includes(keyword)) {
+          return true;
+        }
+      }
+      
+      return false;
+    }
+    
+    let finalSpecialRequests = reservationData.specialRequests || '';
+    let isShowOnly = false;
+    let dinnerCount = parseInt(reservationData.adults) || parseInt(reservationData.guests) || 2;
+    let showOnlyCount = 0;
+    let reservationType = "Dinner + Show";
+    
+    // Check if this is a show-only reservation
+    if (reservationData.time) {
+      isShowOnly = isShowOnlyReservation(
+        reservationData.time, 
+        reservationData.specialRequests,
+        call?.transcript_object
+      );
+    }
+    
+    if (isShowOnly) {
+      finalSpecialRequests = 'NESSUNA RICHIESTA SPECIALE';
+      dinnerCount = 0;
+      showOnlyCount = parseInt(reservationData.guests) || 2;
+      reservationType = "Show Only";
+      console.log(`🎭 Show-only reservation detected - Setting special requests to "NESSUNA RICHIESTA SPECIALE"`);
+    } else {
+      if (!finalSpecialRequests || finalSpecialRequests === 'No special requests' || finalSpecialRequests === '') {
+        finalSpecialRequests = 'Nessuna richiesta speciale';
+      }
+    }
+    
+    // Update reservationData with processed values
+    reservationData.specialRequests = finalSpecialRequests;
+    reservationData.reservationType = reservationType;
+    
     console.log('\n✅ FINAL RESERVATION DATA:');
     console.log(`   Name: ${reservationData.firstName} ${reservationData.lastName}`);
     console.log(`   Phone: ${reservationData.phone}`);
@@ -4103,6 +4158,9 @@ app.post('/api/reservations', async (req, res) => {
     console.log(`   Special Requests: ${reservationData.specialRequests}`);
     console.log(`   WhatsApp: ${reservationData.whatsapp_confirmation}`);
     console.log(`   Newsletter: ${reservationData.newsletter}`);
+    console.log(`   Reservation Type: ${reservationType}`);
+    console.log(`   Dinner Count: ${dinnerCount}`);
+    console.log(`   Show-Only Count: ${showOnlyCount}`);
     
     // ===== CLOSURE CHECK - BLOCK MONDAYS & TUESDAYS =====
     console.log('\n🔒 CHECKING CLOSURE STATUS');
@@ -4192,6 +4250,7 @@ app.post('/api/reservations', async (req, res) => {
     const arrivalTimeISO = formatTimeForAirtable(reservationData.time, validatedDate);
     const whatsappValue = reservationData.whatsapp_confirmation ? "Yes" : "No";
     
+    // FIXED: Declare airtableDate with let
     let airtableDate = validatedDate;
     if (validatedDate && validatedDate.match(/^\d{2}-\d{2}-\d{4}$/)) {
       const [d, m, y] = validatedDate.split('-');
@@ -4206,12 +4265,12 @@ app.post('/api/reservations', async (req, res) => {
       "Reservation Date": airtableDate,
       "Arrival Time": arrivalTimeISO,
       "Total People": parseInt(reservationData.guests) || 2,
-      "Dinner Count": parseInt(reservationData.adults) || parseInt(reservationData.guests) || 2,
-      "Show-Only Count": 0,
+      "Dinner Count": dinnerCount,
+      "Show-Only Count": showOnlyCount,
       "Kids Count": parseInt(reservationData.children) || 0,
-      "Special Requests": reservationData.specialRequests || '',
+      "Special Requests": finalSpecialRequests,
       "Reservation Status": "Confirmed",
-      "Reservation Type": "Dinner + Show",
+      "Reservation Type": reservationType,
       "Newsletter Opt-In": reservationData.newsletter,
       "Whatsapp Confirmation": whatsappValue
     };
@@ -4235,7 +4294,6 @@ app.post('/api/reservations', async (req, res) => {
         reservationData.time && reservationData.time !== '' &&
         reservationData.guests && reservationData.guests > 0;
       
-      // Extract phone digits and get last 10
       const phoneDigitsForMake = reservationData.phone ? reservationData.phone.replace(/\D/g, '') : '';
       const lastTenDigitsForMake = phoneDigitsForMake.slice(-10);
       const isPhoneValidForMake = lastTenDigitsForMake.length === 10 && lastTenDigitsForMake.startsWith('3');
@@ -4246,7 +4304,6 @@ app.post('/api/reservations', async (req, res) => {
       console.log(`   Last 10 digits: "${lastTenDigitsForMake}" (length: ${lastTenDigitsForMake.length})`);
       console.log(`   Valid for Make.com: ${isPhoneValidForMake}`);
       
-      // ONLY send if ALL conditions are met
       const shouldSendToMake = 
         reservationData.whatsapp_confirmation === true &&
         hasAllRequiredFields &&
@@ -4301,7 +4358,6 @@ app.post('/api/reservations', async (req, res) => {
     });
   }
 });
-
 // ============================================
 // ===== PRE-CALL WEBHOOK - FORCES GREETING =====
 // ============================================
@@ -4309,7 +4365,7 @@ app.post('/api/reservations', async (req, res) => {
 // Store call states
 const callStates = new Map();
 
-app.post('/api/pre-call-init', (req, res) => {
+('/api/pre-call-init', (req, res) => {
   try {
     console.log('\n📞 PRE-CALL INIT webhook called');
     console.log('Request body:', JSON.stringify(req.body, null, 2));
@@ -4367,10 +4423,18 @@ app.post('/api/resolve-date', (req, res) => {
     console.log(`📅 Resolving date: "${text}"`);
     const resolvedDate = resolveDate(text);
     
+    // ===== ADD DAY OF WEEK CALCULATION =====
+    const [day, month, year] = resolvedDate.split('-');
+    const dateObj = new Date(`${year}-${month}-${day}`);
+    const dayNamesItalian = ['Domenica', 'Lunedì', 'Martedì', 'Mercoledì', 'Giovedì', 'Venerdì', 'Sabato'];
+    const dayOfWeek = dayNamesItalian[dateObj.getDay()];
+    
     res.json({
       success: true,
       originalText: text,
       resolvedDate: resolvedDate,
+      dayOfWeek: dayOfWeek,           // ← ADD THIS
+      dayOfWeekEnglish: ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'][dateObj.getDay()], // ← OPTIONAL
       timezone: 'Europe/Rome'
     });
     
@@ -4380,6 +4444,99 @@ app.post('/api/resolve-date', (req, res) => {
       success: false,
       error: error.message
     });
+  }
+});
+
+// GET endpoint for current time
+app.get('/api/current-time', (req, res) => {
+  try {
+    const romeDateTime = getRomeDateTime();
+    const greeting = getItalianTimeGreeting();
+    
+    res.json({
+      success: true,
+      time: romeDateTime.time,
+      date: romeDateTime.date,
+      hour: romeDateTime.hour,
+      minute: romeDateTime.minute,
+      dayOfWeek: ['Domenica', 'Lunedì', 'Martedì', 'Mercoledì', 'Giovedì', 'Venerdì', 'Sabato'][romeDateTime.romeDate.getDay()],
+      fullDateTime: `${romeDateTime.date} ${romeDateTime.time}`,
+      greeting: greeting,
+      timezone: 'Europe/Rome'
+    });
+    
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// POST endpoint for Retell
+app.post('/api/restaurant-hours', (req, res) => {
+  try {
+    res.json({
+      success: true,
+      // DINNER + SHOW OPTION
+      dinnerShow: {
+        arrivalWindow: "19:30 - 21:30",
+        description: "Book a table for dinner and attend the show from your dinner table",
+        ticketPrice: "Lower price (included in dinner)",
+        recommendedArrival: "19:30",
+        lastArrival: "21:30"
+      },
+      // SHOW ONLY OPTION
+      showOnly: {
+        arrivalWindow: "20:30 - 21:30",
+        description: "Reserve a seat or drink table for the show only",
+        ticketPrice: "Higher price than dinner+show",
+        recommendedArrival: "20:30",
+        lastArrival: "21:30"
+      },
+      // SHOW TIMES
+      showTimes: {
+        start: "21:00 - 21:30",
+        end: "23:30",
+        note: "Show start time varies between 21:00 and 21:30 depending on the event"
+      },
+      // CRITICAL RULES
+      rules: [
+        "NO ONE can arrive at 22:00 for a show - that's too late",
+        "If show starts at 21:00, last arrival is 21:30 maximum",
+        "If show starts at 21:30, last arrival is still 21:30 maximum",
+        "After 21:30, no new entries for shows"
+      ],
+      // GENERAL INFO
+      daysOpen: ["Wednesday", "Thursday", "Friday", "Saturday", "Sunday"],
+      daysClosed: ["Monday", "Tuesday"],
+      daysOpenItalian: ["Mercoledì", "Giovedì", "Venerdì", "Sabato", "Domenica"],
+      daysClosedItalian: ["Lunedì", "Martedì"],
+      timezone: "Europe/Rome"
+    });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+
+// POST endpoint for Retell (they prefer POST)
+app.post('/api/current-time', (req, res) => {
+  try {
+    const romeDateTime = getRomeDateTime();
+    const greeting = getItalianTimeGreeting();
+    
+    res.json({
+      success: true,
+      time: romeDateTime.time,
+      date: romeDateTime.date,
+      hour: romeDateTime.hour,
+      minute: romeDateTime.minute,
+      dayOfWeek: ['Domenica', 'Lunedì', 'Martedì', 'Mercoledì', 'Giovedì', 'Venerdì', 'Sabato'][romeDateTime.romeDate.getDay()],
+      fullDateTime: `${romeDateTime.date} ${romeDateTime.time}`,
+      greeting: greeting,
+      timezone: 'Europe/Rome'
+    });
+    
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
   }
 });
 
