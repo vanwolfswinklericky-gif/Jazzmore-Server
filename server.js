@@ -166,31 +166,21 @@ function get_time_greeting(format = 'italian', timezone = 'rome') {
   let greeting = '';
   
   if (format === 'italian') {
-    if (currentHour >= 0 && currentHour < 1 && currentMinute <= 50) greeting = "Buona notte";
-    else if (currentHour >= 5 && currentHour < 12) greeting = "Buongiorno";
-    else if (currentHour >= 12 && currentHour < 13) greeting = "Buon pranzo";
-    else if (currentHour >= 13 && currentHour < 18) greeting = "Buon pomeriggio";
-    else if (currentHour >= 18 && currentHour < 22) greeting = "Buonasera";
-    else greeting = "Buonanotte";
+    if (currentHour >= 0 && currentHour < 12) greeting = "Buongiorno";
+    else if (currentHour >= 12 && currentHour < 16) greeting = "Buon pomeriggio";
+    else greeting = "Buonasera";
   } else if (format === 'english') {
-    if (currentHour >= 0 && currentHour < 1 && currentMinute <= 50) greeting = "Good night";
-    else if (currentHour >= 5 && currentHour < 12) greeting = "Good morning";
-    else if (currentHour >= 12 && currentHour < 13) greeting = "Good lunchtime";
-    else if (currentHour >= 13 && currentHour < 18) greeting = "Good afternoon";
-    else if (currentHour >= 18 && currentHour < 22) greeting = "Good evening";
-    else greeting = "Good night";
+    if (currentHour >= 0 && currentHour < 12) greeting = "Good morning";
+    else if (currentHour >= 12 && currentHour < 16) greeting = "Good afternoon";
+    else greeting = "Good evening";
   } else if (format === 'formal') {
-    if (currentHour >= 0 && currentHour < 1 && currentMinute <= 50) greeting = "Salve, buona notte";
-    else if (currentHour >= 5 && currentHour < 12) greeting = "Salve, buon giorno";
-    else if (currentHour >= 12 && currentHour < 18) greeting = "Salve, buon pomeriggio";
-    else if (currentHour >= 18 && currentHour < 22) greeting = "Salve, buona sera";
-    else greeting = "Salve, buona notte";
+    if (currentHour >= 0 && currentHour < 12) greeting = "Salve, buongiorno";
+    else if (currentHour >= 12 && currentHour < 16) greeting = "Salve, buon pomeriggio";
+    else greeting = "Salve, buonasera";
   } else if (format === 'casual') {
-    if (currentHour >= 0 && currentHour < 1 && currentMinute <= 50) greeting = "Ciao, buonanotte";
-    else if (currentHour >= 5 && currentHour < 12) greeting = "Ciao, buongiorno";
-    else if (currentHour >= 12 && currentHour < 18) greeting = "Ciao, buon pomeriggio";
-    else if (currentHour >= 18 && currentHour < 22) greeting = "Ciao, buonasera";
-    else greeting = "Ciao, buonanotte";
+    if (currentHour >= 0 && currentHour < 12) greeting = "Ciao, buongiorno";
+    else if (currentHour >= 12 && currentHour < 16) greeting = "Ciao, buon pomeriggio";
+    else greeting = "Ciao, buonasera";
   }
   
   return {
@@ -204,7 +194,6 @@ function get_time_greeting(format = 'italian', timezone = 'rome') {
     fullGreeting: `${greeting}! Benvenuti al Jazzamore. Come posso aiutarvi?`
   };
 }
-
 // Generate unique reservation ID
 function generateReservationId() {
   const timestamp = Date.now().toString(36);
