@@ -161,32 +161,47 @@ function getItalianTimeGreeting() {
 function get_time_greeting(format = 'italian', timezone = 'rome') {
   const romeDate = getRomeDate();
   const currentHour = romeDate.getHours();
-  const currentMinute = romeDate.getMinutes();
   
   let greeting = '';
   
   if (format === 'italian') {
-    if (currentHour >= 0 && currentHour < 12) greeting = "Buongiorno";
-    else if (currentHour >= 12 && currentHour < 16) greeting = "Buon pomeriggio";
-    else greeting = "Buonasera";
+    if (currentHour >= 0 && currentHour < 12) {
+      greeting = "Buongiorno";
+    } else if (currentHour >= 12 && currentHour < 16) {
+      greeting = "Buon pomeriggio";
+    } else {
+      greeting = "Buonasera";
+    }
   } else if (format === 'english') {
-    if (currentHour >= 0 && currentHour < 12) greeting = "Good morning";
-    else if (currentHour >= 12 && currentHour < 16) greeting = "Good afternoon";
-    else greeting = "Good evening";
+    if (currentHour >= 0 && currentHour < 12) {
+      greeting = "Good morning";
+    } else if (currentHour >= 12 && currentHour < 16) {
+      greeting = "Good afternoon";
+    } else {
+      greeting = "Good evening";
+    }
   } else if (format === 'formal') {
-    if (currentHour >= 0 && currentHour < 12) greeting = "Salve, buongiorno";
-    else if (currentHour >= 12 && currentHour < 16) greeting = "Salve, buon pomeriggio";
-    else greeting = "Salve, buonasera";
+    if (currentHour >= 0 && currentHour < 12) {
+      greeting = "Salve, buongiorno";
+    } else if (currentHour >= 12 && currentHour < 16) {
+      greeting = "Salve, buon pomeriggio";
+    } else {
+      greeting = "Salve, buonasera";
+    }
   } else if (format === 'casual') {
-    if (currentHour >= 0 && currentHour < 12) greeting = "Ciao, buongiorno";
-    else if (currentHour >= 12 && currentHour < 16) greeting = "Ciao, buon pomeriggio";
-    else greeting = "Ciao, buonasera";
+    if (currentHour >= 0 && currentHour < 12) {
+      greeting = "Ciao, buongiorno";
+    } else if (currentHour >= 12 && currentHour < 16) {
+      greeting = "Ciao, buon pomeriggio";
+    } else {
+      greeting = "Ciao, buonasera";
+    }
   }
   
   return {
     greeting: greeting,
     hour: currentHour,
-    minute: currentMinute,
+    minute: romeDate.getMinutes(),
     timezone: ROME_TIMEZONE,
     localTime: formatInTimeZone(new Date(), ROME_TIMEZONE, 'HH:mm:ss'),
     date: getRomeDateToday(),
@@ -4376,21 +4391,16 @@ app.post('/api/pre-call-init', (req, res) => {
     const currentHour = romeDate.getHours();
     let greetingWord = '';
     let fullGreeting = '';
-// Determine greeting based on Rome time (Italian only for consistency)
-if (currentHour >= 5 && currentHour < 12) {
-  greetingWord = "Buongiorno";
-  fullGreeting = `${greetingWord}, benvenuto da Jazzamore. Sono Maya, come posso aiutarla?`;
-} else if (currentHour >= 12 && currentHour < 18) {
-  greetingWord = "Buon pomeriggio";
-  fullGreeting = `${greetingWord}, benvenuto da Jazzamore. Sono Maya, come posso aiutarla?`;
-} else if (currentHour >= 18 && currentHour < 22) {
-  greetingWord = "Buonasera";
-  fullGreeting = `${greetingWord}, benvenuto da Jazzamore. Sono Maya, come posso aiutarla?`;
-} else {
-  greetingWord = "Buonanotte";
-  fullGreeting = `${greetingWord}, benvenuto da Jazzamore. Sono Maya, come posso aiutarla?`;
-}
-    
+ if (currentHour >= 0 && currentHour < 12) {
+      greetingWord = "Buongiorno";
+      fullGreeting = `${greetingWord}, benvenuto da Jazzamore. Sono Maya, come posso aiutarla?`;
+    } else if (currentHour >= 12 && currentHour < 16) {
+      greetingWord = "Buon pomeriggio";
+      fullGreeting = `${greetingWord}, benvenuto da Jazzamore. Sono Maya, come posso aiutarla?`;
+    } else {
+      greetingWord = "Buonasera";
+      fullGreeting = `${greetingWord}, benvenuto da Jazzamore. Sono Maya, come posso aiutarla?`;
+    }
     console.log(`   Time in Rome: ${romeDate.getHours()}:${romeDate.getMinutes()}`);
     console.log(`   Sending greeting: ${fullGreeting}`);
     
