@@ -4406,15 +4406,20 @@ app.post('/api/pre-call-init', (req, res) => {
     console.log('\n📞 PRE-CALL INIT webhook called');
     console.log('Request body:', JSON.stringify(req.body, null, 2));
     
+    // Extract data from JSON body (Retell sends as JSON)
     const { call_id, timestamp, direction } = req.body;
     
-    // Get the current time in Rome to generate the correct greeting
+    console.log(`   Call ID: ${call_id || 'not provided'}`);
+    console.log(`   Direction: ${direction || 'not provided'}`);
+    console.log(`   Timestamp: ${timestamp || 'not provided'}`);
+    
+    // Get current time in Rome for correct greeting
     const romeDate = getRomeDate();
     const currentHour = romeDate.getHours();
     let greetingWord = '';
     let fullGreeting = '';
 
-    // Determine greeting in Italian (as your agent is multilingual)
+    // Determine greeting based on Rome time (Italian only for consistency)
     if (currentHour >= 5 && currentHour < 12) {
       greetingWord = "Buongiorno";
       fullGreeting = `${greetingWord}, benvenuto da Jazzamore. Sono Maya, come posso aiutarla?`;
@@ -4432,8 +4437,10 @@ app.post('/api/pre-call-init', (req, res) => {
       fullGreeting = `${greetingWord}, benvenuto da Jazzamore. Sono Maya, come posso aiutarla?`;
     }
     
+    console.log(`   Time in Rome: ${romeDate.getHours()}:${romeDate.getMinutes()}`);
     console.log(`   Sending greeting: ${fullGreeting}`);
     
+    // Return response that Retell expects
     res.json({
       success: true,
       greeting: greetingWord,
@@ -4444,10 +4451,15 @@ app.post('/api/pre-call-init', (req, res) => {
     
   } catch (error) {
     console.error('❌ Pre-call init error:', error.message);
+    console.error('Error stack:', error.stack);
+    
+    // Return error response but still provide a fallback greeting
     res.status(500).json({ 
       success: false, 
       error: error.message,
-      message: "Failed to initialize call greeting."
+      fullGreeting: "Buonasera, benvenuto da Jazzamore. Sono Maya, come posso aiutarla?",
+      should_greet_first: true,
+      message: "Failed to initialize call greeting. Using fallback."
     });
   }
 });
