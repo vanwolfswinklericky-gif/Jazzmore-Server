@@ -1747,8 +1747,6 @@ function resolveDate(dateString) {
     return result;
   }
 
-}
-
 // ===== ENHANCED DATE RESOLUTION FUNCTION (FIXED FOR SATURDAY APRIL 4) =====
 function resolveDate(dateString) {
   safeLog('🔍 resolveDate called', { 
