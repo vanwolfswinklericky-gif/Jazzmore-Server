@@ -1584,8 +1584,6 @@ function isValidDayForMonth(day, month, year) {
 function getLastDayOfMonth(year, month) {
   return new Date(year, month, 0).getDate();
 }
-
-// ===== HELPER: Find next occurrence of a specific day of week =====
 // ===== HELPER: Find next occurrence of a specific day of week =====
 function findNextDayOfWeek(dayName, skipCurrentWeek = false) {
   const dayMap = {
@@ -1606,29 +1604,129 @@ function findNextDayOfWeek(dayName, skipCurrentWeek = false) {
   
   let daysToAdd = (targetDayNum - todayDayNum + 7) % 7;
   
-  // If skipCurrentWeek is true OR the phrase includes "next", add 7 days
-  if (skipCurrentWeek || daysToAdd === 0) {
+  // If skipCurrentWeek is true, add 7 days to get to next week
+  if (skipCurrentWeek) {
     daysToAdd = daysToAdd === 0 ? 7 : daysToAdd + 7;
+  } else {
+    // If daysToAdd is 0 (today), default to 7 days from now
+    if (daysToAdd === 0) {
+      daysToAdd = 7;
+    }
   }
   
   const targetDate = addDays(today, daysToAdd);
   return formatInTimeZone(targetDate, ROME_TIMEZONE, 'dd-MM-yyyy');
 }
 
-// Update the resolveDate function to detect "next week [day]"
+// ===== COMPLETE ENHANCED DATE RESOLUTION FUNCTION =====
 function resolveDate(dateString) {
-  // ... existing code ...
+  safeLog('🔍 resolveDate called', { 
+    input: dateString,
+    timestamp: new Date().toISOString(),
+    romeToday: getRomeDateToday()
+  });
   
-  // Add this pattern BEFORE the regular day name detection:
+  const cleanedDate = dateString.toLowerCase().trim();
+  const today = getRomeDate();
+  const todayStr = getRomeDateToday();
   
-  // ===== "NEXT WEEK [DAY]" pattern =====
-  const nextWeekDayMatch = cleanedDate.match(/^next\s+week\s+(monday|tuesday|wednesday|thursday|friday|saturday|sunday)$/i);
+  // ===== TODAY / OGGI =====
+  if (cleanedDate === 'today' || cleanedDate === 'oggi') {
+    const result = todayStr;
+    safeLog('✅ "today" resolved', { input: dateString, result });
+    return result;
+  }
+  
+  // ===== TOMORROW / DOMANI =====
+  if (cleanedDate === 'tomorrow' || cleanedDate === 'domani') {
+    const tomorrow = addDays(today, 1);
+    const result = formatInTimeZone(tomorrow, ROME_TIMEZONE, 'dd-MM-yyyy');
+    safeLog('✅ "tomorrow" resolved', { input: dateString, result });
+    return result;
+  }
+  
+  // ===== "NEXT WEEK [DAY]" pattern (e.g., "next week wednesday") =====
+  const nextWeekDayMatch = cleanedDate.match(/next\s+week\s+(monday|tuesday|wednesday|thursday|friday|saturday|sunday)/i);
   if (nextWeekDayMatch) {
     const dayName = nextWeekDayMatch[1].toLowerCase();
-    const result = findNextDayOfWeek(dayName, true); // true = skip current week
+    const result = findNextDayOfWeek(dayName, true);
     safeLog('✅ "next week [day]" resolved', { input: dateString, dayName, result });
     return result;
   }
+  
+  // ===== "NEXT [DAY]" pattern (e.g., "next wednesday") =====
+  const nextDayMatch = cleanedDate.match(/^next\s+(monday|tuesday|wednesday|thursday|friday|saturday|sunday)$/i);
+  if (nextDayMatch) {
+    const dayName = nextDayMatch[1].toLowerCase();
+    const result = findNextDayOfWeek(dayName, false);
+    safeLog('✅ "next [day]" resolved', { input: dateString, dayName, result });
+    return result;
+  }
+  
+  // ===== "THIS [DAY]" pattern (e.g., "this wednesday") =====
+  const thisDayMatch = cleanedDate.match(/^this\s+(monday|tuesday|wednesday|thursday|friday|saturday|sunday)$/i);
+  if (thisDayMatch) {
+    const dayName = thisDayMatch[1].toLowerCase();
+    const result = findNextDayOfWeek(dayName, false);
+    safeLog('✅ "this [day]" resolved', { input: dateString, dayName, result });
+    return result;
+  }
+  
+  // ===== PROSSIMO + DAY NAME (Italian) =====
+  const prossimoMatch = cleanedDate.match(/^prossim[oa]\s+(lunedì|lunedi|martedì|martedi|mercoledì|mercoledi|giovedì|giovedi|venerdì|venerdi|sabato|domenica)$/i);
+  if (prossimoMatch) {
+    let dayName = prossimoMatch[1].toLowerCase();
+    const dayMap = {
+      'lunedì': 'monday', 'lunedi': 'monday',
+      'martedì': 'tuesday', 'martedi': 'tuesday',
+      'mercoledì': 'wednesday', 'mercoledi': 'wednesday',
+      'giovedì': 'thursday', 'giovedi': 'thursday',
+      'venerdì': 'friday', 'venerdi': 'friday',
+      'sabato': 'saturday',
+      'domenica': 'sunday'
+    };
+    const englishDay = dayMap[dayName] || dayName;
+    const result = findNextDayOfWeek(englishDay, true);
+    safeLog('✅ "prossimo [day]" resolved', { input: dateString, dayName: englishDay, result });
+    return result;
+  }
+  
+  // ===== DAY NAME ONLY (e.g., "wednesday") =====
+  const dayNameMap = {
+    'sunday': 0, 'monday': 1, 'tuesday': 2, 'wednesday': 3,
+    'thursday': 4, 'friday': 5, 'saturday': 6,
+    'domenica': 0, 'lunedì': 1, 'lunedi': 1, 'martedì': 2, 'martedi': 2,
+    'mercoledì': 3, 'mercoledi': 3, 'giovedì': 4, 'giovedi': 4, 
+    'venerdì': 5, 'venerdi': 5, 'sabato': 6
+  };
+  
+  const targetDay = dayNameMap[cleanedDate];
+  if (targetDay !== undefined) {
+    const result = findNextDayOfWeek(cleanedDate, false);
+    safeLog('✅ Day name resolved to next occurrence', { input: dateString, result });
+    return result;
+  }
+  
+  // ===== Already in DD-MM-YYYY format =====
+  if (cleanedDate.match(/^\d{2}-\d{2}-\d{4}$/)) {
+    safeLog('✅ Already in DD-MM-YYYY format', { input: dateString, result: cleanedDate });
+    return cleanedDate;
+  }
+  
+  // ===== Already in YYYY-MM-DD format =====
+  if (cleanedDate.match(/^\d{4}-\d{2}-\d{2}$/)) {
+    const [year, month, day] = cleanedDate.split('-');
+    const result = `${day}-${month}-${year}`;
+    safeLog('✅ Converted from YYYY-MM-DD to DD-MM-YYYY', { input: dateString, result });
+    return result;
+  }
+  
+  // ===== FALLBACK: Default to tomorrow =====
+  const tomorrow = addDays(today, 1);
+  const result = formatInTimeZone(tomorrow, ROME_TIMEZONE, 'dd-MM-yyyy');
+  safeLog('⚠️ Defaulting to tomorrow', { input: dateString, result });
+  return result;
+}
   
   // Italian version: "mercoledì della prossima settimana"
   const nextWeekItalianMatch = cleanedDate.match(/(lunedì|lunedi|martedì|martedi|mercoledì|mercoledi|giovedì|giovedi|venerdì|venerdi|sabato|domenica)\s+della\s+prossima\s+settimana/i);
