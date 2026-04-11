@@ -1658,32 +1658,56 @@ function resolveDate(dateString) {
       daysToAdd = daysToAdd === 0 ? 7 : daysToAdd + 7;
     } else {
       if (daysToAdd === 0) daysToAdd = 7;
-    }
+    }// ===== Helper function for day calculations =====
+function getDaysUntilNext(dayName, isNextWeek = false) {
+  const dayNumbers = {
+    'monday': 1, 'tuesday': 2, 'wednesday': 3, 'thursday': 4,
+    'friday': 5, 'saturday': 6, 'sunday': 0
+  };
+  
+  const targetDay = dayNumbers[dayName.toLowerCase()];
+  const currentDay = today.getDay();
+  
+  // Calculate days until the next occurrence of target day
+  let daysToAdd = (targetDay - currentDay + 7) % 7;
+  
+  // If daysToAdd is 0 (same day), default to 7 days from now
+  if (daysToAdd === 0) {
+    daysToAdd = 7;
+  }
+  
+  // For "next week", we want the SAME as "next" - no extra days
+  // The phrase "next week Wednesday" means the upcoming Wednesday
+  // NOT Wednesday of the week after next
+  // So isNextWeek parameter is IGNORED - we always return the next occurrence
+  
+  return daysToAdd;
+}
     
     return daysToAdd;
   }
   
   // ===== "NEXT WEEK [DAY]" pattern =====
   const nextWeekDayMatch = cleanedDate.match(/next\s+week\s+(monday|tuesday|wednesday|thursday|friday|saturday|sunday)/i);
-  if (nextWeekDayMatch) {
-    const dayName = nextWeekDayMatch[1].toLowerCase();
-    const daysToAdd = getDaysUntilNext(dayName, true);
-    const targetDate = addDays(today, daysToAdd);
-    const result = formatInTimeZone(targetDate, ROME_TIMEZONE, 'dd-MM-yyyy');
-    safeLog('✅ "next week [day]" resolved', { input: dateString, dayName, result });
-    return result;
-  }
-  
+if (nextWeekDayMatch) {
+  const dayName = nextWeekDayMatch[1].toLowerCase();
+  const daysToAdd = getDaysUntilNext(dayName, false); // false = don't add extra week
+  const targetDate = addDays(today, daysToAdd);
+  const result = formatInTimeZone(targetDate, ROME_TIMEZONE, 'dd-MM-yyyy');
+  safeLog('✅ "next week [day]" resolved', { input: dateString, dayName, result });
+  return result;
+}
+
   // ===== "NEXT [DAY]" pattern =====
   const nextDayMatch = cleanedDate.match(/^next\s+(monday|tuesday|wednesday|thursday|friday|saturday|sunday)$/i);
-  if (nextDayMatch) {
-    const dayName = nextDayMatch[1].toLowerCase();
-    const daysToAdd = getDaysUntilNext(dayName, false);
-    const targetDate = addDays(today, daysToAdd);
-    const result = formatInTimeZone(targetDate, ROME_TIMEZONE, 'dd-MM-yyyy');
-    safeLog('✅ "next [day]" resolved', { input: dateString, dayName, result });
-    return result;
-  }
+if (nextDayMatch) {
+  const dayName = nextDayMatch[1].toLowerCase();
+  const daysToAdd = getDaysUntilNext(dayName, false);
+  const targetDate = addDays(today, daysToAdd);
+  const result = formatInTimeZone(targetDate, ROME_TIMEZONE, 'dd-MM-yyyy');
+  safeLog('✅ "next [day]" resolved', { input: dateString, dayName, result });
+  return result;
+}
   
   // ===== Italian: "mercoledì della prossima settimana" =====
   const nextWeekItalianMatch = cleanedDate.match(/(lunedì|lunedi|martedì|martedi|mercoledì|mercoledi|giovedì|giovedi|venerdì|venerdi|sabato|domenica)\s+della\s+prossima\s+settimana/i);
