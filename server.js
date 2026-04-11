@@ -4358,6 +4358,125 @@ app.post('/api/reservations', async (req, res) => {
     });
   }
 });
+
+
+// ===== SINGLE DATE - POST (For Retell Agent) =====
+app.post('/api/calendar/date', async (req, res) => {
+  try {
+    const date = req.body.date || req.body.args?.date;
+    
+    if (!date) {
+      return res.status(400).json({
+        success: false,
+        error: 'Missing date parameter',
+        message: 'Please provide a date'
+      });
+    }
+    
+    console.log(`📅 POST /api/calendar/date called with date: ${date}`);
+    
+    const result = await get_events_by_date(date);
+    
+    res.json({
+      success: result.success,
+      date: result.resolvedDate,
+      originalDate: date,
+      eventCount: result.events?.length || 0,
+      events: result.events || [],
+      message: result.message,
+      source: result.source
+    });
+    
+  } catch (error) {
+    console.error('❌ Error in POST /api/calendar/date:', error.message);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to fetch events',
+      message: error.message
+    });
+  }
+});
+
+// ===== FULL WEEK - POST (For Retell Agent) =====
+app.post('/api/calendar/week', async (req, res) => {
+  try {
+    const startDate = req.body.startDate || req.body.args?.startDate || req.body.date || req.body.args?.date;
+    
+    if (!startDate) {
+      return res.status(400).json({
+        success: false,
+        error: 'Missing startDate parameter',
+        message: 'Please provide a start date'
+      });
+    }
+    
+    console.log(`📅 POST /api/calendar/week called with startDate: ${startDate}`);
+    
+    const result = await get_events_for_week(startDate);
+    
+    res.json({
+      success: result.success,
+      startDate: result.startDate,
+      endDate: result.endDate,
+      totalEvents: result.totalEvents || 0,
+      daysWithEvents: result.daysWithEvents || 0,
+      soldOutEvents: result.soldOutEvents || 0,
+      weekEvents: result.weekEvents || [],
+      message: result.message,
+      source: result.source
+    });
+    
+  } catch (error) {
+    console.error('❌ Error in POST /api/calendar/week:', error.message);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to fetch week events',
+      message: error.message
+    });
+  }
+});
+
+// ===== DATE RANGE - POST (For Retell Agent) =====
+app.post('/api/calendar/range', async (req, res) => {
+  try {
+    const startDate = req.body.startDate || req.body.args?.startDate;
+    const endDate = req.body.endDate || req.body.args?.endDate;
+    
+    if (!startDate || !endDate) {
+      return res.status(400).json({
+        success: false,
+        error: 'Missing startDate or endDate parameter',
+        message: 'Please provide both startDate and endDate'
+      });
+    }
+    
+    console.log(`📅 POST /api/calendar/range called with startDate: ${startDate}, endDate: ${endDate}`);
+    
+    const result = await get_events_for_date_range(startDate, endDate);
+    
+    res.json({
+      success: result.success,
+      startDate: result.startDate,
+      endDate: result.endDate,
+      totalDays: result.totalDays || 0,
+      totalEvents: result.totalEvents || 0,
+      daysWithEvents: result.daysWithEvents || 0,
+      soldOutEvents: result.soldOutEvents || 0,
+      rangeEvents: result.rangeEvents || [],
+      message: result.message,
+      source: result.source
+    });
+    
+  } catch (error) {
+    console.error('❌ Error in POST /api/calendar/range:', error.message);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to fetch range events',
+      message: error.message
+    });
+  }
+});
+
 // ============================================
 // ===== PRE-CALL WEBHOOK - FORCES GREETING =====
 // ============================================
