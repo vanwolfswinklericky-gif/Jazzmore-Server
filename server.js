@@ -580,54 +580,87 @@ function extractPhoneFromTranscript(transcript) {
   };
   
   // Compound Italian numbers (e.g., ventuno = 21, trentadue = 32)
-  const compoundMap = {
-    'ventuno': '21', 'ventidue': '22', 'ventitre': '23', 'ventiquattro': '24',
-    'venticinque': '25', 'ventisei': '26', 'ventisette': '27', 'ventotto': '28',
-    'ventinove': '29', 'trentuno': '31', 'trentadue': '32', 'trentatre': '33',
-    'trentaquattro': '34', 'trentacinque': '35', 'trentasei': '36', 'trentasette': '37',
-    'trentotto': '38', 'trentanove': '39', 'quarantuno': '41', 'quarantadue': '42',
-    'quarantatre': '43', 'quarantaquattro': '44', 'quarantacinque': '45', 'quarantasei': '46',
-    'quarantasette': '47', 'quarantotto': '48', 'quarantanove': '49', 'cinquantuno': '51',
-    'cinquantadue': '52', 'cinquantatre': '53', 'cinquantaquattro': '54', 'cinquantacinque': '55',
-    'cinquantasei': '56', 'cinquantasette': '57', 'cinquantotto': '58', 'cinquantanove': '59',
-    'sessantuno': '61', 'sessantadue': '62', 'sessantatre': '63', 'sessantaquattro': '64',
-    'sessantacinque': '65', 'sessantasei': '66', 'sessantasette': '67', 'sessantotto': '68',
-    'sessantanove': '69', 'settantuno': '71', 'settantadue': '72', 'settantatre': '73',
-    'settantaquattro': '74', 'settantacinque': '75', 'settantasei': '76', 'settantasette': '77',
-    'settantotto': '78', 'settantanove': '79', 'ottantuno': '81', 'ottantadue': '82',
-    'ottantatre': '83', 'ottantaquattro': '84', 'ottantacinque': '85', 'ottantasei': '86',
-    'ottantasette': '87', 'ottantotto': '88', 'ottantanove': '89', 'novantuno': '91',
-    'novantadue': '92', 'novantatre': '93', 'novantaquattro': '94', 'novantacinque': '95',
-    'novantasei': '96', 'novantasette': '97', 'novantotto': '98', 'novantanove': '99'
-    'centoventi': 120, 'centotrenta': 130, 'centoquaranta': 140,
-  'centocinquanta': 150, 'centosessanta': 160, 'centosettanta': 170,
-  'centottanta': 180, 'centonovanta': 190,
-  'duecentoventi': 220, 'duecentotrenta': 230, 'duecentoquaranta': 240,
-  'duecentocinquanta': 250, 'duecentosessanta': 260, 'duecentosettanta': 270,
-  'duecentottanta': 280, 'duecentonovanta': 290,
-  'trecentoventi': 320, 'trecentotrenta': 330, 'trecentoquaranta': 340,
-  'trecentocinquanta': 350, 'trecentosessanta': 360, 'trecentosettanta': 370,
-  'trecentottanta': 380, 'trecentonovanta': 390,
-  'quattrocentoventi': 420, 'quattrocentotrenta': 430, 'quattrocentoquaranta': 440,
-  'quattrocentocinquanta': 450, 'quattrocentosessanta': 460, 'quattrocentosettanta': 470,
-  'quattrocentottanta': 480, 'quattrocentonovanta': 490,
-  'cinquecentoventi': 520, 'cinquecentotrenta': 530, 'cinquecentoquaranta': 540,
-  'cinquecentocinquanta': 550, 'cinquecentosessanta': 560, 'cinquecentosettanta': 570,
-  'cinquecentottanta': 580, 'cinquecentonovanta': 590,
-  'seicentoventi': 620, 'seicentotrenta': 630, 'seicentoquaranta': 640,
-  'seicentocinquanta': 650, 'seicentosessanta': 660, 'seicentosettanta': 670,
-  'seicentottanta': 680, 'seicentonovanta': 690,
-  'settecentoventi': 720, 'settecentotrenta': 730, 'settecentoquaranta': 740,
-  'settecentocinquanta': 750, 'settecentosessanta': 760, 'settecentosettanta': 770,
-  'settecentottanta': 780, 'settecentonovanta': 790,
-  'ottocentoventi': 820, 'ottocentotrenta': 830, 'ottocentoquaranta': 840,
-  'ottocentocinquanta': 850, 'ottocentosessanta': 860, 'ottocentosettanta': 870,
-  'ottocentottanta': 880, 'ottocentonovanta': 890,
-  'novecentoventi': 920, 'novecentotrenta': 930, 'novecentoquaranta': 940,
-  'novecentocinquanta': 950, 'novecentosessanta': 960, 'novecentosettanta': 970,
-  'novecentottanta': 980, 'novecentonovanta': 990
-  };
+const compoundMap = {
+  // 21-99
+  'ventuno': '21', 'ventidue': '22', 'ventitre': '23', 'ventiquattro': '24',
+  'venticinque': '25', 'ventisei': '26', 'ventisette': '27', 'ventotto': '28',
+  'ventinove': '29', 'trentuno': '31', 'trentadue': '32', 'trentatre': '33',
+  'trentaquattro': '34', 'trentacinque': '35', 'trentasei': '36', 'trentasette': '37',
+  'trentotto': '38', 'trentanove': '39', 'quarantuno': '41', 'quarantadue': '42',
+  'quarantatre': '43', 'quarantaquattro': '44', 'quarantacinque': '45', 'quarantasei': '46',
+  'quarantasette': '47', 'quarantotto': '48', 'quarantanove': '49', 'cinquantuno': '51',
+  'cinquantadue': '52', 'cinquantatre': '53', 'cinquantaquattro': '54', 'cinquantacinque': '55',
+  'cinquantasei': '56', 'cinquantasette': '57', 'cinquantotto': '58', 'cinquantanove': '59',
+  'sessantuno': '61', 'sessantadue': '62', 'sessantatre': '63', 'sessantaquattro': '64',
+  'sessantacinque': '65', 'sessantasei': '66', 'sessantasette': '67', 'sessantotto': '68',
+  'sessantanove': '69', 'settantuno': '71', 'settantadue': '72', 'settantatre': '73',
+  'settantaquattro': '74', 'settantacinque': '75', 'settantasei': '76', 'settantasette': '77',
+  'settantotto': '78', 'settantanove': '79', 'ottantuno': '81', 'ottantadue': '82',
+  'ottantatre': '83', 'ottantaquattro': '84', 'ottantacinque': '85', 'ottantasei': '86',
+  'ottantasette': '87', 'ottantotto': '88', 'ottantanove': '89', 'novantuno': '91',
+  'novantadue': '92', 'novantatre': '93', 'novantaquattro': '94', 'novantacinque': '95',
+  'novantasei': '96', 'novantasette': '97', 'novantotto': '98', 'novantanove': '99',
   
+  // 100-199 (cento + number)
+  'cento': '100', 'centouno': '101', 'centodue': '102', 'centotre': '103',
+  'centoquattro': '104', 'centocinque': '105', 'centosei': '106', 'centosette': '107',
+  'centotto': '108', 'centonove': '109', 'centodieci': '110', 'centoundici': '111',
+  'centododici': '112', 'centotredici': '113', 'centoquattordici': '114', 'centoquindici': '115',
+  'centosedici': '116', 'centodiciassette': '117', 'centodiciotto': '118', 'centodiciannove': '119',
+  'centoventi': '120', 'centotrenta': '130', 'centoquaranta': '140', 'centocinquanta': '150',
+  'centosessanta': '160', 'centosettanta': '170', 'centottanta': '180', 'centonovanta': '190',
+  
+  // 200-299
+  'duecento': '200', 'duecentouno': '201', 'duecentodue': '202', 'duecentotre': '203',
+  'duecentoquattro': '204', 'duecentocinque': '205', 'duecentosei': '206', 'duecentosette': '207',
+  'duecentotto': '208', 'duecentonove': '209', 'duecentodieci': '210', 'duecentoundici': '211',
+  'duecentododici': '212', 'duecentotredici': '213', 'duecentoquattordici': '214', 'duecentoquindici': '215',
+  'duecentosedici': '216', 'duecentodiciassette': '217', 'duecentodiciotto': '218', 'duecentodiciannove': '219',
+  'duecentoventi': '220', 'duecentotrenta': '230', 'duecentoquaranta': '240', 'duecentocinquanta': '250',
+  'duecentosessanta': '260', 'duecentosettanta': '270', 'duecentottanta': '280', 'duecentonovanta': '290',
+  
+  // 300-399
+  'trecento': '300', 'trecentoventi': '320', 'trecentotrenta': '330', 'trecentoquaranta': '340',
+  'trecentocinquanta': '350', 'trecentosessanta': '360', 'trecentosettanta': '370', 'trecentottanta': '380',
+  'trecentonovanta': '390',
+  
+  // 400-499
+  'quattrocento': '400', 'quattrocentoventi': '420', 'quattrocentotrenta': '430', 'quattrocentoquaranta': '440',
+  'quattrocentocinquanta': '450', 'quattrocentosessanta': '460', 'quattrocentosettanta': '470', 'quattrocentottanta': '480',
+  'quattrocentonovanta': '490',
+  
+  // 500-599
+  'cinquecento': '500', 'cinquecentoventi': '520', 'cinquecentotrenta': '530', 'cinquecentoquaranta': '540',
+  'cinquecentocinquanta': '550', 'cinquecentosessanta': '560', 'cinquecentosettanta': '570', 'cinquecentottanta': '580',
+  'cinquecentonovanta': '590',
+  
+  // 600-699
+  'seicento': '600', 'seicentoventi': '620', 'seicentotrenta': '630', 'seicentoquaranta': '640',
+  'seicentocinquanta': '650', 'seicentosessanta': '660', 'seicentosettanta': '670', 'seicentottanta': '680',
+  'seicentonovanta': '690',
+  
+  // 700-799
+  'settecento': '700', 'settecentoventi': '720', 'settecentotrenta': '730', 'settecentoquaranta': '740',
+  'settecentocinquanta': '750', 'settecentosessanta': '760', 'settecentosettanta': '770', 'settecentottanta': '780',
+  'settecentonovanta': '790',
+  
+  // 800-899
+  'ottocento': '800', 'ottocentoventi': '820', 'ottocentotrenta': '830', 'ottocentoquaranta': '840',
+  'ottocentocinquanta': '850', 'ottocentosessanta': '860', 'ottocentosettanta': '870', 'ottocentottanta': '880',
+  'ottocentonovanta': '890',
+  
+  // 900-999
+  'novecento': '900', 'novecentoventi': '920', 'novecentotrenta': '930', 'novecentoquaranta': '940',
+  'novecentocinquanta': '950', 'novecentosessanta': '960', 'novecentosettanta': '970', 'novecentottanta': '980',
+  'novecentonovanta': '990',
+  
+  // Thousands
+  'mille': '1000', 'millecento': '1100', 'milleduecento': '1200', 'milletrecento': '1300',
+  'millequattrocento': '1400', 'millecinquecento': '1500', 'milleseicento': '1600', 'millesettecento': '1700',
+  'milleottocento': '1800', 'millenovecento': '1900', 'duemila': '2000', 'tremila': '3000',
+  'quattromila': '4000', 'cinquemila': '5000', 'seimila': '6000', 'settemila': '7000',
+  'ottomila': '8000', 'novemila': '9000', 'diecimila': '10000'
+};
   // Italian confirmation phrases (expanded)
   const confirmationPhrases = [
     'sì', 'si', 'yes', 'yep', 'yeah', 'correct', 'ok', 'okay', 'va bene',
