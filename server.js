@@ -4418,24 +4418,20 @@ app.post('/api/pre-call-init', (req, res) => {
     const currentHour = romeDate.getHours();
     let greetingWord = '';
     let fullGreeting = '';
-
-    // Determine greeting based on Rome time (Italian only for consistency)
-    if (currentHour >= 5 && currentHour < 12) {
-      greetingWord = "Buongiorno";
-      fullGreeting = `${greetingWord}, benvenuto da Jazzamore. Sono Maya, come posso aiutarla?`;
-    } else if (currentHour >= 12 && currentHour < 13) {
-      greetingWord = "Buon pranzo";
-      fullGreeting = `${greetingWord}, benvenuto da Jazzamore. Sono Maya, come posso aiutarla?`;
-    } else if (currentHour >= 13 && currentHour < 18) {
-      greetingWord = "Buon pomeriggio";
-      fullGreeting = `${greetingWord}, benvenuto da Jazzamore. Sono Maya, come posso aiutarla?`;
-    } else if (currentHour >= 18 && currentHour < 22) {
-      greetingWord = "Buonasera";
-      fullGreeting = `${greetingWord}, benvenuto da Jazzamore. Sono Maya, come posso aiutarla?`;
-    } else {
-      greetingWord = "Buonanotte";
-      fullGreeting = `${greetingWord}, benvenuto da Jazzamore. Sono Maya, come posso aiutarla?`;
-    }
+// Determine greeting based on Rome time (Italian only for consistency)
+if (currentHour >= 5 && currentHour < 12) {
+  greetingWord = "Buongiorno";
+  fullGreeting = `${greetingWord}, benvenuto da Jazzamore. Sono Maya, come posso aiutarla?`;
+} else if (currentHour >= 12 && currentHour < 18) {
+  greetingWord = "Buon pomeriggio";
+  fullGreeting = `${greetingWord}, benvenuto da Jazzamore. Sono Maya, come posso aiutarla?`;
+} else if (currentHour >= 18 && currentHour < 22) {
+  greetingWord = "Buonasera";
+  fullGreeting = `${greetingWord}, benvenuto da Jazzamore. Sono Maya, come posso aiutarla?`;
+} else {
+  greetingWord = "Buonanotte";
+  fullGreeting = `${greetingWord}, benvenuto da Jazzamore. Sono Maya, come posso aiutarla?`;
+}
     
     console.log(`   Time in Rome: ${romeDate.getHours()}:${romeDate.getMinutes()}`);
     console.log(`   Sending greeting: ${fullGreeting}`);
