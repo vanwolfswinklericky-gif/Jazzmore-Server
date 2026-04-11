@@ -599,6 +599,33 @@ function extractPhoneFromTranscript(transcript) {
     'ottantasette': '87', 'ottantotto': '88', 'ottantanove': '89', 'novantuno': '91',
     'novantadue': '92', 'novantatre': '93', 'novantaquattro': '94', 'novantacinque': '95',
     'novantasei': '96', 'novantasette': '97', 'novantotto': '98', 'novantanove': '99'
+    'centoventi': 120, 'centotrenta': 130, 'centoquaranta': 140,
+  'centocinquanta': 150, 'centosessanta': 160, 'centosettanta': 170,
+  'centottanta': 180, 'centonovanta': 190,
+  'duecentoventi': 220, 'duecentotrenta': 230, 'duecentoquaranta': 240,
+  'duecentocinquanta': 250, 'duecentosessanta': 260, 'duecentosettanta': 270,
+  'duecentottanta': 280, 'duecentonovanta': 290,
+  'trecentoventi': 320, 'trecentotrenta': 330, 'trecentoquaranta': 340,
+  'trecentocinquanta': 350, 'trecentosessanta': 360, 'trecentosettanta': 370,
+  'trecentottanta': 380, 'trecentonovanta': 390,
+  'quattrocentoventi': 420, 'quattrocentotrenta': 430, 'quattrocentoquaranta': 440,
+  'quattrocentocinquanta': 450, 'quattrocentosessanta': 460, 'quattrocentosettanta': 470,
+  'quattrocentottanta': 480, 'quattrocentonovanta': 490,
+  'cinquecentoventi': 520, 'cinquecentotrenta': 530, 'cinquecentoquaranta': 540,
+  'cinquecentocinquanta': 550, 'cinquecentosessanta': 560, 'cinquecentosettanta': 570,
+  'cinquecentottanta': 580, 'cinquecentonovanta': 590,
+  'seicentoventi': 620, 'seicentotrenta': 630, 'seicentoquaranta': 640,
+  'seicentocinquanta': 650, 'seicentosessanta': 660, 'seicentosettanta': 670,
+  'seicentottanta': 680, 'seicentonovanta': 690,
+  'settecentoventi': 720, 'settecentotrenta': 730, 'settecentoquaranta': 740,
+  'settecentocinquanta': 750, 'settecentosessanta': 760, 'settecentosettanta': 770,
+  'settecentottanta': 780, 'settecentonovanta': 790,
+  'ottocentoventi': 820, 'ottocentotrenta': 830, 'ottocentoquaranta': 840,
+  'ottocentocinquanta': 850, 'ottocentosessanta': 860, 'ottocentosettanta': 870,
+  'ottocentottanta': 880, 'ottocentonovanta': 890,
+  'novecentoventi': 920, 'novecentotrenta': 930, 'novecentoquaranta': 940,
+  'novecentocinquanta': 950, 'novecentosessanta': 960, 'novecentosettanta': 970,
+  'novecentottanta': 980, 'novecentonovanta': 990
   };
   
   // Italian confirmation phrases (expanded)
@@ -610,12 +637,79 @@ function extractPhoneFromTranscript(transcript) {
   ];
   
   /**
+   * Parse complex Italian numbers like "tremila duecento dodici" (3212)
+   */
+  function parseItalianNumber(text) {
+    const wordValues = {
+      // Units
+      'uno': 1, 'due': 2, 'tre': 3, 'quattro': 4, 'cinque': 5,
+      'sei': 6, 'sette': 7, 'otto': 8, 'nove': 9,
+      // Teens
+      'dieci': 10, 'undici': 11, 'dodici': 12, 'tredici': 13,
+      'quattordici': 14, 'quindici': 15, 'sedici': 16, 'diciassette': 17,
+      'diciotto': 18, 'diciannove': 19,
+      // Tens
+      'venti': 20, 'trenta': 30, 'quaranta': 40, 'cinquanta': 50,
+      'sessanta': 60, 'settanta': 70, 'ottanta': 80, 'novanta': 90,
+      // Hundreds
+      'cento': 100, 'duecento': 200, 'trecento': 300, 'quattrocento': 400,
+      'cinquecento': 500, 'seicento': 600, 'settecento': 700, 'ottocento': 800,
+      'novecento': 900,
+      // Thousands
+      'mille': 1000, 'duemila': 2000, 'tremila': 3000, 'quattromila': 4000,
+      'cinquemila': 5000, 'seimila': 6000, 'settemila': 7000, 'ottomila': 8000,
+      'novemila': 9000
+    };
+    
+    // First check for compound words in compoundMap
+    for (const [word, value] of Object.entries(compoundMap)) {
+      if (text.toLowerCase().includes(word)) {
+        return value;
+      }
+    }
+    
+    // Split into words
+    const words = text.toLowerCase().trim().split(/\s+/);
+    let total = 0;
+    let current = 0;
+    
+    for (const word of words) {
+      const value = wordValues[word];
+      if (value === undefined) continue;
+      
+      // Handle thousands
+      if (value >= 1000) {
+        total += value * (current || 1);
+        current = 0;
+      }
+      // Handle hundreds
+      else if (value >= 100) {
+        current = current * value;
+      }
+      // Handle tens and units
+      else {
+        current += value;
+      }
+    }
+    
+    total += current;
+    return total > 0 ? total.toString() : null;
+  }
+  
+  /**
    * Convert any text to digits only, handling Italian number words comprehensively
    */
   const convertToDigits = (text) => {
     if (!text) return '';
     
     debugLog('Converting text to digits', { original: text });
+    
+    // FIRST: Try parsing as a complex Italian number (e.g., "tremila duecento dodici")
+    const parsedNumber = parseItalianNumber(text);
+    if (parsedNumber) {
+      debugLog('Parsed as complex Italian number', { original: text, result: parsedNumber });
+      return parsedNumber;
+    }
     
     // Remove common punctuation and normalize spaces
     let cleanText = text.toLowerCase()
