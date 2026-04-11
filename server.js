@@ -1586,6 +1586,7 @@ function getLastDayOfMonth(year, month) {
 }
 
 // ===== HELPER: Find next occurrence of a specific day of week =====
+// ===== HELPER: Find next occurrence of a specific day of week =====
 function findNextDayOfWeek(dayName, skipCurrentWeek = false) {
   const dayMap = {
     'sunday': 0, 'monday': 1, 'tuesday': 2, 'wednesday': 3,
@@ -1595,7 +1596,7 @@ function findNextDayOfWeek(dayName, skipCurrentWeek = false) {
     'venerdì': 5, 'venerdi': 5, 'sabato': 6
   };
   
-  const targetDayNum = dayMap[dayName];
+  const targetDayNum = dayMap[dayName.toLowerCase()];
   if (targetDayNum === undefined) {
     throw new Error(`Unknown day name: ${dayName}`);
   }
@@ -1605,12 +1606,49 @@ function findNextDayOfWeek(dayName, skipCurrentWeek = false) {
   
   let daysToAdd = (targetDayNum - todayDayNum + 7) % 7;
   
-  if (daysToAdd === 0 && skipCurrentWeek) {
-    daysToAdd = 7;
+  // If skipCurrentWeek is true OR the phrase includes "next", add 7 days
+  if (skipCurrentWeek || daysToAdd === 0) {
+    daysToAdd = daysToAdd === 0 ? 7 : daysToAdd + 7;
   }
   
   const targetDate = addDays(today, daysToAdd);
   return formatInTimeZone(targetDate, ROME_TIMEZONE, 'dd-MM-yyyy');
+}
+
+// Update the resolveDate function to detect "next week [day]"
+function resolveDate(dateString) {
+  // ... existing code ...
+  
+  // Add this pattern BEFORE the regular day name detection:
+  
+  // ===== "NEXT WEEK [DAY]" pattern =====
+  const nextWeekDayMatch = cleanedDate.match(/^next\s+week\s+(monday|tuesday|wednesday|thursday|friday|saturday|sunday)$/i);
+  if (nextWeekDayMatch) {
+    const dayName = nextWeekDayMatch[1].toLowerCase();
+    const result = findNextDayOfWeek(dayName, true); // true = skip current week
+    safeLog('✅ "next week [day]" resolved', { input: dateString, dayName, result });
+    return result;
+  }
+  
+  // Italian version: "mercoledì della prossima settimana"
+  const nextWeekItalianMatch = cleanedDate.match(/(lunedì|lunedi|martedì|martedi|mercoledì|mercoledi|giovedì|giovedi|venerdì|venerdi|sabato|domenica)\s+della\s+prossima\s+settimana/i);
+  if (nextWeekItalianMatch) {
+    let dayName = nextWeekItalianMatch[1].toLowerCase();
+    const dayMap = {
+      'lunedì': 'monday', 'lunedi': 'monday',
+      'martedì': 'tuesday', 'martedi': 'tuesday',
+      'mercoledì': 'wednesday', 'mercoledi': 'wednesday',
+      'giovedì': 'thursday', 'giovedi': 'thursday',
+      'venerdì': 'friday', 'venerdi': 'friday',
+      'sabato': 'saturday',
+      'domenica': 'sunday'
+    };
+    const englishDay = dayMap[dayName] || dayName;
+    const result = findNextDayOfWeek(englishDay, true);
+    safeLog('✅ "day della prossima settimana" resolved', { input: dateString, dayName: englishDay, result });
+    return result;
+  }
+
 }
 
 // ===== ENHANCED DATE RESOLUTION FUNCTION (FIXED FOR SATURDAY APRIL 4) =====
