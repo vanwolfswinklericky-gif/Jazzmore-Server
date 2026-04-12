@@ -369,7 +369,7 @@ function getClosedDayResponse(dateInput) {
  * Check if Jazzamore is closed on a given date
  * Returns: { isClosed, dayName, date, message, suggestedAlternatives }
  */
-('/api/check-closure', async (req, res) => {
+app.post('/api/check-closure', async (req, res) => {
   try {
     const { date } = req.body;
     const dateArg = req.body.args?.date || date;
@@ -3128,7 +3128,7 @@ app.get('/api/resolve-date', (req, res) => {
 });
 
 // C) Single day — POST (Retell format, primary)
-('/api/calendar/date', async (req, res) => {
+app.post('/api/calendar/date', async (req, res) => {
   try {
     const date = req.body.date || req.body.args?.date;
     
@@ -3223,7 +3223,7 @@ app.get('/api/calendar/date', async (req, res) => {
 });
 
 // D) Full week — POST (Retell format, primary)
-('/api/calendar/week', async (req, res) => {
+app.post('/api/calendar/week', async (req, res) => {
   try {
     const startDate = req.body.startDate || req.body.args?.startDate || req.body.date || req.body.args?.date;
     
@@ -3322,7 +3322,7 @@ app.get('/api/calendar/week', async (req, res) => {
 });
 
 // E) Date range — POST (Retell format, primary)
-('/api/calendar/range', async (req, res) => {
+app.post('/api/calendar/range', async (req, res) => {
   try {
     const startDate = req.body.startDate || req.body.args?.startDate;
     const endDate   = req.body.endDate   || req.body.args?.endDate;
@@ -3506,7 +3506,7 @@ app.get('/api/time-greeting', (req, res) => {
 });
 
 // G2) Time-based greeting — POST (Retell format)
-('/api/time-greeting', (req, res) => {
+app.post('/api/time-greeting', (req, res) => {
   try {
     const { format, context } = req.body;
     const greetingResult = get_time_greeting(format || 'italian');
@@ -3622,7 +3622,7 @@ app.get('/api/test/google-calendar', async (req, res) => {
 });
 
 // J) Check if a date is closed (POST - for Retell agent)
-('/api/check-closure', (req, res) => {
+app.post('/api/check-closure', (req, res) => {
   try {
     const date = req.body.date || req.body.args?.date;
     
@@ -4289,7 +4289,7 @@ app.post('/api/calendar/range', async (req, res) => {
 // Store call states
 const callStates = new Map();
 
-('/api/pre-call-init', (req, res) => {
+app.post('/api/pre-call-init', (req, res) => {
   try {
     console.log('\n📞 PRE-CALL INIT webhook called');
     console.log('Request body:', JSON.stringify(req.body, null, 2));
