@@ -4383,74 +4383,320 @@ app.post('/api/pre-call-init', (req, res) => {
 });
 
 // Add this BEFORE app.listen()
-app.post('/api/resolve-date', (req, res) => {
-  try {
-    // Handle Retell's payload format
-    let text = req.body.text || req.body.args?.text;
-    
-    // If text is an object (sometimes happens), try to extract it
-    if (typeof text === 'object' && text !== null) {
-      text = text.text || JSON.stringify(text);
-    }
-    
-    // Ensure text is a string
-    if (!text || typeof text !== 'string') {
-      return res.status(400).json({
-        success: false,
-        error: 'Invalid text parameter',
-        message: `Expected string, got ${typeof text}`
-      });
-    }
-    
-    console.log(`📅 Resolving date: "${text}"`);
-    const resolvedDate = resolveDate(text);
-    
-    // ===== ADD DAY OF WEEK CALCULATION =====
-    const [day, month, year] = resolvedDate.split('-');
-    const dateObj = new Date(`${year}-${month}-${day}`);
-    const dayNamesItalian = ['Domenica', 'Lunedì', 'Martedì', 'Mercoledì', 'Giovedì', 'Venerdì', 'Sabato'];
-    const dayOfWeek = dayNamesItalian[dateObj.getDay()];
-    
-    res.json({
-      success: true,
-      originalText: text,
-      resolvedDate: resolvedDate,
-      dayOfWeek: dayOfWeek,           // ← ADD THIS
-      dayOfWeekEnglish: ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'][dateObj.getDay()], // ← OPTIONAL
-      timezone: 'Europe/Rome'
-    });
-    
-  } catch (error) {
-    console.error('❌ resolve_date error:', error.message);
-    res.status(500).json({
-      success: false,
-      error: error.message
-    });
+// ===== ENHANCED DATE RESOLUTION FUNCTION (FIXED FOR ALL ITALIAN DAY NAMES) =====
+function resolveDate(dateString) {
+  safeLog('🔍 resolveDate called', { 
+    input: dateString,
+    timestamp: new Date().toISOString(),
+    romeToday: getRomeDateToday()
+  });
+  
+  if (!dateString || typeof dateString !== 'string') {
+    safeLog('⚠️ Invalid dateString provided', { dateString });
+    return getRomeDateToday();
   }
-});
+  
+  const cleanedDate = dateString.toLowerCase().trim();
+  const today = getRomeDate();
+  const todayStr = getRomeDateToday();
+  
+  // ===== TODAY / OGGI =====
+  if (cleanedDate === 'today' || cleanedDate === 'oggi') {
+    const result = todayStr;
+    safeLog('✅ "today" resolved', { input: dateString, result });
+    return result;
+  }
+  
+  // ===== TOMORROW / DOMANI =====
+  if (cleanedDate === 'tomorrow' || cleanedDate === 'domani') {
+    const tomorrow = new Date(today);
+    tomorrow.setDate(today.getDate() + 1);
+    const result = formatInTimeZone(tomorrow, ROME_TIMEZONE, 'dd-MM-yyyy');
+    safeLog('✅ "tomorrow" resolved', { input: dateString, result });
+    return result;
+  }
+  
+  // ===== STASERA / TONIGHT =====
+  if (cleanedDate === 'stasera' || cleanedDate === 'questa sera' || cleanedDate === 'tonight') {
+    const result = todayStr;
+    safeLog('✅ "stasera/tonight" resolved to today', { input: dateString, result });
+    return result;
+  }
+  
+  // ===== DAY NAME + PROSSIMO/PROSSIMA (e.g., "lunedì prossimo", "giovedì prossimo") =====
+  const dayFirstProssimoMatch = cleanedDate.match(/^(lunedì|lunedi|martedì|martedi|mercoledì|mercoledi|giovedì|giovedi|venerdì|venerdi|sabato|domenica)\s+prossim[oa]$/i);
+  if (dayFirstProssimoMatch) {
+    let dayName = dayFirstProssimoMatch[1].toLowerCase();
+    const dayMap = {
+      'lunedì': 'monday', 'lunedi': 'monday',
+      'martedì': 'tuesday', 'martedi': 'tuesday',
+      'mercoledì': 'wednesday', 'mercoledi': 'wednesday',
+      'giovedì': 'thursday', 'giovedi': 'thursday',
+      'venerdì': 'friday', 'venerdi': 'friday',
+      'sabato': 'saturday',
+      'domenica': 'sunday'
+    };
+    const englishDay = dayMap[dayName] || dayName;
+    const result = findNextSpecificDay(englishDay, true);
+    safeLog('✅ "[day] prossimo" resolved', { input: dateString, dayName: englishDay, result });
+    return result;
+  }
+  
+  // ===== DAY NAME + SETTIMANA PROSSIMA (e.g., "lunedì settimana prossima", "giovedì settimana prossima") =====
+  const weekMatch = cleanedDate.match(/^(lunedì|lunedi|martedì|martedi|mercoledì|mercoledi|giovedì|giovedi|venerdì|venerdi|sabato|domenica)\s+settimana\s+prossim[oa]$/i);
+  if (weekMatch) {
+    let dayName = weekMatch[1].toLowerCase();
+    const dayMap = {
+      'lunedì': 'monday', 'lunedi': 'monday',
+      'martedì': 'tuesday', 'martedi': 'tuesday',
+      'mercoledì': 'wednesday', 'mercoledi': 'wednesday',
+      'giovedì': 'thursday', 'giovedi': 'thursday',
+      'venerdì': 'friday', 'venerdi': 'friday',
+      'sabato': 'saturday',
+      'domenica': 'sunday'
+    };
+    const englishDay = dayMap[dayName] || dayName;
+    const result = findNextSpecificDay(englishDay, true);
+    safeLog('✅ "[day] settimana prossima" resolved', { input: dateString, dayName: englishDay, result });
+    return result;
+  }
+  
+  // ===== PROSSIMO/PROSSIMA + DAY NAME (e.g., "prossimo lunedì", "prossimo giovedì") =====
+  const prossimoFirstMatch = cleanedDate.match(/^prossim[oa]\s+(lunedì|lunedi|martedì|martedi|mercoledì|mercoledi|giovedì|giovedi|venerdì|venerdi|sabato|domenica)$/i);
+  if (prossimoFirstMatch) {
+    let dayName = prossimoFirstMatch[1].toLowerCase();
+    const dayMap = {
+      'lunedì': 'monday', 'lunedi': 'monday',
+      'martedì': 'tuesday', 'martedi': 'tuesday',
+      'mercoledì': 'wednesday', 'mercoledi': 'wednesday',
+      'giovedì': 'thursday', 'giovedi': 'thursday',
+      'venerdì': 'friday', 'venerdi': 'friday',
+      'sabato': 'saturday',
+      'domenica': 'sunday'
+    };
+    const englishDay = dayMap[dayName] || dayName;
+    const result = findNextSpecificDay(englishDay, true);
+    safeLog('✅ "prossimo [day]" resolved', { input: dateString, dayName: englishDay, result });
+    return result;
+  }
+  
+  // ===== NEXT + DAY NAME (English) =====
+  const nextDayMatch = cleanedDate.match(/^next\s+(monday|tuesday|wednesday|thursday|friday|saturday|sunday)$/i);
+  if (nextDayMatch) {
+    const dayName = nextDayMatch[1].toLowerCase();
+    const result = findNextSpecificDay(dayName, true);
+    safeLog('✅ "next [day]" resolved', { input: dateString, dayName, result });
+    return result;
+  }
+  
+  // ===== DAY NAME ONLY (e.g., "lunedì", "martedì", "giovedì") - find next occurrence =====
+  const dayOnlyMatch = cleanedDate.match(/^(lunedì|lunedi|martedì|martedi|mercoledì|mercoledi|giovedì|giovedi|venerdì|venerdi|sabato|domenica|monday|tuesday|wednesday|thursday|friday|saturday|sunday)$/i);
+  if (dayOnlyMatch) {
+    let dayName = dayOnlyMatch[1].toLowerCase();
+    const dayMap = {
+      'lunedì': 'monday', 'lunedi': 'monday',
+      'martedì': 'tuesday', 'martedi': 'tuesday',
+      'mercoledì': 'wednesday', 'mercoledi': 'wednesday',
+      'giovedì': 'thursday', 'giovedi': 'thursday',
+      'venerdì': 'friday', 'venerdi': 'friday',
+      'sabato': 'saturday',
+      'domenica': 'sunday'
+    };
+    const englishDay = dayMap[dayName] || dayName;
+    const result = findNextSpecificDay(englishDay, false);
+    safeLog('✅ Day name resolved to next occurrence', { input: dateString, dayName: englishDay, result });
+    return result;
+  }
+  
+  // ===== "DAY NUMBER" + "OF" + "MONTH" patterns =====
+  const monthMap = {
+    'january': 1, 'february': 2, 'march': 3, 'april': 4, 'may': 5, 'june': 6,
+    'july': 7, 'august': 8, 'september': 9, 'october': 10, 'november': 11, 'december': 12,
+    'gennaio': 1, 'febbraio': 2, 'marzo': 3, 'aprile': 4, 'maggio': 5, 'giugno': 6,
+    'luglio': 7, 'agosto': 8, 'settembre': 9, 'ottobre': 10, 'novembre': 11, 'dicembre': 12
+  };
+  
+  // Extract month and day from Italian/English phrases
+  let detectedMonth = null;
+  let detectedDay = null;
+  
+  for (const [monthName, monthIndex] of Object.entries(monthMap)) {
+    if (cleanedDate.includes(monthName)) {
+      detectedMonth = monthIndex;
+      const dayMatch = cleanedDate.match(/(\d{1,2})/);
+      if (dayMatch) {
+        detectedDay = parseInt(dayMatch[1]);
+      }
+      break;
+    }
+  }
+  
+  if (detectedMonth && detectedDay && detectedDay >= 1 && detectedDay <= 31) {
+    let year = today.getFullYear();
+    if (detectedMonth < today.getMonth() + 1) {
+      year++;
+    }
+    const lastDay = getLastDayOfMonth(year, detectedMonth);
+    const validDay = Math.min(detectedDay, lastDay);
+    const result = `${validDay.toString().padStart(2, '0')}-${detectedMonth.toString().padStart(2, '0')}-${year}`;
+    safeLog('✅ Month + day resolved', { input: dateString, month: detectedMonth, day: validDay, year, result });
+    return result;
+  }
+  
+  // ===== BARE DAY NUMBER (e.g., "4", "the 4th") =====
+  const bareDayMatch = cleanedDate.match(/^(?:the\s+)?(\d{1,2})(?:st|nd|rd|th)?$/i);
+  if (bareDayMatch) {
+    const day = parseInt(bareDayMatch[1]);
+    if (day >= 1 && day <= 31) {
+      const currentYear = today.getFullYear();
+      const currentMonth = today.getMonth() + 1;
+      const lastDayOfMonth = getLastDayOfMonth(currentYear, currentMonth);
+      const validDay = Math.min(day, lastDayOfMonth);
+      const result = `${validDay.toString().padStart(2, '0')}-${currentMonth.toString().padStart(2, '0')}-${currentYear}`;
+      safeLog('✅ Bare day number resolved to current month', { input: dateString, day: validDay, result });
+      return result;
+    }
+  }
+  
+  // ===== "DAY NUMBER" + "of this month" =====
+  const thisMonthMatch = cleanedDate.match(/(?:the\s+)?(\d{1,2})(?:st|nd|rd|th)?(?:\s+of)?\s+this\s+month/i);
+  if (thisMonthMatch) {
+    const day = parseInt(thisMonthMatch[1]);
+    if (day >= 1 && day <= 31) {
+      const currentYear = today.getFullYear();
+      const currentMonth = today.getMonth() + 1;
+      const lastDayOfMonth = getLastDayOfMonth(currentYear, currentMonth);
+      const validDay = Math.min(day, lastDayOfMonth);
+      const result = `${validDay.toString().padStart(2, '0')}-${currentMonth.toString().padStart(2, '0')}-${currentYear}`;
+      safeLog('✅ "this month" ordinal resolved', { input: dateString, day: validDay, result });
+      return result;
+    }
+  }
+  
+  // ===== "DAY NUMBER" + "of next month" =====
+  const nextMonthMatch = cleanedDate.match(/(?:the\s+)?(\d{1,2})(?:st|nd|rd|th)?(?:\s+of)?\s+next\s+month/i);
+  if (nextMonthMatch) {
+    const day = parseInt(nextMonthMatch[1]);
+    if (day >= 1 && day <= 31) {
+      let nextMonth = today.getMonth() + 2;
+      let nextYear = today.getFullYear();
+      if (nextMonth > 12) {
+        nextMonth = 1;
+        nextYear++;
+      }
+      const lastDayOfMonth = getLastDayOfMonth(nextYear, nextMonth);
+      const validDay = Math.min(day, lastDayOfMonth);
+      const result = `${validDay.toString().padStart(2, '0')}-${nextMonth.toString().padStart(2, '0')}-${nextYear}`;
+      safeLog('✅ "next month" ordinal resolved', { input: dateString, day: validDay, result });
+      return result;
+    }
+  }
+  
+  // ===== Ordinal words (first, second, third, etc.) =====
+  const wordNumberMap = {
+    'first': 1, 'second': 2, 'third': 3, 'fourth': 4, 'fifth': 5,
+    'sixth': 6, 'seventh': 7, 'eighth': 8, 'ninth': 9, 'tenth': 10,
+    'eleventh': 11, 'twelfth': 12, 'thirteenth': 13, 'fourteenth': 14, 'fifteenth': 15,
+    'sixteenth': 16, 'seventeenth': 17, 'eighteenth': 18, 'nineteenth': 19, 'twentieth': 20,
+    'twenty-first': 21, 'twenty first': 21, 'twenty-second': 22, 'twenty second': 22,
+    'twenty-third': 23, 'twenty third': 23, 'twenty-fourth': 24, 'twenty fourth': 24,
+    'twenty-fifth': 25, 'twenty fifth': 25, 'twenty-sixth': 26, 'twenty sixth': 26,
+    'twenty-seventh': 27, 'twenty seventh': 27, 'twenty-eighth': 28, 'twenty eighth': 28,
+    'twenty-ninth': 29, 'twenty ninth': 29, 'thirtieth': 30, 'thirty-first': 31, 'thirty first': 31,
+    'primo': 1, 'prima': 1, 'secondo': 2, 'seconda': 2, 'terzo': 3, 'terza': 3,
+    'quarto': 4, 'quarta': 4, 'quinto': 5, 'quinta': 5
+  };
+  
+  for (const [word, day] of Object.entries(wordNumberMap)) {
+    if (cleanedDate.includes(word) && !cleanedDate.includes('next') && !cleanedDate.includes('prossimo')) {
+      const currentYear = today.getFullYear();
+      const currentMonth = today.getMonth() + 1;
+      const lastDayOfMonth = getLastDayOfMonth(currentYear, currentMonth);
+      const validDay = Math.min(day, lastDayOfMonth);
+      const result = `${validDay.toString().padStart(2, '0')}-${currentMonth.toString().padStart(2, '0')}-${currentYear}`;
+      safeLog('✅ Word ordinal resolved to current month', { input: dateString, word, day: validDay, result });
+      return result;
+    }
+  }
+  
+  // ===== Already in DD-MM-YYYY format =====
+  if (cleanedDate.match(/^\d{2}-\d{2}-\d{4}$/)) {
+    safeLog('✅ Already in DD-MM-YYYY format', { input: dateString, result: cleanedDate });
+    return cleanedDate;
+  }
+  
+  // ===== Already in YYYY-MM-DD format =====
+  if (cleanedDate.match(/^\d{4}-\d{2}-\d{2}$/)) {
+    const [year, month, day] = cleanedDate.split('-');
+    const result = `${day}-${month}-${year}`;
+    safeLog('✅ Converted from YYYY-MM-DD to DD-MM-YYYY', { input: dateString, result });
+    return result;
+  }
+  
+  // ===== FALLBACK: Default to tomorrow =====
+  const tomorrow = new Date(today);
+  tomorrow.setDate(today.getDate() + 1);
+  const result = formatInTimeZone(tomorrow, ROME_TIMEZONE, 'dd-MM-yyyy');
+  safeLog('⚠️ Defaulting to tomorrow', { input: dateString, result });
+  return result;
+}
 
-// GET endpoint for current time
-app.get('/api/current-time', (req, res) => {
-  try {
-    const romeDateTime = getRomeDateTime();
-    const greeting = getItalianTimeGreeting();
-    
-    res.json({
-      success: true,
-      time: romeDateTime.time,
-      date: romeDateTime.date,
-      hour: romeDateTime.hour,
-      minute: romeDateTime.minute,
-      dayOfWeek: ['Domenica', 'Lunedì', 'Martedì', 'Mercoledì', 'Giovedì', 'Venerdì', 'Sabato'][romeDateTime.romeDate.getDay()],
-      fullDateTime: `${romeDateTime.date} ${romeDateTime.time}`,
-      greeting: greeting,
-      timezone: 'Europe/Rome'
-    });
-    
-  } catch (error) {
-    res.status(500).json({ success: false, error: error.message });
+// ===== HELPER: Find next occurrence of a specific day of week (FIXED FOR ALL DAYS) =====
+function findNextSpecificDay(dayName, skipCurrentWeek = false) {
+  const dayMap = {
+    'sunday': 0, 'monday': 1, 'tuesday': 2, 'wednesday': 3,
+    'thursday': 4, 'friday': 5, 'saturday': 6,
+    'domenica': 0, 'lunedì': 1, 'lunedi': 1, 
+    'martedì': 2, 'martedi': 2,
+    'mercoledì': 3, 'mercoledi': 3, 
+    'giovedì': 4, 'giovedi': 4, 
+    'venerdì': 5, 'venerdi': 5, 
+    'sabato': 6
+  };
+  
+  const targetDayNum = dayMap[dayName.toLowerCase()];
+  if (targetDayNum === undefined) {
+    safeLog('⚠️ Unknown day name in findNextSpecificDay', { dayName });
+    return getRomeDateToday();
   }
-});
+  
+  const today = getRomeDate();
+  const todayDayNum = today.getDay();
+  
+  // SIMPLE CALCULATION THAT WORKS FOR ALL DAYS:
+  // Calculate days to add to reach the target day
+  let daysToAdd = targetDayNum - todayDayNum;
+  
+  // If the target day is earlier or equal to today, add 7 to get next week
+  if (daysToAdd <= 0) {
+    daysToAdd += 7;
+  }
+  
+  // If skipCurrentWeek is true and daysToAdd is 7 (same day next week), add another 7
+  if (skipCurrentWeek && daysToAdd === 7) {
+    daysToAdd = 14;
+  }
+  
+  safeLog('📅 findNextSpecificDay calculation', {
+    today: formatInTimeZone(today, ROME_TIMEZONE, 'dd-MM-yyyy'),
+    todayDayNum,
+    targetDay: dayName,
+    targetDayNum,
+    daysToAdd,
+    skipCurrentWeek
+  });
+  
+  const targetDate = addDays(today, daysToAdd);
+  const result = formatInTimeZone(targetDate, ROME_TIMEZONE, 'dd-MM-yyyy');
+  
+  safeLog('✅ findNextSpecificDay result', { dayName, result });
+  return result;
+}
+
+// ===== HELPER: Get last day of month =====
+function getLastDayOfMonth(year, month) {
+  return new Date(year, month, 0).getDate();
+}
 
   // ===== RESTAURANT HOURS - POST (For Retell Agent) =====
 // ===== RESTAURANT HOURS - POST (For Retell Agent) =====
