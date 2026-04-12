@@ -1542,39 +1542,6 @@ function isValidDayForMonth(day, month, year) {
 function getLastDayOfMonth(year, month) {
   return new Date(year, month, 0).getDate();
 }
-// ===== HELPER: Find next occurrence of a specific day of week =====
-function DayOfWeek(dayName, skipCurrentWeek = false) {
-  const dayMap = {
-    'sunday': 0, 'monday': 1, 'tuesday': 2, 'wednesday': 3,
-    'thursday': 4, 'friday': 5, 'saturday': 6,
-    'domenica': 0, 'lunedì': 1, 'lunedi': 1, 'martedì': 2, 'martedi': 2,
-    'mercoledì': 3, 'mercoledi': 3, 'giovedì': 4, 'giovedi': 4, 
-    'venerdì': 5, 'venerdi': 5, 'sabato': 6
-  };
-  
-  const targetDayNum = dayMap[dayName.toLowerCase()];
-  if (targetDayNum === undefined) {
-    throw new Error(`Unknown day name: ${dayName}`);
-  }
-  
-  const today = getRomeDate();
-  const todayDayNum = today.getDay();
-  
-  let daysToAdd = (targetDayNum - todayDayNum + 7) % 7;
-  
-  // If skipCurrentWeek is true, add 7 days to get to next week
-  if (skipCurrentWeek) {
-    daysToAdd = daysToAdd === 0 ? 7 : daysToAdd + 7;
-  } else {
-    // If daysToAdd is 0 (today), default to 7 days from now
-    if (daysToAdd === 0) {
-      daysToAdd = 7;
-    }
-  }
-  
-  const targetDate = addDays(today, daysToAdd);
-  return formatInTimeZone(targetDate, ROME_TIMEZONE, 'dd-MM-yyyy');
-}
 
 // ===== COMPLETE ENHANCED DATE RESOLUTION FUNCTION =====
 function resolveDate(dateString) {
