@@ -150,14 +150,19 @@ function getItalianTimeGreeting() {
   const romeDate = getRomeDate();
   const currentHour = romeDate.getHours();
   
-  if (currentHour >= 5 && currentHour < 12) return "Buongiorno";
-  else if (currentHour >= 12 && currentHour < 13) return "Buon pranzo";
-  else if (currentHour >= 13 && currentHour < 18) return "Buon pomeriggio";
-  else if (currentHour >= 18 && currentHour < 22) return "Buonasera";
-  else return "Buonanotte";
+  // CORRECT ITALIAN TIME RANGES:
+  // Buongiorno: 5:00 - 12:59 (5 AM to 12:59 PM)
+  // Buon pomeriggio: 13:00 - 16:59 (1 PM to 4:59 PM)
+  // Buonasera: 17:00 - 04:59 (5 PM to 4:59 AM)
+  if (currentHour >= 5 && currentHour < 13) {
+    return "Buongiorno";
+  } else if (currentHour >= 13 && currentHour < 17) {
+    return "Buon pomeriggio";
+  } else {
+    return "Buonasera";
+  }
 }
 
-Buongiorno from 5 am until 1 pm , good afternoon from 1 to 5 pm , buonasera from 5 pm until 5 am
 // Generate unique reservation ID
 function generateReservationId() {
   const timestamp = Date.now().toString(36);
@@ -4173,18 +4178,25 @@ app.post('/api/pre-call-init', (req, res) => {
     const currentHour = romeDate.getHours();
     let greetingWord = '';
     let fullGreeting = '';
- if (currentHour >= 0 && currentHour < 12) {
+    
+    // CORRECT ITALIAN TIME RANGES:
+    // Buongiorno: 5:00 - 12:59 (5 AM to 12:59 PM)
+    // Buon pomeriggio: 13:00 - 16:59 (1 PM to 4:59 PM)
+    // Buonasera: 17:00 - 04:59 (5 PM to 4:59 AM)
+    if (currentHour >= 5 && currentHour < 13) {
       greetingWord = "Buongiorno";
       fullGreeting = `${greetingWord}, benvenuto da Jazzamore. Sono Maya, come posso aiutarla?`;
-    } else if (currentHour >= 12 && currentHour < 16) {
+    } else if (currentHour >= 13 && currentHour < 17) {
       greetingWord = "Buon pomeriggio";
       fullGreeting = `${greetingWord}, benvenuto da Jazzamore. Sono Maya, come posso aiutarla?`;
     } else {
       greetingWord = "Buonasera";
       fullGreeting = `${greetingWord}, benvenuto da Jazzamore. Sono Maya, come posso aiutarla?`;
     }
-    console.log(`   Time in Rome: ${romeDate.getHours()}:${romeDate.getMinutes()}`);
-    console.log(`   Sending greeting: ${fullGreeting}`);
+    
+    console.log(`   Time in Rome: ${currentHour}:${romeDate.getMinutes()}`);
+    console.log(`   Greeting: ${greetingWord}`);
+    console.log(`   Full greeting: ${fullGreeting}`);
     
     // Return response that Retell expects
     res.json({
@@ -4209,7 +4221,6 @@ app.post('/api/pre-call-init', (req, res) => {
     });
   }
 });
-
 
 // ===== HELPER: Get last day of month =====
 function getLastDayOfMonth(year, month) {
