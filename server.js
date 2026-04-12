@@ -157,58 +157,7 @@ function getItalianTimeGreeting() {
   else return "Buonanotte";
 }
 
-// ===== ENHANCED GREETING FUNCTION WITH MORE OPTIONS =====
-function get_time_greeting(format = 'italian', timezone = 'rome') {
-  const romeDate = getRomeDate();
-  const currentHour = romeDate.getHours();
-  
-  let greeting = '';
-  
-  if (format === 'italian') {
-    if (currentHour >= 0 && currentHour < 12) {
-      greeting = "Buongiorno";
-    } else if (currentHour >= 12 && currentHour < 16) {
-      greeting = "Buon pomeriggio";
-    } else {
-      greeting = "Buonasera";
-    }
-  } else if (format === 'english') {
-    if (currentHour >= 0 && currentHour < 12) {
-      greeting = "Good morning";
-    } else if (currentHour >= 12 && currentHour < 16) {
-      greeting = "Good afternoon";
-    } else {
-      greeting = "Good evening";
-    }
-  } else if (format === 'formal') {
-    if (currentHour >= 0 && currentHour < 12) {
-      greeting = "Salve, buongiorno";
-    } else if (currentHour >= 12 && currentHour < 16) {
-      greeting = "Salve, buon pomeriggio";
-    } else {
-      greeting = "Salve, buonasera";
-    }
-  } else if (format === 'casual') {
-    if (currentHour >= 0 && currentHour < 12) {
-      greeting = "Ciao, buongiorno";
-    } else if (currentHour >= 12 && currentHour < 16) {
-      greeting = "Ciao, buon pomeriggio";
-    } else {
-      greeting = "Ciao, buonasera";
-    }
-  }
-  
-  return {
-    greeting: greeting,
-    hour: currentHour,
-    minute: romeDate.getMinutes(),
-    timezone: ROME_TIMEZONE,
-    localTime: formatInTimeZone(new Date(), ROME_TIMEZONE, 'HH:mm:ss'),
-    date: getRomeDateToday(),
-    format: format,
-    fullGreeting: `${greeting}! Benvenuti al Jazzamore. Come posso aiutarvi?`
-  };
-}
+Buongiorno from 5 am until 1 pm , good afternoon from 1 to 5 pm , buonasera from 5 pm until 5 am
 // Generate unique reservation ID
 function generateReservationId() {
   const timestamp = Date.now().toString(36);
