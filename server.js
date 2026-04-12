@@ -4412,6 +4412,59 @@ app.post('/api/pre-call-init', (req, res) => {
   }
 });
 
+
+// ===== POST endpoint for Retell AI resolve_date tool =====
+app.post('/api/resolve-date', (req, res) => {
+  try {
+    // Handle Retell's payload format
+    let text = req.body.text || req.body.args?.text;
+    
+    // If text is an object (sometimes happens), try to extract it
+    if (typeof text === 'object' && text !== null) {
+      text = text.text || JSON.stringify(text);
+    }
+    
+    // Ensure text is a string
+    if (!text || typeof text !== 'string') {
+      return res.status(400).json({
+        success: false,
+        error: 'Invalid text parameter',
+        message: `Expected string, got ${typeof text}`
+      });
+    }
+    
+    console.log(`📅 POST resolve-date called with: "${text}"`);
+    
+    // Use your existing resolveDate function
+    const resolvedDate = resolveDate(text);
+    
+    // Parse the resolved date to get day of week
+    const [day, month, year] = resolvedDate.split('-');
+    const dateObj = new Date(`${year}-${month}-${day}`);
+    const dayNamesItalian = ['Domenica', 'Lunedì', 'Martedì', 'Mercoledì', 'Giovedì', 'Venerdì', 'Sabato'];
+    const dayOfWeek = dayNamesItalian[dateObj.getDay()];
+    
+    console.log(`   Resolved to: ${resolvedDate} (${dayOfWeek})`);
+    
+    res.json({
+      success: true,
+      originalText: text,
+      resolvedDate: resolvedDate,
+      dayOfWeek: dayOfWeek,
+      dayOfWeekEnglish: ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'][dateObj.getDay()],
+      timezone: 'Europe/Rome'
+    });
+    
+  } catch (error) {
+    console.error('❌ POST resolve-date error:', error.message);
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+});
+
+
 // Add this BEFORE app.listen()
 // ===== ENHANCED DATE RESOLUTION FUNCTION (FIXED FOR ALL ITALIAN DAY NAMES) =====
 function resolveDate(dateString) {
