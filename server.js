@@ -492,9 +492,8 @@ app.get('/api/check-closure', async (req, res) => {
     const dayOfWeek = dateObj.getDay();
     const isClosed = (dayOfWeek === 1 || dayOfWeek === 2);
     
-    const dayNames = ['Sunday', 'Monday', 'Tuesday', Wednesday', 'Thursday', 'Friday', 'Saturday'];
-    const dayNamesItalian = ['Domenica', 'Lunedì', 'Martedì', 'Mercoledì', 'Giovedì', 'Venerdì', 'Sabato'];
-    
+    const dayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+const dayNamesItalian = ['Domenica', 'Lunedì', 'Martedì', 'Mercoledì', 'Giovedì', 'Venerdì', 'Sabato'];
     res.json({
       success: true,
       input: date,
