@@ -1543,168 +1543,7 @@ function getLastDayOfMonth(year, month) {
   return new Date(year, month, 0).getDate();
 }
 
-// ===== COMPLETE ENHANCED DATE RESOLUTION FUNCTION =====
-function resolveDate(dateString) {
-  safeLog('🔍 resolveDate called', { 
-    input: dateString,
-    timestamp: new Date().toISOString(),
-    romeToday: getRomeDateToday()
-  });
-  
-  const cleanedDate = dateString.toLowerCase().trim();
-  const today = getRomeDate();
-  const todayStr = getRomeDateToday();
-  
-  // ===== HELPER FUNCTION INSIDE resolveDate =====
-  function getDaysUntilNext(dayName) {
-    const dayNumbers = {
-      'monday': 1, 'tuesday': 2, 'wednesday': 3, 'thursday': 4,
-      'friday': 5, 'saturday': 6, 'sunday': 0,
-      'lunedì': 1, 'lunedi': 1, 'martedì': 2, 'martedi': 2,
-      'mercoledì': 3, 'mercoledi': 3, 'giovedì': 4, 'giovedi': 4,
-      'venerdì': 5, 'venerdi': 5, 'sabato': 6, 'domenica': 0
-    };
-    
-    const targetDay = dayNumbers[dayName.toLowerCase()];
-    const currentDay = today.getDay();
-    
-    let daysToAdd = (targetDay - currentDay + 7) % 7;
-    if (daysToAdd === 0) daysToAdd = 7;
-    
-    return daysToAdd;
-  }
-  
-  // ===== TODAY / OGGI =====
-  if (cleanedDate === 'today' || cleanedDate === 'oggi') {
-    return todayStr;
-  }
-  
-  // ===== TOMORROW / DOMANI =====
-  if (cleanedDate === 'tomorrow' || cleanedDate === 'domani') {
-    const tomorrow = addDays(today, 1);
-    return formatInTimeZone(tomorrow, ROME_TIMEZONE, 'dd-MM-yyyy');
-  }
-  
-  // ===== DAY NAME ONLY (e.g., "domenica", "monday") =====
-  const dayNameMap = {
-    'sunday': 0, 'monday': 1, 'tuesday': 2, 'wednesday': 3,
-    'thursday': 4, 'friday': 5, 'saturday': 6,
-    'domenica': 0, 'lunedì': 1, 'lunedi': 1, 'martedì': 2, 'martedi': 2,
-    'mercoledì': 3, 'mercoledi': 3, 'giovedì': 4, 'giovedi': 4, 
-    'venerdì': 5, 'venerdi': 5, 'sabato': 6
-  };
-  
-  if (dayNameMap[cleanedDate] !== undefined) {
-    const daysToAdd = getDaysUntilNext(cleanedDate);
-    const targetDate = addDays(today, daysToAdd);
-    const result = formatInTimeZone(targetDate, ROME_TIMEZONE, 'dd-MM-yyyy');
-    safeLog('✅ Day name resolved', { input: dateString, result });
-    return result;
-  }
-  
-  // ===== "NEXT [DAY]" pattern =====
-  const nextDayMatch = cleanedDate.match(/^next\s+(monday|tuesday|wednesday|thursday|friday|saturday|sunday)$/i);
-  if (nextDayMatch) {
-    const dayName = nextDayMatch[1].toLowerCase();
-    const daysToAdd = getDaysUntilNext(dayName);
-    const targetDate = addDays(today, daysToAdd);
-    const result = formatInTimeZone(targetDate, ROME_TIMEZONE, 'dd-MM-yyyy');
-    safeLog('✅ "next [day]" resolved', { input: dateString, dayName, result });
-    return result;
-  }
-  
-  // ===== "NEXT WEEK [DAY]" pattern =====
-  const nextWeekDayMatch = cleanedDate.match(/next\s+week\s+(monday|tuesday|wednesday|thursday|friday|saturday|sunday)/i);
-  if (nextWeekDayMatch) {
-    const dayName = nextWeekDayMatch[1].toLowerCase();
-    const daysToAdd = getDaysUntilNext(dayName);
-    const targetDate = addDays(today, daysToAdd);
-    const result = formatInTimeZone(targetDate, ROME_TIMEZONE, 'dd-MM-yyyy');
-    safeLog('✅ "next week [day]" resolved', { input: dateString, dayName, result });
-    return result;
-  }
-  
-  // ===== Already in DD-MM-YYYY format =====
-  if (cleanedDate.match(/^\d{2}-\d{2}-\d{4}$/)) {
-    return cleanedDate;
-  }
-  
-  // ===== Already in YYYY-MM-DD format =====
-  if (cleanedDate.match(/^\d{4}-\d{2}-\d{2}$/)) {
-    const [year, month, day] = cleanedDate.split('-');
-    return `${day}-${month}-${year}`;
-  }
-  
-  // ===== FALLBACK: Default to tomorrow =====
-  const tomorrow = addDays(today, 1);
-  const result = formatInTimeZone(tomorrow, ROME_TIMEZONE, 'dd-MM-yyyy');
-  safeLog('⚠️ Defaulting to tomorrow', { input: dateString, result });
-  return result;
-}
-  
-// ===== HELPER: Find next specific day of week =====
-// ===== HELPER: Find next occurrence of a specific day of week =====
-function findNextSpecificDay(dayName, skipCurrentWeek = false) {
-  // Complete day mapping for both Italian and English
-  const dayMap = {
-    // English
-    'sunday': 0, 'monday': 1, 'tuesday': 2, 'wednesday': 3,
-    'thursday': 4, 'friday': 5, 'saturday': 6,
-    // Italian
-    'domenica': 0, 
-    'lunedì': 1, 'lunedi': 1, 
-    'martedì': 2, 'martedi': 2,
-    'mercoledì': 3, 'mercoledi': 3, 
-    'giovedì': 4, 'giovedi': 4, 
-    'venerdì': 5, 'venerdi': 5, 
-    'sabato': 6
-  };
-  
-  // Get the target day number (0-6)
-  const targetDayNum = dayMap[dayName.toLowerCase()];
-  
-  if (targetDayNum === undefined) {
-    console.error(`❌ Unknown day name: ${dayName}`);
-    return getRomeDateToday(); // fallback to today
-  }
-  
-  // Get current date and day in Rome timezone
-  const today = getRomeDate();
-  const todayDayNum = today.getDay(); // 0 = Sunday, 1 = Monday, etc.
-  
-  // Calculate days to add - SIMPLE AND RELIABLE FORMULA
-  let daysToAdd = targetDayNum - todayDayNum;
-  
-  // If the target day is earlier or equal to today, add 7 to get next week
-  if (daysToAdd <= 0) {
-    daysToAdd += 7;
-  }
-  
-  // If skipCurrentWeek is true and daysToAdd is 7 (meaning same day next week), 
-  // add another 7 to skip to the week after
-  if (skipCurrentWeek && daysToAdd === 7) {
-    daysToAdd = 14;
-  }
-  
-  // Log the calculation for debugging
-  console.log(`📅 findNextSpecificDay calculation:`, {
-    requestedDay: dayName,
-    targetDayNum,
-    today: formatInTimeZone(today, ROME_TIMEZONE, 'dd-MM-yyyy'),
-    todayDayNum,
-    daysToAdd,
-    skipCurrentWeek,
-    willBe: formatInTimeZone(addDays(today, daysToAdd), ROME_TIMEZONE, 'dddd')
-  });
-  
-  // Calculate the target date
-  const targetDate = addDays(today, daysToAdd);
-  const result = formatInTimeZone(targetDate, ROME_TIMEZONE, 'dd-MM-yyyy');
-  
-  console.log(`✅ findNextSpecificDay result: ${dayName} → ${result}`);
-  
-  return result;
-}
+
 // ===== GOOGLE CALENDAR AS ONLY SOURCE OF TRUTH =====
 function analyzeEventAvailability(event) {
   const {
@@ -4381,52 +4220,101 @@ app.post('/api/pre-call-init', (req, res) => {
 
 
 // ===== POST endpoint for Retell AI resolve_date tool =====
+// ===== POST endpoint for Retell AI resolve_date tool =====
 app.post('/api/resolve-date', (req, res) => {
   try {
-    // Handle Retell's payload format
-    let text = req.body.text || req.body.args?.text;
+    // Handle Retell's payload format - supports multiple ways Retell might send data
+    let text = req.body.text || req.body.args?.text || req.query?.text;
     
-    // If text is an object (sometimes happens), try to extract it
+    // If text is an object (sometimes happens with Retell), try to extract it
     if (typeof text === 'object' && text !== null) {
-      text = text.text || JSON.stringify(text);
+      text = text.text || text.value || JSON.stringify(text);
     }
     
-    // Ensure text is a string
+    // Ensure text is a string and clean it
     if (!text || typeof text !== 'string') {
+      console.error(`❌ Invalid text parameter type: ${typeof text}, value: ${JSON.stringify(text)}`);
       return res.status(400).json({
         success: false,
         error: 'Invalid text parameter',
-        message: `Expected string, got ${typeof text}`
+        message: `Expected string, got ${typeof text}`,
+        originalRequest: req.body
       });
     }
     
-    console.log(`📅 POST resolve-date called with: "${text}"`);
+    // Trim and clean the input
+    const cleanedText = text.trim();
+    console.log(`📅 POST resolve-date called with: "${cleanedText}"`);
+    
+    // Validate we have a resolveDate function
+    if (typeof resolveDate !== 'function') {
+      console.error('❌ resolveDate function is not defined!');
+      return res.status(500).json({
+        success: false,
+        error: 'Internal configuration error',
+        message: 'Date resolution function not available'
+      });
+    }
     
     // Use your existing resolveDate function
-    const resolvedDate = resolveDate(text);
+    const resolvedDate = resolveDate(cleanedText);
+    
+    // Validate the resolved date
+    if (!resolvedDate || !resolvedDate.match(/^\d{2}-\d{2}-\d{4}$/)) {
+      console.error(`❌ Invalid resolved date: "${resolvedDate}" for input: "${cleanedText}"`);
+      return res.status(400).json({
+        success: false,
+        error: 'Date resolution failed',
+        message: `Could not resolve "${cleanedText}" to a valid date`,
+        originalText: cleanedText
+      });
+    }
     
     // Parse the resolved date to get day of week
     const [day, month, year] = resolvedDate.split('-');
     const dateObj = new Date(`${year}-${month}-${day}`);
+    
+    // Validate the date object is valid
+    if (isNaN(dateObj.getTime())) {
+      console.error(`❌ Invalid date object created from: ${resolvedDate}`);
+      return res.status(400).json({
+        success: false,
+        error: 'Invalid date',
+        message: `Resolved date "${resolvedDate}" is invalid`
+      });
+    }
+    
     const dayNamesItalian = ['Domenica', 'Lunedì', 'Martedì', 'Mercoledì', 'Giovedì', 'Venerdì', 'Sabato'];
+    const dayNamesEnglish = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
     const dayOfWeek = dayNamesItalian[dateObj.getDay()];
+    const dayOfWeekEnglish = dayNamesEnglish[dateObj.getDay()];
     
-    console.log(`   Resolved to: ${resolvedDate} (${dayOfWeek})`);
+    console.log(`✅ Resolved: "${cleanedText}" → ${resolvedDate} (${dayOfWeek})`);
     
+    // Return the response in the format Retell expects
     res.json({
       success: true,
-      originalText: text,
+      originalText: cleanedText,
       resolvedDate: resolvedDate,
       dayOfWeek: dayOfWeek,
-      dayOfWeekEnglish: ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'][dateObj.getDay()],
-      timezone: 'Europe/Rome'
+      dayOfWeekEnglish: dayOfWeekEnglish,
+      timezone: 'Europe/Rome',
+      // Additional useful fields for debugging
+      resolvedDay: parseInt(day),
+      resolvedMonth: parseInt(month),
+      resolvedYear: parseInt(year)
     });
     
   } catch (error) {
     console.error('❌ POST resolve-date error:', error.message);
+    console.error('   Stack:', error.stack);
+    
+    // Return a helpful error response
     res.status(500).json({
       success: false,
-      error: error.message
+      error: error.message,
+      message: 'Failed to resolve date. Please check the date format.',
+      originalRequest: req.body
     });
   }
 });
