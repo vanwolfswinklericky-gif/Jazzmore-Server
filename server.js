@@ -1543,7 +1543,7 @@ function getLastDayOfMonth(year, month) {
   return new Date(year, month, 0).getDate();
 }
 // ===== HELPER: Find next occurrence of a specific day of week =====
-function findNextDayOfWeek(dayName, skipCurrentWeek = false) {
+function DayOfWeek(dayName, skipCurrentWeek = false) {
   const dayMap = {
     'sunday': 0, 'monday': 1, 'tuesday': 2, 'wednesday': 3,
     'thursday': 4, 'friday': 5, 'saturday': 6,
@@ -1676,38 +1676,68 @@ function resolveDate(dateString) {
 }
   
 // ===== HELPER: Find next specific day of week =====
+// ===== HELPER: Find next occurrence of a specific day of week =====
 function findNextSpecificDay(dayName, skipCurrentWeek = false) {
+  // Complete day mapping for both Italian and English
   const dayMap = {
+    // English
     'sunday': 0, 'monday': 1, 'tuesday': 2, 'wednesday': 3,
     'thursday': 4, 'friday': 5, 'saturday': 6,
-    'domenica': 0, 'lunedì': 1, 'lunedi': 1, 'martedì': 2, 'martedi': 2,
-    'mercoledì': 3, 'mercoledi': 3, 'giovedì': 4, 'giovedi': 4, 
-    'venerdì': 5, 'venerdi': 5, 'sabato': 6
+    // Italian
+    'domenica': 0, 
+    'lunedì': 1, 'lunedi': 1, 
+    'martedì': 2, 'martedi': 2,
+    'mercoledì': 3, 'mercoledi': 3, 
+    'giovedì': 4, 'giovedi': 4, 
+    'venerdì': 5, 'venerdi': 5, 
+    'sabato': 6
   };
   
-  const targetDayNum = dayMap[dayName];
+  // Get the target day number (0-6)
+  const targetDayNum = dayMap[dayName.toLowerCase()];
+  
   if (targetDayNum === undefined) {
-    throw new Error(`Unknown day name: ${dayName}`);
+    console.error(`❌ Unknown day name: ${dayName}`);
+    return getRomeDateToday(); // fallback to today
   }
   
+  // Get current date and day in Rome timezone
   const today = getRomeDate();
-  const todayDayNum = today.getDay();
+  const todayDayNum = today.getDay(); // 0 = Sunday, 1 = Monday, etc.
   
-  let daysToAdd = (targetDayNum - todayDayNum + 7) % 7;
+  // Calculate days to add - SIMPLE AND RELIABLE FORMULA
+  let daysToAdd = targetDayNum - todayDayNum;
   
-  // If skipCurrentWeek is true, add 7 days if the target is today or earlier in the week
-  if (skipCurrentWeek && daysToAdd === 0) {
-    daysToAdd = 7;
-  }
-  // Also if today is after the target day in the current week, add 7
-  if (skipCurrentWeek && todayDayNum > targetDayNum) {
-    daysToAdd = (targetDayNum - todayDayNum + 14) % 7;
+  // If the target day is earlier or equal to today, add 7 to get next week
+  if (daysToAdd <= 0) {
+    daysToAdd += 7;
   }
   
+  // If skipCurrentWeek is true and daysToAdd is 7 (meaning same day next week), 
+  // add another 7 to skip to the week after
+  if (skipCurrentWeek && daysToAdd === 7) {
+    daysToAdd = 14;
+  }
+  
+  // Log the calculation for debugging
+  console.log(`📅 findNextSpecificDay calculation:`, {
+    requestedDay: dayName,
+    targetDayNum,
+    today: formatInTimeZone(today, ROME_TIMEZONE, 'dd-MM-yyyy'),
+    todayDayNum,
+    daysToAdd,
+    skipCurrentWeek,
+    willBe: formatInTimeZone(addDays(today, daysToAdd), ROME_TIMEZONE, 'dddd')
+  });
+  
+  // Calculate the target date
   const targetDate = addDays(today, daysToAdd);
-  return formatInTimeZone(targetDate, ROME_TIMEZONE, 'dd-MM-yyyy');
+  const result = formatInTimeZone(targetDate, ROME_TIMEZONE, 'dd-MM-yyyy');
+  
+  console.log(`✅ findNextSpecificDay result: ${dayName} → ${result}`);
+  
+  return result;
 }
-
 // ===== GOOGLE CALENDAR AS ONLY SOURCE OF TRUTH =====
 function analyzeEventAvailability(event) {
   const {
