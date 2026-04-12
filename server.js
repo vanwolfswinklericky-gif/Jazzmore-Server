@@ -514,6 +514,7 @@ app.get('/api/check-closure', async (req, res) => {
   }
 });
 
+
 // ===== PHONE EXTRACTION FROM TRANSCRIPT =====
 function extractPhoneFromTranscript(transcript) {
   if (!transcript || !Array.isArray(transcript)) {
@@ -527,6 +528,78 @@ function extractPhoneFromTranscript(transcript) {
     if (DEBUG) {
       console.log(`[PhoneExtract] ${message}`, data ? JSON.stringify(data, null, 2) : '');
     }
+  }
+  
+  // ===== NEW: Context detection for phone numbers =====
+  function isInPhoneContext(text) {
+    const phoneKeywords = [
+      'numero', 'telefono', 'cellulare', 'phone', 'number',
+      'il mio numero', 'il numero è', 'numero di telefono',
+      'mi può dare il suo numero', 'per la conferma',
+      'ripeto il numero', 'confermo il numero'
+    ];
+    const lowerText = text.toLowerCase();
+    return phoneKeywords.some(keyword => lowerText.includes(keyword));
+  }
+  
+  // ===== NEW: Numbers that should NEVER be phone numbers =====
+  const nonPhoneNumbers = new Set([
+    // Times (hours)
+    'uno', 'due', 'tre', 'quattro', 'cinque', 'sei', 'sette', 'otto', 'nove', 'dieci',
+    'undici', 'dodici', 'tredici', 'quattordici', 'quindici', 'sedici',
+    'diciassette', 'diciotto', 'diciannove',
+    'venti', 'ventuno', 'ventidue', 'ventitre', 'ventiquattro', 'venticinque',
+    'ventisei', 'ventisette', 'ventotto', 'ventinove',
+    'trenta', 'trentuno', 'trentadue', 'trentatre', 'trentaquattro', 'trentacinque',
+    'quaranta', 'cinquanta', 'sessanta', 'settanta', 'ottanta', 'novanta',
+    'mezzanotte', 'mezzo', 'un quarto', 'tre quarti',
+    
+    // Dates
+    'oggi', 'domani', 'stasera', 'questa sera', 'dopodomani',
+    'lunedì', 'lunedi', 'martedì', 'martedi', 'mercoledì', 'mercoledi',
+    'giovedì', 'giovedi', 'venerdì', 'venerdi', 'sabato', 'domenica',
+    'gennaio', 'febbraio', 'marzo', 'aprile', 'maggio', 'giugno',
+    'luglio', 'agosto', 'settembre', 'ottobre', 'novembre', 'dicembre',
+    
+    // People counts
+    'persona', 'persone', 'person', 'people', 'guest', 'guests', 'ospite', 'ospiti',
+    
+    // Addresses (Cesena specific)
+    'cesena', 'cesenatico', 'via', 'viale', 'piazza', 'corso',
+    
+    // Common non-phone numbers
+    'cento', 'duecento', 'trecento', 'quattrocento', 'cinquecento',
+    'seicento', 'settecento', 'ottocento', 'novecento',
+    'mille', 'duemila', 'tremila'
+  ]);
+  
+  // ===== NEW: Check if a number word is likely NOT a phone number =====
+  function isNonPhoneNumberWord(word, context) {
+    const lowerWord = word.toLowerCase();
+    
+    // Check against blacklist
+    if (nonPhoneNumbers.has(lowerWord)) {
+      return true;
+    }
+    
+    // Check for time patterns (e.g., "ventuno" when talking about time)
+    const timeIndicators = ['alle', 'ore', 'orario', 'dalle', 'fino alle', 'a partire dalle'];
+    if (timeIndicators.some(indicator => context.includes(indicator))) {
+      return true;
+    }
+    
+    // Check for date patterns
+    const dateIndicators = ['il', 'del', 'data', 'giorno', 'mese'];
+    if (dateIndicators.some(indicator => context.includes(indicator))) {
+      return true;
+    }
+    
+    // Numbers that are too large to be phone digits (phone digits are 0-9, not 10-1000)
+    // But wait - phone numbers can have "10" as two digits (1 and 0)
+    // So we need to be careful: "dieci" as a word should be treated as two digits "10"
+    // However, if it's in a time context, skip it
+    
+    return false;
   }
   
   // Complete number mapping for Italian and English
@@ -543,125 +616,50 @@ function extractPhoneFromTranscript(transcript) {
     'un': '1', 'due': '2', 'tre': '3', 'quattro': '4', 'cinque': '5',
     'sei': '6', 'sette': '7', 'otto': '8', 'nove': '9',
     
-    // Italian teens
+    // Italian teens (these are valid phone digits: 10-19 as two digits)
     'dieci': '10', 'undici': '11', 'dodici': '12', 'tredici': '13',
     'quattordici': '14', 'quindici': '15', 'sedici': '16', 'diciassette': '17',
     'diciotto': '18', 'diciannove': '19',
     
-    // Italian tens
+    // Italian tens (20-90 as two digits)
     'venti': '20', 'trenta': '30', 'quaranta': '40', 'cinquanta': '50',
     'sessanta': '60', 'settanta': '70', 'ottanta': '80', 'novanta': '90',
     
-    // Italian hundreds
+    // Italian hundreds (100-900 as three digits)
     'cento': '100', 'duecento': '200', 'trecento': '300', 'quattrocento': '400',
     'cinquecento': '500', 'seicento': '600', 'settecento': '700', 'ottocento': '800',
     'novecento': '900',
     
-    // Italian thousands (1,000 - 10,000)
-    'mille': '1000',
-    'millecento': '1100',
-    'milleduecento': '1200',
-    'milletrecento': '1300',
-    'millequattrocento': '1400',
-    'millecinquecento': '1500',
-    'milleseicento': '1600',
-    'millesettecento': '1700',
-    'milleottocento': '1800',
-    'millenovecento': '1900',
-    'duemila': '2000',
-    'tremila': '3000',
-    'quattromila': '4000',
-    'cinquemila': '5000',
-    'seimila': '6000',
-    'settemila': '7000',
-    'ottomila': '8000',
-    'novemila': '9000',
-    'diecimila': '10000'
+    // Italian thousands (1000-10000 as four digits)
+    'mille': '1000', 'duemila': '2000', 'tremila': '3000', 'quattromila': '4000',
+    'cinquemila': '5000', 'seimila': '6000', 'settemila': '7000', 'ottomila': '8000',
+    'novemila': '9000', 'diecimila': '10000'
   };
   
   // Compound Italian numbers (e.g., ventuno = 21, trentadue = 32)
-const compoundMap = {
-  // 21-99
-  'ventuno': '21', 'ventidue': '22', 'ventitre': '23', 'ventiquattro': '24',
-  'venticinque': '25', 'ventisei': '26', 'ventisette': '27', 'ventotto': '28',
-  'ventinove': '29', 'trentuno': '31', 'trentadue': '32', 'trentatre': '33',
-  'trentaquattro': '34', 'trentacinque': '35', 'trentasei': '36', 'trentasette': '37',
-  'trentotto': '38', 'trentanove': '39', 'quarantuno': '41', 'quarantadue': '42',
-  'quarantatre': '43', 'quarantaquattro': '44', 'quarantacinque': '45', 'quarantasei': '46',
-  'quarantasette': '47', 'quarantotto': '48', 'quarantanove': '49', 'cinquantuno': '51',
-  'cinquantadue': '52', 'cinquantatre': '53', 'cinquantaquattro': '54', 'cinquantacinque': '55',
-  'cinquantasei': '56', 'cinquantasette': '57', 'cinquantotto': '58', 'cinquantanove': '59',
-  'sessantuno': '61', 'sessantadue': '62', 'sessantatre': '63', 'sessantaquattro': '64',
-  'sessantacinque': '65', 'sessantasei': '66', 'sessantasette': '67', 'sessantotto': '68',
-  'sessantanove': '69', 'settantuno': '71', 'settantadue': '72', 'settantatre': '73',
-  'settantaquattro': '74', 'settantacinque': '75', 'settantasei': '76', 'settantasette': '77',
-  'settantotto': '78', 'settantanove': '79', 'ottantuno': '81', 'ottantadue': '82',
-  'ottantatre': '83', 'ottantaquattro': '84', 'ottantacinque': '85', 'ottantasei': '86',
-  'ottantasette': '87', 'ottantotto': '88', 'ottantanove': '89', 'novantuno': '91',
-  'novantadue': '92', 'novantatre': '93', 'novantaquattro': '94', 'novantacinque': '95',
-  'novantasei': '96', 'novantasette': '97', 'novantotto': '98', 'novantanove': '99',
+  const compoundMap = {
+    // 21-99
+    'ventuno': '21', 'ventidue': '22', 'ventitre': '23', 'ventiquattro': '24',
+    'venticinque': '25', 'ventisei': '26', 'ventisette': '27', 'ventotto': '28',
+    'ventinove': '29', 'trentuno': '31', 'trentadue': '32', 'trentatre': '33',
+    'trentaquattro': '34', 'trentacinque': '35', 'trentasei': '36', 'trentasette': '37',
+    'trentotto': '38', 'trentanove': '39', 'quarantuno': '41', 'quarantadue': '42',
+    'quarantatre': '43', 'quarantaquattro': '44', 'quarantacinque': '45', 'quarantasei': '46',
+    'quarantasette': '47', 'quarantotto': '48', 'quarantanove': '49', 'cinquantuno': '51',
+    'cinquantadue': '52', 'cinquantatre': '53', 'cinquantaquattro': '54', 'cinquantacinque': '55',
+    'cinquantasei': '56', 'cinquantasette': '57', 'cinquantotto': '58', 'cinquantanove': '59',
+    'sessantuno': '61', 'sessantadue': '62', 'sessantatre': '63', 'sessantaquattro': '64',
+    'sessantacinque': '65', 'sessantasei': '66', 'sessantasette': '67', 'sessantotto': '68',
+    'sessantanove': '69', 'settantuno': '71', 'settantadue': '72', 'settantatre': '73',
+    'settantaquattro': '74', 'settantacinque': '75', 'settantasei': '76', 'settantasette': '77',
+    'settantotto': '78', 'settantanove': '79', 'ottantuno': '81', 'ottantadue': '82',
+    'ottantatre': '83', 'ottantaquattro': '84', 'ottantacinque': '85', 'ottantasei': '86',
+    'ottantasette': '87', 'ottantotto': '88', 'ottantanove': '89', 'novantuno': '91',
+    'novantadue': '92', 'novantatre': '93', 'novantaquattro': '94', 'novantacinque': '95',
+    'novantasei': '96', 'novantasette': '97', 'novantotto': '98', 'novantanove': '99'
+  };
   
-  // 100-199 (cento + number)
-  'cento': '100', 'centouno': '101', 'centodue': '102', 'centotre': '103',
-  'centoquattro': '104', 'centocinque': '105', 'centosei': '106', 'centosette': '107',
-  'centotto': '108', 'centonove': '109', 'centodieci': '110', 'centoundici': '111',
-  'centododici': '112', 'centotredici': '113', 'centoquattordici': '114', 'centoquindici': '115',
-  'centosedici': '116', 'centodiciassette': '117', 'centodiciotto': '118', 'centodiciannove': '119',
-  'centoventi': '120', 'centotrenta': '130', 'centoquaranta': '140', 'centocinquanta': '150',
-  'centosessanta': '160', 'centosettanta': '170', 'centottanta': '180', 'centonovanta': '190',
-  
-  // 200-299
-  'duecento': '200', 'duecentouno': '201', 'duecentodue': '202', 'duecentotre': '203',
-  'duecentoquattro': '204', 'duecentocinque': '205', 'duecentosei': '206', 'duecentosette': '207',
-  'duecentotto': '208', 'duecentonove': '209', 'duecentodieci': '210', 'duecentoundici': '211',
-  'duecentododici': '212', 'duecentotredici': '213', 'duecentoquattordici': '214', 'duecentoquindici': '215',
-  'duecentosedici': '216', 'duecentodiciassette': '217', 'duecentodiciotto': '218', 'duecentodiciannove': '219',
-  'duecentoventi': '220', 'duecentotrenta': '230', 'duecentoquaranta': '240', 'duecentocinquanta': '250',
-  'duecentosessanta': '260', 'duecentosettanta': '270', 'duecentottanta': '280', 'duecentonovanta': '290',
-  
-  // 300-399
-  'trecento': '300', 'trecentoventi': '320', 'trecentotrenta': '330', 'trecentoquaranta': '340',
-  'trecentocinquanta': '350', 'trecentosessanta': '360', 'trecentosettanta': '370', 'trecentottanta': '380',
-  'trecentonovanta': '390',
-  
-  // 400-499
-  'quattrocento': '400', 'quattrocentoventi': '420', 'quattrocentotrenta': '430', 'quattrocentoquaranta': '440',
-  'quattrocentocinquanta': '450', 'quattrocentosessanta': '460', 'quattrocentosettanta': '470', 'quattrocentottanta': '480',
-  'quattrocentonovanta': '490',
-  
-  // 500-599
-  'cinquecento': '500', 'cinquecentoventi': '520', 'cinquecentotrenta': '530', 'cinquecentoquaranta': '540',
-  'cinquecentocinquanta': '550', 'cinquecentosessanta': '560', 'cinquecentosettanta': '570', 'cinquecentottanta': '580',
-  'cinquecentonovanta': '590',
-  
-  // 600-699
-  'seicento': '600', 'seicentoventi': '620', 'seicentotrenta': '630', 'seicentoquaranta': '640',
-  'seicentocinquanta': '650', 'seicentosessanta': '660', 'seicentosettanta': '670', 'seicentottanta': '680',
-  'seicentonovanta': '690',
-  
-  // 700-799
-  'settecento': '700', 'settecentoventi': '720', 'settecentotrenta': '730', 'settecentoquaranta': '740',
-  'settecentocinquanta': '750', 'settecentosessanta': '760', 'settecentosettanta': '770', 'settecentottanta': '780',
-  'settecentonovanta': '790',
-  
-  // 800-899
-  'ottocento': '800', 'ottocentoventi': '820', 'ottocentotrenta': '830', 'ottocentoquaranta': '840',
-  'ottocentocinquanta': '850', 'ottocentosessanta': '860', 'ottocentosettanta': '870', 'ottocentottanta': '880',
-  'ottocentonovanta': '890',
-  
-  // 900-999
-  'novecento': '900', 'novecentoventi': '920', 'novecentotrenta': '930', 'novecentoquaranta': '940',
-  'novecentocinquanta': '950', 'novecentosessanta': '960', 'novecentosettanta': '970', 'novecentottanta': '980',
-  'novecentonovanta': '990',
-  
-  // Thousands
-  'mille': '1000', 'millecento': '1100', 'milleduecento': '1200', 'milletrecento': '1300',
-  'millequattrocento': '1400', 'millecinquecento': '1500', 'milleseicento': '1600', 'millesettecento': '1700',
-  'milleottocento': '1800', 'millenovecento': '1900', 'duemila': '2000', 'tremila': '3000',
-  'quattromila': '4000', 'cinquemila': '5000', 'seimila': '6000', 'settemila': '7000',
-  'ottomila': '8000', 'novemila': '9000', 'diecimila': '10000'
-};
-  // Italian confirmation phrases (expanded)
+  // Italian confirmation phrases
   const confirmationPhrases = [
     'sì', 'si', 'yes', 'yep', 'yeah', 'correct', 'ok', 'okay', 'va bene',
     'corretto', 'esatto', 'perfetto', 'giusto', 'giustissimo', 'esattamente',
@@ -670,78 +668,26 @@ const compoundMap = {
   ];
   
   /**
-   * Parse complex Italian numbers like "tremila duecento dodici" (3212)
-   */
-  function parseItalianNumber(text) {
-    const wordValues = {
-      // Units
-      'uno': 1, 'due': 2, 'tre': 3, 'quattro': 4, 'cinque': 5,
-      'sei': 6, 'sette': 7, 'otto': 8, 'nove': 9,
-      // Teens
-      'dieci': 10, 'undici': 11, 'dodici': 12, 'tredici': 13,
-      'quattordici': 14, 'quindici': 15, 'sedici': 16, 'diciassette': 17,
-      'diciotto': 18, 'diciannove': 19,
-      // Tens
-      'venti': 20, 'trenta': 30, 'quaranta': 40, 'cinquanta': 50,
-      'sessanta': 60, 'settanta': 70, 'ottanta': 80, 'novanta': 90,
-      // Hundreds
-      'cento': 100, 'duecento': 200, 'trecento': 300, 'quattrocento': 400,
-      'cinquecento': 500, 'seicento': 600, 'settecento': 700, 'ottocento': 800,
-      'novecento': 900,
-      // Thousands
-      'mille': 1000, 'duemila': 2000, 'tremila': 3000, 'quattromila': 4000,
-      'cinquemila': 5000, 'seimila': 6000, 'settemila': 7000, 'ottomila': 8000,
-      'novemila': 9000
-    };
-    
-    // First check for compound words in compoundMap
-    for (const [word, value] of Object.entries(compoundMap)) {
-      if (text.toLowerCase().includes(word)) {
-        return value;
-      }
-    }
-    
-    // Split into words
-    const words = text.toLowerCase().trim().split(/\s+/);
-    let total = 0;
-    let current = 0;
-    
-    for (const word of words) {
-      const value = wordValues[word];
-      if (value === undefined) continue;
-      
-      // Handle thousands
-      if (value >= 1000) {
-        total += value * (current || 1);
-        current = 0;
-      }
-      // Handle hundreds
-      else if (value >= 100) {
-        current = current * value;
-      }
-      // Handle tens and units
-      else {
-        current += value;
-      }
-    }
-    
-    total += current;
-    return total > 0 ? total.toString() : null;
-  }
-  
-  /**
    * Convert any text to digits only, handling Italian number words comprehensively
+   * BUT ONLY if the context suggests it's a phone number
    */
-  const convertToDigits = (text) => {
+  const convertToDigits = (text, contextText = '') => {
     if (!text) return '';
     
-    debugLog('Converting text to digits', { original: text });
+    debugLog('Converting text to digits', { original: text, context: contextText.substring(0, 100) });
     
-    // FIRST: Try parsing as a complex Italian number (e.g., "tremila duecento dodici")
-    const parsedNumber = parseItalianNumber(text);
-    if (parsedNumber) {
-      debugLog('Parsed as complex Italian number', { original: text, result: parsedNumber });
-      return parsedNumber;
+    // ===== CRITICAL: If not in phone context, skip complex number parsing =====
+    const isPhoneContext = isInPhoneContext(contextText) || isInPhoneContext(text);
+    
+    if (!isPhoneContext) {
+      debugLog('Not in phone context - skipping number conversion', { context: contextText.substring(0, 100) });
+      // Still extract raw digits as fallback
+      const rawDigits = text.replace(/\D/g, '');
+      if (rawDigits.length >= 8) {
+        debugLog('Found raw digits outside phone context', { rawDigits });
+        return rawDigits;
+      }
+      return '';
     }
     
     // Remove common punctuation and normalize spaces
@@ -759,6 +705,13 @@ const compoundMap = {
     
     while (i < words.length) {
       const word = words[i];
+      
+      // Skip non-phone number words
+      if (isNonPhoneNumberWord(word, cleanText)) {
+        debugLog('Skipping non-phone number word', { word });
+        i++;
+        continue;
+      }
       
       // Check for compound numbers first
       if (compoundMap[word]) {
@@ -785,24 +738,6 @@ const compoundMap = {
         continue;
       }
       
-      // Check for "e" conjunction in numbers (e.g., "venti e tre" for 23)
-      if (word === 'e' && i > 0 && i < words.length - 1) {
-        const prevWord = words[i - 1];
-        const nextWord = words[i + 1];
-        
-        // Check if previous is a tens and next is a single digit
-        if (numberMap[prevWord] && numberMap[prevWord].length === 2 && 
-            numberMap[nextWord] && numberMap[nextWord].length === 1) {
-          const tensValue = parseInt(numberMap[prevWord]);
-          const unitValue = parseInt(numberMap[nextWord]);
-          const combined = tensValue + unitValue;
-          result = result.slice(0, -2) + combined.toString(); // Replace the tens part
-          debugLog('Combined number with "e"', { tens: tensValue, unit: unitValue, combined });
-          i += 2;
-          continue;
-        }
-      }
-      
       i++;
     }
     
@@ -818,7 +753,6 @@ const compoundMap = {
   
   /**
    * Normalize phone number to standard Italian format (+39XXXXXXXXXX)
-   * NOW REQUIRES MINIMUM 10 DIGITS
    */
   const normalizePhoneNumber = (digits) => {
     if (!digits) return null;
@@ -829,7 +763,6 @@ const compoundMap = {
     debugLog('Normalizing phone number', { original: digits, clean: cleanDigits });
     
     // Italian mobile numbers MUST be 10 digits after country code
-    // Reject anything less than 10 digits
     if (cleanDigits.length < 10) {
       console.log(`❌ Phone number rejected: ${cleanDigits.length} digits (minimum required: 10)`);
       return null;
@@ -876,7 +809,7 @@ const compoundMap = {
       return normalized;
     }
     
-    console.log(`❌ Invalid phone number length: ${cleanDigits.length} digits (minimum 10 required)`);
+    console.log(`❌ Invalid phone number length: ${cleanDigits.length} digits`);
     return null;
   };
   
@@ -909,7 +842,8 @@ const compoundMap = {
           agentContent: agentMsg.content 
         });
         
-        const rawDigits = convertToDigits(agentMsg.content);
+        // Pass the agent message as context for phone detection
+        const rawDigits = convertToDigits(agentMsg.content, agentMsg.content);
         const finalNumber = normalizePhoneNumber(rawDigits);
         
         if (finalNumber) {
@@ -923,142 +857,90 @@ const compoundMap = {
     }
   }
   
-  // ===== STRATEGY 2: LOOK FOR NUMBERS IN AGENT MESSAGES (CONFIRMATION CONTEXT) =====
-  debugLog('Strategy 2: Looking for numbers in agent messages');
-  
-  for (let i = transcript.length - 1; i >= 0; i--) {
-    const msg = transcript[i];
-    if (msg.role === 'agent') {
-      const content = msg.content.toLowerCase();
-      
-      // Check if this message looks like a number confirmation
-      const isRepeatingNumber = 
-        content.includes('numero') ||
-        content.includes('telefono') ||
-        content.includes('cellulare') ||
-        content.includes('phone') ||
-        content.includes('number') ||
-        content.includes('il suo numero') ||
-        content.includes('il numero è') ||
-        content.includes('il numero di telefono') ||
-        content.match(/\d{5,}/); // Contains at least 5 digits
-      
-      if (isRepeatingNumber) {
-        debugLog('Found agent repeating number', { 
-          index: i, 
-          content: msg.content 
-        });
-        
-        const rawDigits = convertToDigits(msg.content);
-        const finalNumber = normalizePhoneNumber(rawDigits);
-        
-        if (finalNumber) {
-          console.log(`✅ SUCCESS: Extracted number from agent confirmation: ${finalNumber}`);
-          console.log(`   From agent: "${msg.content}"`);
-          console.log(`   Raw digits extracted: ${rawDigits}`);
-          return finalNumber;
-        }
-      }
-    }
-  }
-  
-  // ===== STRATEGY 3: LOOK FOR USER'S ORIGINAL NUMBER (BEFORE CONFIRMATION) =====
-  debugLog('Strategy 3: Looking for user number with agent confirmation');
+  // ===== STRATEGY 2: LOOK FOR NUMBERS IN USER MESSAGES WITH PHONE CONTEXT =====
+  debugLog('Strategy 2: Looking for numbers in user messages with phone context');
   
   for (let i = 0; i < transcript.length; i++) {
     const msg = transcript[i];
     if (msg.role === 'user') {
-      const rawDigits = convertToDigits(msg.content);
+      const content = msg.content;
       
-      if (rawDigits.length >= 10 && rawDigits.length <= 12) {
-        debugLog('Found potential user number', { 
+      // Check if this message is likely providing a phone number
+      const likelyPhoneNumber = 
+        content.includes('numero') ||
+        content.includes('telefono') ||
+        content.includes('cellulare') ||
+        content.match(/\d{5,}/);
+      
+      if (likelyPhoneNumber) {
+        debugLog('Found potential phone number in user message', { 
           index: i, 
-          content: msg.content,
-          digits: rawDigits 
+          content: content 
         });
         
-        // Check if a subsequent agent message confirms this number
-        for (let j = i + 1; j < Math.min(i + 4, transcript.length); j++) {
-          const nextMsg = transcript[j];
-          if (nextMsg.role === 'agent') {
-            const agentDigits = convertToDigits(nextMsg.content);
-            
-            // Check if agent repeats the number (exact match or close match)
-            const exactMatch = agentDigits === rawDigits;
-            const closeMatch = Math.abs(agentDigits.length - rawDigits.length) <= 2 && 
-                               agentDigits.slice(-8) === rawDigits.slice(-8);
-            
-            if (exactMatch || closeMatch) {
-              debugLog('Found agent confirming user number', {
-                userDigits: rawDigits,
-                agentDigits: agentDigits,
-                exactMatch,
-                closeMatch
-              });
-              
-              const finalNumber = normalizePhoneNumber(rawDigits);
-              if (finalNumber) {
-                console.log(`✅ SUCCESS: Extracted confirmed user number: ${finalNumber}`);
-                console.log(`   User said: "${msg.content}"`);
-                console.log(`   Agent confirmed: "${nextMsg.content}"`);
-                return finalNumber;
-              }
-            }
-          }
-        }
-      }
-    }
-  }
-  
-  // ===== STRATEGY 4: LOOK FOR NUMBERS IN USER MESSAGES =====
-  debugLog('Strategy 4: Looking for numbers in user messages');
-  
-  for (let i = transcript.length - 1; i >= 0; i--) {
-    const msg = transcript[i];
-    if (msg.role === 'user') {
-      const rawDigits = convertToDigits(msg.content);
-      
-      if (rawDigits.length >= 10 && rawDigits.length <= 12) {
+        const rawDigits = convertToDigits(content, content);
         const finalNumber = normalizePhoneNumber(rawDigits);
+        
         if (finalNumber) {
-          console.log(`⚠️ WARNING: Extracted unconfirmed user number: ${finalNumber}`);
-          console.log(`   User said: "${msg.content}"`);
-          return finalNumber;
-        }
-      }
-    }
-  }
-  
-  // ===== STRATEGY 5: FALLBACK - ANY VALID ITALIAN NUMBER FORMAT =====
-  debugLog('Strategy 5: Fallback - any valid Italian number');
-  
-  for (let i = transcript.length - 1; i >= 0; i--) {
-    const msg = transcript[i];
-    if (msg.role === 'user' || msg.role === 'agent') {
-      const rawDigits = convertToDigits(msg.content);
-      
-      // Look for any valid Italian number pattern (minimum 10 digits)
-      if (rawDigits.length >= 10 && rawDigits.length <= 12) {
-        const finalNumber = normalizePhoneNumber(rawDigits);
-        if (finalNumber) {
-          console.log(`⚠️ WARNING: Extracted unconfirmed fallback: ${finalNumber}`);
-          console.log(`   From: ${msg.role} - "${msg.content}"`);
+          console.log(`✅ SUCCESS: Extracted phone from user message: ${finalNumber}`);
+          console.log(`   User said: "${content}"`);
           console.log(`   Raw digits: ${rawDigits}`);
           return finalNumber;
         }
       }
+    }
+  }
+  
+  // ===== STRATEGY 3: LOOK FOR NUMBERS IN AGENT MESSAGES WITH PHONE CONTEXT =====
+  debugLog('Strategy 3: Looking for numbers in agent messages with phone context');
+  
+  for (let i = 0; i < transcript.length; i++) {
+    const msg = transcript[i];
+    if (msg.role === 'agent') {
+      const content = msg.content;
       
-      // Also look for specific patterns like "333 1234567" or "333-1234567"
-      const patternMatch = msg.content.match(/(\d{3}[\s\-]?\d{6,7})/);
-      if (patternMatch) {
-        const rawDigits = patternMatch[1].replace(/\D/g, '');
-        if (rawDigits.length >= 10) {
-          const finalNumber = normalizePhoneNumber(rawDigits);
-          if (finalNumber) {
-            console.log(`⚠️ WARNING: Extracted pattern-matched number: ${finalNumber}`);
-            console.log(`   Pattern: "${patternMatch[1]}"`);
-            return finalNumber;
-          }
+      // Check if agent is reading back a phone number
+      const isReadingPhone = 
+        content.includes('numero') ||
+        content.includes('ripeto il numero') ||
+        content.includes('confermo il numero') ||
+        content.includes('per sicurezza');
+      
+      if (isReadingPhone) {
+        debugLog('Found agent reading phone number', { 
+          index: i, 
+          content: content 
+        });
+        
+        const rawDigits = convertToDigits(content, content);
+        const finalNumber = normalizePhoneNumber(rawDigits);
+        
+        if (finalNumber) {
+          console.log(`✅ SUCCESS: Extracted phone from agent read-back: ${finalNumber}`);
+          console.log(`   Agent said: "${content}"`);
+          console.log(`   Raw digits: ${rawDigits}`);
+          return finalNumber;
+        }
+      }
+    }
+  }
+  
+  // ===== STRATEGY 4: FALLBACK - ANY VALID ITALIAN NUMBER FORMAT =====
+  debugLog('Strategy 4: Fallback - any valid Italian number');
+  
+  for (let i = transcript.length - 1; i >= 0; i--) {
+    const msg = transcript[i];
+    if (msg.role === 'user' || msg.role === 'agent') {
+      const content = msg.content;
+      const rawDigits = content.replace(/\D/g, '');
+      
+      if (rawDigits.length >= 10 && rawDigits.length <= 12) {
+        const finalNumber = normalizePhoneNumber(rawDigits);
+        if (finalNumber) {
+          console.log(`⚠️ WARNING: Extracted unconfirmed fallback: ${finalNumber}`);
+          console.log(`   From: ${msg.role} - "${content.substring(0, 100)}..."`);
+          console.log(`   Raw digits: ${rawDigits}`);
+          return finalNumber;
         }
       }
     }
@@ -1076,7 +958,8 @@ const compoundMap = {
   
   return null;
 }
-
+  
+ 
 // ===== EXTRACT WHATSAPP CONFIRMATION FROM TRANSCRIPT =====
 function extractWhatsappConfirmation(transcript) {
   if (!transcript || !Array.isArray(transcript)) {
