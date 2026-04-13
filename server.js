@@ -4435,6 +4435,140 @@ function resolveDate(dateString) {
   return result;
 }
 
+// ===== POST endpoint for Retell AI resolve_date tool =====
+app.post('/api/resolve-date', (req, res) => {
+  try {
+    // Handle Retell's payload format
+    let text = req.body.text || req.body.args?.text;
+    
+    // If text is an object (sometimes happens with Retell), try to extract it
+    if (typeof text === 'object' && text !== null) {
+      text = text.text || text.value || JSON.stringify(text);
+    }
+    
+    // Ensure text is a string and clean it
+    if (!text || typeof text !== 'string') {
+      console.error(`❌ Invalid text parameter type: ${typeof text}, value: ${JSON.stringify(text)}`);
+      return res.status(400).json({
+        success: false,
+        error: 'Invalid text parameter',
+        message: `Expected string, got ${typeof text}`,
+        originalRequest: req.body
+      });
+    }
+    
+    // Trim and clean the input
+    const cleanedText = text.trim();
+    console.log(`📅 POST resolve-date called with: "${cleanedText}"`);
+    
+    // Validate we have a resolveDate function
+    if (typeof resolveDate !== 'function') {
+      console.error('❌ resolveDate function is not defined!');
+      return res.status(500).json({
+        success: false,
+        error: 'Internal configuration error',
+        message: 'Date resolution function not available'
+      });
+    }
+    
+    // Use your existing resolveDate function
+    const resolvedDate = resolveDate(cleanedText);
+    
+    // Validate the resolved date
+    if (!resolvedDate || !resolvedDate.match(/^\d{2}-\d{2}-\d{4}$/)) {
+      console.error(`❌ Invalid resolved date: "${resolvedDate}" for input: "${cleanedText}"`);
+      return res.status(400).json({
+        success: false,
+        error: 'Date resolution failed',
+        message: `Could not resolve "${cleanedText}" to a valid date`,
+        originalText: cleanedText
+      });
+    }
+    
+    // Parse the resolved date to get day of week
+    const [day, month, year] = resolvedDate.split('-');
+    const dateObj = new Date(`${year}-${month}-${day}`);
+    
+    // Validate the date object is valid
+    if (isNaN(dateObj.getTime())) {
+      console.error(`❌ Invalid date object created from: ${resolvedDate}`);
+      return res.status(400).json({
+        success: false,
+        error: 'Invalid date',
+        message: `Resolved date "${resolvedDate}" is invalid`
+      });
+    }
+    
+    const dayNamesItalian = ['Domenica', 'Lunedì', 'Martedì', 'Mercoledì', 'Giovedì', 'Venerdì', 'Sabato'];
+    const dayNamesEnglish = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+    const dayOfWeek = dayNamesItalian[dateObj.getDay()];
+    const dayOfWeekEnglish = dayNamesEnglish[dateObj.getDay()];
+    
+    console.log(`✅ Resolved: "${cleanedText}" → ${resolvedDate} (${dayOfWeek})`);
+    
+    // Return the response in the format Retell expects
+    res.json({
+      success: true,
+      originalText: cleanedText,
+      resolvedDate: resolvedDate,
+      dayOfWeek: dayOfWeek,
+      dayOfWeekEnglish: dayOfWeekEnglish,
+      timezone: 'Europe/Rome',
+      // Additional useful fields for debugging
+      resolvedDay: parseInt(day),
+      resolvedMonth: parseInt(month),
+      resolvedYear: parseInt(year)
+    });
+    
+  } catch (error) {
+    console.error('❌ POST resolve-date error:', error.message);
+    console.error('   Stack:', error.stack);
+    
+    // Return a helpful error response
+    res.status(500).json({
+      success: false,
+      error: error.message,
+      message: 'Failed to resolve date. Please check the date format.',
+      originalRequest: req.body
+    });
+  }
+});
+
+// ===== GET endpoint for testing resolve_date =====
+app.get('/api/resolve-date', (req, res) => {
+  try {
+    const { text } = req.query;
+    
+    if (!text) {
+      return res.status(400).json({
+        success: false,
+        error: 'Missing text parameter',
+        message: 'Please provide a date text like "tomorrow", "next friday", etc.'
+      });
+    }
+    
+    const resolvedDate = resolveDate(text);
+    const [day, month, year] = resolvedDate.split('-');
+    const dateObj = new Date(`${year}-${month}-${day}`);
+    const dayNamesItalian = ['Domenica', 'Lunedì', 'Martedì', 'Mercoledì', 'Giovedì', 'Venerdì', 'Sabato'];
+    const dayOfWeek = dayNamesItalian[dateObj.getDay()];
+    
+    res.json({
+      success: true,
+      originalText: text,
+      resolvedDate: resolvedDate,
+      dayOfWeek: dayOfWeek,
+      timezone: 'Europe/Rome'
+    });
+    
+  } catch (error) {
+    console.error('❌ GET resolve-date error:', error.message);
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+});
 
 // ===== RESTAURANT HOURS - POST (For Retell Agent) =====
 app.post('/api/restaurant-hours', (req, res) => {
