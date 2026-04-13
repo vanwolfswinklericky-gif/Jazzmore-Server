@@ -4316,8 +4316,10 @@ function resolveDate(dateString) {
     'thursday': 'thursday', 'friday': 'friday', 'saturday': 'saturday', 'sunday': 'sunday'
   };
   
+  let match;
+  
   // ===== PATTERN 1: "next week monday" (English - explicit next week) =====
-  let match = cleanedDate.match(/^next\s+week\s+(monday|tuesday|wednesday|thursday|friday|saturday|sunday)$/i);
+  match = cleanedDate.match(/^next\s+week\s+(monday|tuesday|wednesday|thursday|friday|saturday|sunday)$/i);
   if (match) {
     const dayName = match[1].toLowerCase();
     const result = findNextSpecificDay(dayName, 'next_week');
@@ -4414,23 +4416,6 @@ function resolveDate(dateString) {
     return result;
   }
   
-  // ===== ALREADY FORMATTED DATES =====
-  if (cleanedDate.match(/^\d{2}-\d{2}-\d{4}$/)) {
-    return cleanedDate;
-  }
-  
-  if (cleanedDate.match(/^\d{4}-\d{2}-\d{2}$/)) {
-    const [year, month, day] = cleanedDate.split('-');
-    return `${day}-${month}-${year}`;
-  }
-  
-  // ===== FALLBACK: Default to tomorrow =====
-  const tomorrow = addDays(today, 1);
-  const result = formatInTimeZone(tomorrow, ROME_TIMEZONE, 'dd-MM-yyyy');
-  console.log(`⚠️ Fallback to tomorrow: "${cleanedDate}" → ${result}`);
-  return result;
-}
-  
   // ===== MONTH + DAY patterns (e.g., "15 aprile", "april 15") =====
   const monthMap = {
     'january': 1, 'february': 2, 'march': 3, 'april': 4, 'may': 5, 'june': 6,
@@ -4496,7 +4481,6 @@ function resolveDate(dateString) {
   console.log(`⚠️ Fallback to tomorrow: "${cleanedDate}" → ${result}`);
   return result;
 }
-
 // ===== POST endpoint for Retell AI resolve_date tool =====
 app.post('/api/resolve-date', (req, res) => {
   try {
