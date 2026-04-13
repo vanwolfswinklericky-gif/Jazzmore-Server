@@ -4228,6 +4228,61 @@ function findNextSpecificDay(dayName, skipCurrentWeek = false) {
 }
 
 // ===== COMPLETE DATE RESOLUTION FUNCTION (SINGLE VERSION - USE THIS ONE) =====
+// ===== HELPER: Find next occurrence of a specific day (UNIVERSAL SOLUTION) =====
+function findNextSpecificDay(dayName, type = 'this') {
+  const dayMap = {
+    'sunday': 0, 'monday': 1, 'tuesday': 2, 'wednesday': 3,
+    'thursday': 4, 'friday': 5, 'saturday': 6,
+    'domenica': 0, 'lunedì': 1, 'lunedi': 1, 
+    'martedì': 2, 'martedi': 2,
+    'mercoledì': 3, 'mercoledi': 3, 
+    'giovedì': 4, 'giovedi': 4, 
+    'venerdì': 5, 'venerdi': 5, 
+    'sabato': 6
+  };
+  
+  const targetDayNum = dayMap[dayName.toLowerCase()];
+  if (targetDayNum === undefined) {
+    console.error(`❌ Unknown day name: ${dayName}`);
+    return getRomeDateToday();
+  }
+  
+  const today = getRomeDate();
+  const todayDayNum = today.getDay();
+  
+  // Calculate days until the target day THIS week
+  let daysUntilTarget = (targetDayNum - todayDayNum + 7) % 7;
+  
+  let daysToAdd;
+  
+  switch(type) {
+    case 'this':  
+      // "this monday" or just "monday" - next occurrence (could be today)
+      daysToAdd = daysUntilTarget;
+      break;
+      
+    case 'next':  
+      // "next monday" - the upcoming Monday (never today)
+      daysToAdd = daysUntilTarget;
+      if (daysToAdd === 0) daysToAdd = 7; // if today, go to next week
+      break;
+      
+    case 'next_week':  
+      // "next week monday" - Monday of NEXT week (always add 7)
+      daysToAdd = daysUntilTarget + 7;
+      break;
+      
+    default:
+      daysToAdd = daysUntilTarget;
+  }
+  
+  console.log(`📅 findNextSpecificDay: ${dayName}, type=${type}, todayDay=${todayDayNum}, targetDay=${targetDayNum}, daysUntilTarget=${daysUntilTarget}, daysToAdd=${daysToAdd}`);
+  
+  const targetDate = addDays(today, daysToAdd);
+  return formatInTimeZone(targetDate, ROME_TIMEZONE, 'dd-MM-yyyy');
+}
+
+// ===== COMPLETE DATE RESOLUTION FUNCTION =====
 function resolveDate(dateString) {
   if (!dateString || typeof dateString !== 'string') {
     return getRomeDateToday();
@@ -4261,113 +4316,120 @@ function resolveDate(dateString) {
     'thursday': 'thursday', 'friday': 'friday', 'saturday': 'saturday', 'sunday': 'sunday'
   };
   
-  // ===== PATTERN 1: "next week monday" (English) =====
+  // ===== PATTERN 1: "next week monday" (English - explicit next week) =====
   let match = cleanedDate.match(/^next\s+week\s+(monday|tuesday|wednesday|thursday|friday|saturday|sunday)$/i);
   if (match) {
     const dayName = match[1].toLowerCase();
-    const result = findNextSpecificDay(dayName, true);
+    const result = findNextSpecificDay(dayName, 'next_week');
     console.log(`✅ "next week ${dayName}" → ${result}`);
     return result;
   }
   
-  // ===== PATTERN 2: "lunedì della prossima settimana" (Italian formal) =====
+  // ===== PATTERN 2: "lunedì della prossima settimana" (Italian - explicit next week) =====
   match = cleanedDate.match(/^(lunedì|lunedi|martedì|martedi|mercoledì|mercoledi|giovedì|giovedi|venerdì|venerdi|sabato|domenica)\s+della\s+prossima\s+settimana$/i);
   if (match) {
     const italianDay = match[1].toLowerCase();
     const englishDay = dayMap[italianDay];
-    const result = findNextSpecificDay(englishDay, true);
+    const result = findNextSpecificDay(englishDay, 'next_week');
     console.log(`✅ "${italianDay} della prossima settimana" → ${result}`);
     return result;
   }
   
-  // ===== PATTERN 3: "next monday" (English short) =====
-  match = cleanedDate.match(/^next\s+(monday|tuesday|wednesday|thursday|friday|saturday|sunday)$/i);
-  if (match) {
-    const dayName = match[1].toLowerCase();
-    const result = findNextSpecificDay(dayName, true);
-    console.log(`✅ "next ${dayName}" → ${result}`);
-    return result;
-  }
-  
-  // ===== PATTERN 4: "lunedì prossimo" (Italian - day first) =====
-  match = cleanedDate.match(/^(lunedì|lunedi|martedì|martedi|mercoledì|mercoledi|giovedì|giovedi|venerdì|venerdi|sabato|domenica)\s+prossim[oa]$/i);
-  if (match) {
-    const italianDay = match[1].toLowerCase();
-    const englishDay = dayMap[italianDay];
-    const result = findNextSpecificDay(englishDay, true);
-    console.log(`✅ "${italianDay} prossimo" → ${result}`);
-    return result;
-  }
-  
-  // ===== PATTERN 5: "prossimo lunedì" (Italian - prossimo first) =====
-  match = cleanedDate.match(/^prossim[oa]\s+(lunedì|lunedi|martedì|martedi|mercoledì|mercoledi|giovedì|giovedi|venerdì|venerdi|sabato|domenica)$/i);
-  if (match) {
-    const italianDay = match[1].toLowerCase();
-    const englishDay = dayMap[italianDay];
-    const result = findNextSpecificDay(englishDay, true);
-    console.log(`✅ "prossimo ${italianDay}" → ${result}`);
-    return result;
-  }
-  
-  // ===== PATTERN 6: "lunedì che viene" (Italian colloquial) =====
-  match = cleanedDate.match(/^(lunedì|lunedi|martedì|martedi|mercoledì|mercoledi|giovedì|giovedi|venerdì|venerdi|sabato|domenica)\s+che\s+viene$/i);
-  if (match) {
-    const italianDay = match[1].toLowerCase();
-    const englishDay = dayMap[italianDay];
-    const result = findNextSpecificDay(englishDay, true);
-    console.log(`✅ "${italianDay} che viene" → ${result}`);
-    return result;
-  }
-  
-  // ===== PATTERN 7: "il lunedì prossimo" (with article) =====
-  match = cleanedDate.match(/^il\s+(lunedì|lunedi|martedì|martedi|mercoledì|mercoledi|giovedì|giovedi|venerdì|venerdi|sabato|domenica)\s+prossim[oa]$/i);
-  if (match) {
-    const italianDay = match[1].toLowerCase();
-    const englishDay = dayMap[italianDay];
-    const result = findNextSpecificDay(englishDay, true);
-    console.log(`✅ "il ${italianDay} prossimo" → ${result}`);
-    return result;
-  }
-  
-  // ===== PATTERN 8: "per lunedì prossimo" (with preposition) =====
-  match = cleanedDate.match(/^per\s+(lunedì|lunedi|martedì|martedi|mercoledì|mercoledi|giovedì|giovedi|venerdì|venerdi|sabato|domenica)\s+prossim[oa]$/i);
-  if (match) {
-    const italianDay = match[1].toLowerCase();
-    const englishDay = dayMap[italianDay];
-    const result = findNextSpecificDay(englishDay, true);
-    console.log(`✅ "per ${italianDay} prossimo" → ${result}`);
-    return result;
-  }
-  
-  // ===== PATTERN 9: "lunedì prossimo settimana" (colloquial) =====
-  match = cleanedDate.match(/^(lunedì|lunedi|martedì|martedi|mercoledì|mercoledi|giovedì|giovedi|venerdì|venerdi|sabato|domenica)\s+prossim[oa]\s+settimana$/i);
-  if (match) {
-    const italianDay = match[1].toLowerCase();
-    const englishDay = dayMap[italianDay];
-    const result = findNextSpecificDay(englishDay, true);
-    console.log(`✅ "${italianDay} prossimo settimana" → ${result}`);
-    return result;
-  }
-  
-  // ===== PATTERN 10: "la prossima settimana lunedì" (order swapped) =====
+  // ===== PATTERN 3: "la prossima settimana lunedì" (Italian - order swapped) =====
   match = cleanedDate.match(/^la\s+prossima\s+settimana\s+(lunedì|lunedi|martedì|martedi|mercoledì|mercoledi|giovedì|giovedi|venerdì|venerdi|sabato|domenica)$/i);
   if (match) {
     const italianDay = match[1].toLowerCase();
     const englishDay = dayMap[italianDay];
-    const result = findNextSpecificDay(englishDay, true);
+    const result = findNextSpecificDay(englishDay, 'next_week');
     console.log(`✅ "la prossima settimana ${italianDay}" → ${result}`);
     return result;
   }
   
-  // ===== PATTERN 11: Simple day name (e.g., "lunedì", "monday") =====
+  // ===== PATTERN 4: "next monday" (English - upcoming, not today) =====
+  match = cleanedDate.match(/^next\s+(monday|tuesday|wednesday|thursday|friday|saturday|sunday)$/i);
+  if (match) {
+    const dayName = match[1].toLowerCase();
+    const result = findNextSpecificDay(dayName, 'next');
+    console.log(`✅ "next ${dayName}" → ${result}`);
+    return result;
+  }
+  
+  // ===== PATTERN 5: "lunedì prossimo" (Italian - day first, upcoming) =====
+  match = cleanedDate.match(/^(lunedì|lunedi|martedì|martedi|mercoledì|mercoledi|giovedì|giovedi|venerdì|venerdi|sabato|domenica)\s+prossim[oa]$/i);
+  if (match) {
+    const italianDay = match[1].toLowerCase();
+    const englishDay = dayMap[italianDay];
+    const result = findNextSpecificDay(englishDay, 'next');
+    console.log(`✅ "${italianDay} prossimo" → ${result}`);
+    return result;
+  }
+  
+  // ===== PATTERN 6: "prossimo lunedì" (Italian - prossimo first, upcoming) =====
+  match = cleanedDate.match(/^prossim[oa]\s+(lunedì|lunedi|martedì|martedi|mercoledì|mercoledi|giovedì|giovedi|venerdì|venerdi|sabato|domenica)$/i);
+  if (match) {
+    const italianDay = match[1].toLowerCase();
+    const englishDay = dayMap[italianDay];
+    const result = findNextSpecificDay(englishDay, 'next');
+    console.log(`✅ "prossimo ${italianDay}" → ${result}`);
+    return result;
+  }
+  
+  // ===== PATTERN 7: "lunedì che viene" (Italian - colloquial, upcoming) =====
+  match = cleanedDate.match(/^(lunedì|lunedi|martedì|martedi|mercoledì|mercoledi|giovedì|giovedi|venerdì|venerdi|sabato|domenica)\s+che\s+viene$/i);
+  if (match) {
+    const italianDay = match[1].toLowerCase();
+    const englishDay = dayMap[italianDay];
+    const result = findNextSpecificDay(englishDay, 'next');
+    console.log(`✅ "${italianDay} che viene" → ${result}`);
+    return result;
+  }
+  
+  // ===== PATTERN 8: "il lunedì prossimo" (with article, upcoming) =====
+  match = cleanedDate.match(/^il\s+(lunedì|lunedi|martedì|martedi|mercoledì|mercoledi|giovedì|giovedi|venerdì|venerdi|sabato|domenica)\s+prossim[oa]$/i);
+  if (match) {
+    const italianDay = match[1].toLowerCase();
+    const englishDay = dayMap[italianDay];
+    const result = findNextSpecificDay(englishDay, 'next');
+    console.log(`✅ "il ${italianDay} prossimo" → ${result}`);
+    return result;
+  }
+  
+  // ===== PATTERN 9: "per lunedì prossimo" (with preposition, upcoming) =====
+  match = cleanedDate.match(/^per\s+(lunedì|lunedi|martedì|martedi|mercoledì|mercoledi|giovedì|giovedi|venerdì|venerdi|sabato|domenica)\s+prossim[oa]$/i);
+  if (match) {
+    const italianDay = match[1].toLowerCase();
+    const englishDay = dayMap[italianDay];
+    const result = findNextSpecificDay(englishDay, 'next');
+    console.log(`✅ "per ${italianDay} prossimo" → ${result}`);
+    return result;
+  }
+  
+  // ===== PATTERN 10: Simple day name (e.g., "lunedì", "monday") =====
   match = cleanedDate.match(/^(lunedì|lunedi|martedì|martedi|mercoledì|mercoledi|giovedì|giovedi|venerdì|venerdi|sabato|domenica|monday|tuesday|wednesday|thursday|friday|saturday|sunday)$/i);
   if (match) {
     let dayName = match[1].toLowerCase();
     const englishDay = dayMap[dayName] || dayName;
-    const result = findNextSpecificDay(englishDay, false);
+    const result = findNextSpecificDay(englishDay, 'this');
     console.log(`✅ Simple day "${dayName}" → ${result}`);
     return result;
   }
+  
+  // ===== ALREADY FORMATTED DATES =====
+  if (cleanedDate.match(/^\d{2}-\d{2}-\d{4}$/)) {
+    return cleanedDate;
+  }
+  
+  if (cleanedDate.match(/^\d{4}-\d{2}-\d{2}$/)) {
+    const [year, month, day] = cleanedDate.split('-');
+    return `${day}-${month}-${year}`;
+  }
+  
+  // ===== FALLBACK: Default to tomorrow =====
+  const tomorrow = addDays(today, 1);
+  const result = formatInTimeZone(tomorrow, ROME_TIMEZONE, 'dd-MM-yyyy');
+  console.log(`⚠️ Fallback to tomorrow: "${cleanedDate}" → ${result}`);
+  return result;
+}
   
   // ===== MONTH + DAY patterns (e.g., "15 aprile", "april 15") =====
   const monthMap = {
