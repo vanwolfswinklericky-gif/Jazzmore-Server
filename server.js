@@ -3731,61 +3731,167 @@ app.post('/api/reservations', async (req, res) => {
     // ===== SHOW-ONLY DETECTION (MOVED HERE - AFTER reservationData EXISTS) =====
     // ============================================
     
-    function isShowOnlyReservation(time, specialRequests, transcript) {
-      const [hour, minute] = (time || '').split(':').map(Number);
-      
-      if (hour >= 21 && minute >= 30) {
-        return true;
-      }
-      
-      const showOnlyKeywords = [
-        'solo spettacolo', 'show only', 'after dinner', 'dopo cena',
-        'solo concerto', 'concert only', 'no dinner', 'senza cena'
-      ];
-      
-      const conversationText = transcript
-        ?.map(msg => (msg.content || '').toLowerCase())
-        .join(' ') || '';
-      
-      for (const keyword of showOnlyKeywords) {
-        if (conversationText.includes(keyword)) {
-          return true;
-        }
-      }
-      
-      return false;
+ // ============================================
+// ===== ENHANCED SHOW-ONLY DETECTION LOGIC =====
+// ============================================
+
+/**
+ * Detect if a reservation is SHOW ONLY based on multiple factors
+ * Returns: { isShowOnly: boolean, reason: string, confidence: number }
+ */
+function detectShowOnlyReservation(reservationData, transcript, userMessages = []) {
+  // Factor 1: Check arrival time (21:30 or later = show only)
+  const [hour, minute] = (reservationData.time || '00:00').split(':').map(Number);
+  const isLateArrival = (hour >= 21 && minute >= 30) || hour >= 22;
+  
+  // Factor 2: Check for explicit keywords in conversation
+  const showOnlyKeywords = [
+    // Italian
+    'solo spettacolo', 'show only', 'dopo cena', 'after dinner',
+    'solo concerto', 'concert only', 'no dinner', 'senza cena',
+    'solo evento', 'event only', 'solo musica', 'music only',
+    'non per la cena', 'not for dinner', 'solo dopo cena',
+    'senza cena', 'without dinner', 'solo drink', 'drinks only',
+    'posto in piedi', 'standing only', 'solo ingresso',
+    // English
+    'show only', 'after dinner', 'concert only', 'no food',
+    'just the show', 'only the concert', 'without eating',
+    'drinks only', 'standing ticket', 'show ticket'
+  ];
+  
+  // Get full conversation text
+  const conversationText = transcript
+    ?.map(msg => (msg.content || '').toLowerCase())
+    .join(' ') || '';
+  
+  // Also check user messages specifically (they are more reliable)
+  const userText = userMessages
+    ?.map(msg => (msg.content || '').toLowerCase())
+    .join(' ') || '';
+  
+  let keywordMatched = false;
+  let matchedKeyword = '';
+  
+  for (const keyword of showOnlyKeywords) {
+    if (conversationText.includes(keyword) || userText.includes(keyword)) {
+      keywordMatched = true;
+      matchedKeyword = keyword;
+      break;
     }
-    
+  }
+  
+  // Factor 3: Check if user explicitly said they don't want dinner
+  const noDinnerPhrases = [
+    'non voglio cenare', 'non per cena', 'senza cena',
+    'no dinner', 'not for dinner', 'dinner not required',
+    'solo spettacolo', 'show only'
+  ];
+  
+  let explicitNoDinner = false;
+  for (const phrase of noDinnerPhrases) {
+    if (userText.includes(phrase) || conversationText.includes(phrase)) {
+      explicitNoDinner = true;
+      break;
+    }
+  }
+  
+  // Factor 4: Check if special requests are specifically for show only
+  const specialRequests = (reservationData.specialRequests || '').toLowerCase();
+  const showOnlySpecialRequests = specialRequests.includes('show only') || 
+                                   specialRequests.includes('solo spettacolo') ||
+                                   specialRequests.includes('no dinner');
+  
+  // Calculate confidence score
+  let confidence = 0;
+  let reasons = [];
+  
+  if (isLateArrival) {
+    confidence += 40;
+    reasons.push(`arrival time ${reservationData.time} (21:30 or later)`);
+  }
+  
+  if (keywordMatched) {
+    confidence += 35;
+    reasons.push(`keyword "${matchedKeyword}" detected`);
+  }
+  
+  if (explicitNoDinner) {
+    confidence += 20;
+    reasons.push('user explicitly said no dinner');
+  }
+  
+  if (showOnlySpecialRequests) {
+    confidence += 15;
+    reasons.push('special requests indicate show only');
+  }
+  
+  // Determine if show only (threshold: 40+ confidence OR any keyword match + late arrival)
+  const isShowOnly = confidence >= 40 || (keywordMatched && isLateArrival) || explicitNoDinner;
+  
+  console.log(`🎭 Show-only detection: ${isShowOnly ? 'YES' : 'NO'} (confidence: ${confidence}%, reasons: ${reasons.join(', ') || 'none'})`);
+  
+  return {
+    isShowOnly,
+    confidence,
+    reasons,
+    matchedKeyword,
+    isLateArrival
+  };
+}
+
+/**
+ * Determine reservation type based on detection
+ */
+function determineReservationType(reservationData, transcript, userMessages) {
+  const detection = detectShowOnlyReservation(reservationData, transcript, userMessages);
+  
+  if (detection.isShowOnly) {
+    return {
+      reservationType: "Show Only",
+      dinnerCount: 0,
+      showOnlyCount: parseInt(reservationData.guests) || 2,
+      specialRequests: "NESSUNA RICHIESTA SPECIALE",
+      whatsappConfirmation: reservationData.whatsapp_confirmation,
+      newsletter: reservationData.newsletter
+    };
+  } else {
+    // Dinner + Show
     let finalSpecialRequests = reservationData.specialRequests || '';
-    let isShowOnly = false;
-    let dinnerCount = parseInt(reservationData.adults) || parseInt(reservationData.guests) || 2;
-    let showOnlyCount = 0;
-    let reservationType = "Dinner + Show";
-    
-    // Check if this is a show-only reservation
-    if (reservationData.time) {
-      isShowOnly = isShowOnlyReservation(
-        reservationData.time, 
-        reservationData.specialRequests,
-        call?.transcript_object
-      );
+    if (!finalSpecialRequests || finalSpecialRequests === 'No special requests' || finalSpecialRequests === '') {
+      finalSpecialRequests = 'Nessuna richiesta speciale';
     }
     
-    if (isShowOnly) {
-      finalSpecialRequests = 'NESSUNA RICHIESTA SPECIALE';
-      dinnerCount = 0;
-      showOnlyCount = parseInt(reservationData.guests) || 2;
-      reservationType = "Show Only";
-      console.log(`🎭 Show-only reservation detected - Setting special requests to "NESSUNA RICHIESTA SPECIALE"`);
-    } else {
-      if (!finalSpecialRequests || finalSpecialRequests === 'No special requests' || finalSpecialRequests === '') {
-        finalSpecialRequests = 'Nessuna richiesta speciale';
-      }
-    }
+    return {
+      reservationType: "Dinner + Show",
+      dinnerCount: parseInt(reservationData.adults) || parseInt(reservationData.guests) || 2,
+      showOnlyCount: 0,
+      specialRequests: finalSpecialRequests,
+      whatsappConfirmation: reservationData.whatsapp_confirmation,
+      newsletter: reservationData.newsletter
+    };
+  }
+}
     
-    // Update reservationData with processed values
-    reservationData.specialRequests = finalSpecialRequests;
-    reservationData.reservationType = reservationType;
+        // ============================================
+    // ===== SHOW-ONLY DETECTION - ENHANCED =====
+    // ============================================
+    
+    // Extract user messages from transcript for better detection
+    const userMessages = call?.transcript_object?.filter(msg => msg.role === 'user') || [];
+    
+    // Determine reservation type using enhanced logic
+    const reservationTypeInfo = determineReservationType(
+      reservationData,
+      call?.transcript_object,
+      userMessages
+    );
+    
+    // Update reservationData with determined values
+    reservationData.specialRequests = reservationTypeInfo.specialRequests;
+    reservationData.reservationType = reservationTypeInfo.reservationType;
+    
+    let dinnerCount = reservationTypeInfo.dinnerCount;
+    let showOnlyCount = reservationTypeInfo.showOnlyCount;
     
     console.log('\n✅ FINAL RESERVATION DATA:');
     console.log(`   Name: ${reservationData.firstName} ${reservationData.lastName}`);
@@ -3796,10 +3902,9 @@ app.post('/api/reservations', async (req, res) => {
     console.log(`   Special Requests: ${reservationData.specialRequests}`);
     console.log(`   WhatsApp: ${reservationData.whatsapp_confirmation}`);
     console.log(`   Newsletter: ${reservationData.newsletter}`);
-    console.log(`   Reservation Type: ${reservationType}`);
+    console.log(`   Reservation Type: ${reservationTypeInfo.reservationType}`);
     console.log(`   Dinner Count: ${dinnerCount}`);
     console.log(`   Show-Only Count: ${showOnlyCount}`);
-    
     // ===== CLOSURE CHECK - BLOCK MONDAYS & TUESDAYS =====
     console.log('\n🔒 CHECKING CLOSURE STATUS');
     console.log('='.repeat(40));
@@ -3895,7 +4000,7 @@ app.post('/api/reservations', async (req, res) => {
       airtableDate = `${y}-${m}-${d}`;
     }
     
-    const airtableFields = {
+        const airtableFields = {
       "Reservation ID": reservationId,
       "First Name": reservationData.firstName,
       "Last Name": reservationData.lastName,
@@ -3906,9 +4011,9 @@ app.post('/api/reservations', async (req, res) => {
       "Dinner Count": dinnerCount,
       "Show-Only Count": showOnlyCount,
       "Kids Count": parseInt(reservationData.children) || 0,
-      "Special Requests": finalSpecialRequests,
+      "Special Requests": reservationData.specialRequests,
       "Reservation Status": "Confirmed",
-      "Reservation Type": reservationType,
+      "Reservation Type": reservationTypeInfo.reservationType,
       "Newsletter Opt-In": reservationData.newsletter,
       "Whatsapp Confirmation": whatsappValue
     };
