@@ -4285,30 +4285,30 @@ function resolveDate(dateString) {
     return todayStr;
   }
 
-  // ===== WEEK-LEVEL PATTERNS (standalone) =====
+  // ===== WEEK-LEVEL PATTERNS (standalone) - FIXED =====
   
-  // "next week" (English)
+  // "next week" (English) - returns Monday of next week
   if (cleanedDate === 'next week') {
-    const nextWeekMonday = findNextSpecificDay('monday', 'next');
+    const nextWeekMonday = findNextSpecificDay('monday', 'this');
     console.log(`✅ "next week" → starting from ${nextWeekMonday}`);
     return nextWeekMonday;
   }
   
-  // "prossima settimana" (Italian)
+  // "prossima settimana" (Italian) - returns Monday of next week
   if (cleanedDate === 'prossima settimana') {
-    const nextWeekMonday = findNextSpecificDay('monday', 'next');
+    const nextWeekMonday = findNextSpecificDay('monday', 'this');
     console.log(`✅ "prossima settimana" → starting from ${nextWeekMonday}`);
     return nextWeekMonday;
   }
   
-  // "settimana prossima" (Italian swapped order)
+  // "settimana prossima" (Italian swapped order) - returns Monday of next week
   if (cleanedDate === 'settimana prossima') {
-    const nextWeekMonday = findNextSpecificDay('monday', 'next');
+    const nextWeekMonday = findNextSpecificDay('monday', 'this');
     console.log(`✅ "settimana prossima" → starting from ${nextWeekMonday}`);
     return nextWeekMonday;
   }
   
-  // "questa settimana" (this week)
+  // "questa settimana" (this week) - returns today's date
   if (cleanedDate === 'questa settimana') {
     console.log(`✅ "questa settimana" → ${todayStr}`);
     return todayStr;
