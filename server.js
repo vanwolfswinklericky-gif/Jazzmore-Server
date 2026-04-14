@@ -4264,7 +4264,6 @@ function findNextSpecificDay(dayName, type = 'this') {
   return formatInTimeZone(targetDate, ROME_TIMEZONE, 'dd-MM-yyyy');
 }
 
-// ===== COMPLETE DATE RESOLUTION FUNCTION =====
 // ===== COMPLETE DATE RESOLUTION FUNCTION (HANDLES ALL DAYS & NEXT WEEK) =====
 function resolveDate(dateString) {
   if (!dateString || typeof dateString !== 'string') {
@@ -4283,6 +4282,35 @@ function resolveDate(dateString) {
     return formatInTimeZone(addDays(today, 1), ROME_TIMEZONE, 'dd-MM-yyyy');
   }
   if (cleanedDate === 'stasera' || cleanedDate === 'questa sera' || cleanedDate === 'tonight') {
+    return todayStr;
+  }
+
+  // ===== WEEK-LEVEL PATTERNS (standalone) =====
+  
+  // "next week" (English)
+  if (cleanedDate === 'next week') {
+    const nextWeekMonday = findNextSpecificDay('monday', 'next');
+    console.log(`✅ "next week" → starting from ${nextWeekMonday}`);
+    return nextWeekMonday;
+  }
+  
+  // "prossima settimana" (Italian)
+  if (cleanedDate === 'prossima settimana') {
+    const nextWeekMonday = findNextSpecificDay('monday', 'next');
+    console.log(`✅ "prossima settimana" → starting from ${nextWeekMonday}`);
+    return nextWeekMonday;
+  }
+  
+  // "settimana prossima" (Italian swapped order)
+  if (cleanedDate === 'settimana prossima') {
+    const nextWeekMonday = findNextSpecificDay('monday', 'next');
+    console.log(`✅ "settimana prossima" → starting from ${nextWeekMonday}`);
+    return nextWeekMonday;
+  }
+  
+  // "questa settimana" (this week)
+  if (cleanedDate === 'questa settimana') {
+    console.log(`✅ "questa settimana" → ${todayStr}`);
     return todayStr;
   }
 
