@@ -468,397 +468,214 @@ const dayNamesItalian = ['Domenica', 'Lunedì', 'Martedì', 'Mercoledì', 'Giove
 });
 
 // ===== PHONE EXTRACTION FROM TRANSCRIPT =====
+// ===== PHONE EXTRACTION FROM TRANSCRIPT - ROBUST VERSION =====
 function extractPhoneFromTranscript(transcript) {
-  if (!transcript || !Array.isArray(transcript)) {
-    console.log('❌ Invalid transcript provided');
-    return null;
-  }
-  
-  const DEBUG = true;
-  
-  function debugLog(message, data = null) {
-    if (DEBUG) {
-      console.log(`[PhoneExtract] ${message}`, data ? JSON.stringify(data, null, 2) : '');
-    }
-  }
-  
-  // ===== Context detection =====
-  function isInPhoneContext(text) {
-    const phoneKeywords = [
-      'numero', 'telefono', 'cellulare', 'phone', 'number',
-      'il mio numero', 'il numero è', 'numero di telefono',
-      'mi può dare il suo numero', 'per la conferma',
-      'ripeto il numero', 'confermo il numero', 'per sicurezza',
-      'il suo numero di telefono', 'qual è il suo numero'
-    ];
-    const lowerText = text.toLowerCase();
-    return phoneKeywords.some(keyword => lowerText.includes(keyword));
-  }
-  
-  // ===== Time-related words to block =====
-  const timeRelatedWords = new Set([
-    'uno', 'due', 'tre', 'quattro', 'cinque', 'sei', 'sette', 'otto', 'nove', 'dieci',
-    'undici', 'dodici', 'tredici', 'quattordici', 'quindici', 'sedici',
-    'diciassette', 'diciotto', 'diciannove',
-    'venti', 'ventuno', 'ventidue', 'ventitre', 'ventiquattro', 'venticinque',
-    'ventisei', 'ventisette', 'ventotto', 'ventinove',
-    'trenta', 'trentuno', 'trentadue', 'trentatre',
-    'quaranta', 'cinquanta', 'sessanta', 'settanta', 'ottanta', 'novanta',
-    'mezzanotte', 'mezzo', 'un quarto', 'tre quarti'
-  ]);
-  
-  function isTimeRelated(word, surroundingText) {
-    const lowerWord = word.toLowerCase();
-    if (timeRelatedWords.has(lowerWord)) {
-      const timeIndicators = ['alle', 'ore', 'orario', 'dalle', 'fino alle', 'a partire dalle'];
-      if (timeIndicators.some(indicator => surroundingText.includes(indicator))) {
-        return true;
-      }
-    }
-    return false;
-  }
-  
-  // ===== Number mappings =====
-  const singleDigitMap = {
+  if (!transcript || !Array.isArray(transcript)) return null;
+
+  // ---------- 1. Complete Italian number word mapping ----------
+  const numberMap = {
+    // single digits
     'zero': '0', 'uno': '1', 'due': '2', 'tre': '3', 'quattro': '4',
-    'cinque': '5', 'sei': '6', 'sette': '7', 'otto': '8', 'nove': '9'
-  };
-  
-  const teenMap = {
+    'cinque': '5', 'sei': '6', 'sette': '7', 'otto': '8', 'nove': '9',
+    // teens
     'dieci': '10', 'undici': '11', 'dodici': '12', 'tredici': '13',
     'quattordici': '14', 'quindici': '15', 'sedici': '16', 'diciassette': '17',
-    'diciotto': '18', 'diciannove': '19'
-  };
-  
-  const tensMap = {
+    'diciotto': '18', 'diciannove': '19',
+    // tens
     'venti': '20', 'trenta': '30', 'quaranta': '40', 'cinquanta': '50',
-    'sessanta': '60', 'settanta': '70', 'ottanta': '80', 'novanta': '90'
-  };
-  
-  const hundredMap = {
+    'sessanta': '60', 'settanta': '70', 'ottanta': '80', 'novanta': '90',
+    // hundreds
     'cento': '100', 'duecento': '200', 'trecento': '300', 'quattrocento': '400',
-    'cinquecento': '500', 'seicento': '600', 'settecento': '700', 'ottocento': '800', 'novecento': '900'
+    'cinquecento': '500', 'seicento': '600', 'settecento': '700', 'ottocento': '800', 'novecento': '900',
+    // thousands (simple)
+    'mille': '1000', 'duemila': '2000', 'tremila': '3000', 'quattromila': '4000',
+    'cinquemila': '5000', 'seimila': '6000', 'settemila': '7000', 'ottomila': '8000', 'novemila': '9000',
+    'diecimila': '10000'
   };
-  
-  // Compound numbers (21-99)
+
+  // Compound numbers 21-99 (ventuno, ventidue, …)
   const compoundMap = {
-    'ventuno': '21', 'ventidue': '22', 'ventitre': '23', 'ventiquattro': '24',
-    'venticinque': '25', 'ventisei': '26', 'ventisette': '27', 'ventotto': '28',
-    'ventinove': '29', 'trentuno': '31', 'trentadue': '32', 'trentatre': '33',
-    'trentaquattro': '34', 'trentacinque': '35', 'trentasei': '36', 'trentasette': '37',
-    'trentotto': '38', 'trentanove': '39', 'quarantuno': '41', 'quarantadue': '42',
-    'quarantatre': '43', 'quarantaquattro': '44', 'quarantacinque': '45', 'quarantasei': '46',
-    'quarantasette': '47', 'quarantotto': '48', 'quarantanove': '49', 'cinquantuno': '51',
-    'cinquantadue': '52', 'cinquantatre': '53', 'cinquantaquattro': '54', 'cinquantacinque': '55',
+    'ventuno': '21', 'ventidue': '22', 'ventitre': '23', 'ventiquattro': '24', 'venticinque': '25',
+    'ventisei': '26', 'ventisette': '27', 'ventotto': '28', 'ventinove': '29',
+    'trentuno': '31', 'trentadue': '32', 'trentatre': '33', 'trentaquattro': '34', 'trentacinque': '35',
+    'trentasei': '36', 'trentasette': '37', 'trentotto': '38', 'trentanove': '39',
+    'quarantuno': '41', 'quarantadue': '42', 'quarantatre': '43', 'quarantaquattro': '44', 'quarantacinque': '45',
+    'quarantasei': '46', 'quarantasette': '47', 'quarantotto': '48', 'quarantanove': '49',
+    'cinquantuno': '51', 'cinquantadue': '52', 'cinquantatre': '53', 'cinquantaquattro': '54', 'cinquantacinque': '55',
     'cinquantasei': '56', 'cinquantasette': '57', 'cinquantotto': '58', 'cinquantanove': '59',
-    'sessantuno': '61', 'sessantadue': '62', 'sessantatre': '63', 'sessantaquattro': '64',
-    'sessantacinque': '65', 'sessantasei': '66', 'sessantasette': '67', 'sessantotto': '68',
-    'sessantanove': '69', 'settantuno': '71', 'settantadue': '72', 'settantatre': '73',
-    'settantaquattro': '74', 'settantacinque': '75', 'settantasei': '76', 'settantasette': '77',
-    'settantotto': '78', 'settantanove': '79', 'ottantuno': '81', 'ottantadue': '82',
-    'ottantatre': '83', 'ottantaquattro': '84', 'ottantacinque': '85', 'ottantasei': '86',
-    'ottantasette': '87', 'ottantotto': '88', 'ottantanove': '89', 'novantuno': '91',
-    'novantadue': '92', 'novantatre': '93', 'novantaquattro': '94', 'novantacinque': '95',
+    'sessantuno': '61', 'sessantadue': '62', 'sessantatre': '63', 'sessantaquattro': '64', 'sessantacinque': '65',
+    'sessantasei': '66', 'sessantasette': '67', 'sessantotto': '68', 'sessantanove': '69',
+    'settantuno': '71', 'settantadue': '72', 'settantatre': '73', 'settantaquattro': '74', 'settantacinque': '75',
+    'settantasei': '76', 'settantasette': '77', 'settantotto': '78', 'settantanove': '79',
+    'ottantuno': '81', 'ottantadue': '82', 'ottantatre': '83', 'ottantaquattro': '84', 'ottantacinque': '85',
+    'ottantasei': '86', 'ottantasette': '87', 'ottantotto': '88', 'ottantanove': '89',
+    'novantuno': '91', 'novantadue': '92', 'novantatre': '93', 'novantaquattro': '94', 'novantacinque': '95',
     'novantasei': '96', 'novantasette': '97', 'novantotto': '98', 'novantanove': '99'
   };
-  
-  // ===== Pattern detection =====
-  function detectSpeakingPattern(words) {
-    let hasSingleDigits = 0;
-    let hasThreeDigitGroups = 0;
-    let hasNaturalNumbers = 0;
-    let hasCommas = 0;
+
+  // Merge all mappings for lookup
+  const fullMap = { ...numberMap, ...compoundMap };
+
+  // ---------- 2. Helper: Convert a phrase (e.g., "trecentotrentacinque") to digits ----------
+  function phraseToDigits(phrase) {
+    if (!phrase) return '';
+    // First try exact match
+    if (fullMap[phrase]) return fullMap[phrase];
     
-    for (const word of words) {
-      if (singleDigitMap[word]) hasSingleDigits++;
-      if (hundredMap[word] || compoundMap[word] || teenMap[word] || tensMap[word]) hasNaturalNumbers++;
-      if (word === ',' || word === 'e') hasCommas++;
+    // Handle "mille X" where X is a hundred (e.g., "mille trecentoquarantacinque")
+    if (phrase.startsWith('mille')) {
+      const rest = phrase.slice(5);
+      const restDigits = phraseToDigits(rest);
+      if (restDigits) {
+        const thousand = 1000;
+        const restNum = parseInt(restDigits, 10);
+        return (thousand + restNum).toString();
+      }
+      return '1000';
     }
     
-    // Pattern A: Single digits with commas (e.g., "tre, tre, cinque")
-    if (hasSingleDigits >= 3 && hasCommas >= 2) {
-      return 'single_digits_grouped';
-    }
-    
-    // Pattern B: Single digits spaced (e.g., "tre tre cinque")
-    if (hasSingleDigits >= 3 && hasNaturalNumbers === 0) {
-      return 'single_digits_sequential';
-    }
-    
-    // Pattern C: Natural numbers (e.g., "trecentotrentacinque")
-    if (hasNaturalNumbers >= 2) {
-      return 'natural_numbers';
-    }
-    
-    // Pattern D: Mixed (e.g., "tre tre cinque, centotrentaquattro")
-    if (hasSingleDigits > 0 && hasNaturalNumbers > 0) {
-      return 'mixed';
-    }
-    
-    return 'unknown';
-  }
-  
-  // ===== Parse single digits sequentially =====
-  function parseSingleDigits(words, context) {
-    let result = '';
-    for (const word of words) {
-      if (isTimeRelated(word, context)) continue;
-      if (singleDigitMap[word]) {
-        result += singleDigitMap[word];
+    // Handle "Xcento" (already covered by fullMap for standard forms, but for completeness)
+    if (phrase.includes('cento')) {
+      // Split into parts (e.g., "trecentotrentacinque" -> "tre" + "cento" + "trentacinque")
+      const parts = phrase.split(/cento/);
+      if (parts.length === 2) {
+        const hundreds = parts[0] ? (numberMap[parts[0]] || '0') : '1'; // "tre" -> 3, empty -> 1
+        const rest = parts[1];
+        const restDigits = phraseToDigits(rest);
+        const hundredsNum = parseInt(hundreds, 10) * 100;
+        const restNum = restDigits ? parseInt(restDigits, 10) : 0;
+        return (hundredsNum + restNum).toString();
       }
     }
-    return result;
+    
+    // Fallback: extract single digits from the phrase
+    let digits = '';
+    for (let i = 0; i < phrase.length; i++) {
+      const char = phrase[i];
+      if (char >= '0' && char <= '9') digits += char;
+    }
+    return digits;
   }
-  
-  // ===== Parse natural numbers (3-digit or 4-digit groups) =====
-  function parseNaturalNumberGroup(word) {
-    // Check compound first (21-99)
-    if (compoundMap[word]) return compoundMap[word];
-    // Check hundreds
-    if (hundredMap[word]) return hundredMap[word];
-    // Check teens
-    if (teenMap[word]) return teenMap[word];
-    // Check tens
-    if (tensMap[word]) return tensMap[word];
-    return null;
-  }
-  
-  function parseNaturalNumbers(words, context) {
+
+  // ---------- 3. Helper: Convert a spoken sequence (words) to a digit string ----------
+  function spokenToDigits(text) {
+    if (!text) return '';
+    const lower = text.toLowerCase();
+    // Replace known number words with their digit equivalents
     let result = '';
     let i = 0;
-    
+    const words = lower.split(/\s+/);
     while (i < words.length) {
-      const word = words[i];
-      
-      if (isTimeRelated(word, context)) {
-        i++;
-        continue;
+      let word = words[i];
+      // Check for compound words that might be concatenated (e.g., "trecentotrentacinque")
+      let found = false;
+      for (let len = Math.min(5, words.length - i); len >= 1; len--) {
+        const candidate = words.slice(i, i + len).join('');
+        if (fullMap[candidate]) {
+          result += fullMap[candidate];
+          i += len;
+          found = true;
+          break;
+        }
       }
-      
-      // Check for "mille" (thousand) - special handling
-      if (word === 'mille') {
-        // Look ahead for the next number
-        if (i + 1 < words.length) {
-          const nextGroup = parseNaturalNumberGroup(words[i + 1]);
-          if (nextGroup) {
-            // "mille" + next = 1000 + next
-            const thousandValue = 1000;
-            const nextValue = parseInt(nextGroup);
-            const combined = thousandValue + nextValue;
-            result += combined.toString();
-            i += 2;
-            continue;
+      if (!found) {
+        // Single word lookup
+        if (fullMap[word]) {
+          result += fullMap[word];
+        } else {
+          // Might be a digit already
+          const digitMatch = word.match(/\d+/);
+          if (digitMatch) result += digitMatch[0];
+        }
+        i++;
+      }
+    }
+    return result;
+  }
+
+  // ---------- 4. Normalize to +39XXXXXXXXXX ----------
+  function normalizePhoneNumber(digitsStr) {
+    if (!digitsStr) return null;
+    const digits = digitsStr.replace(/\D/g, '');
+    if (digits.length < 10 || digits.length > 12) return null;
+    // Take the last 10 digits
+    const lastTen = digits.slice(-10);
+    if (!lastTen.startsWith('3')) {
+      console.log(`⚠️ Phone number doesn't start with 3: ${lastTen}`);
+      // Still accept but warn
+    }
+    return `+39${lastTen}`;
+  }
+
+  // ---------- 5. Find the LAST confirmed phone number in the conversation ----------
+  // Scan from the end to find agent read-back + user confirmation
+  for (let i = transcript.length - 1; i >= 1; i--) {
+    const msg = transcript[i];
+    if (msg.role === 'user') {
+      const userText = msg.content.toLowerCase();
+      const isConfirmation = /^(s[ìi]|yes|corretto|esatto|perfetto|giusto|sì corretto|si corretto)/.test(userText);
+      if (isConfirmation) {
+        // Look back for agent's read-back
+        for (let j = i - 1; j >= Math.max(0, i - 3); j--) {
+          const agentMsg = transcript[j];
+          if (agentMsg.role === 'agent') {
+            const agentText = agentMsg.content;
+            // Agent likely read the number
+            const digits = spokenToDigits(agentText);
+            if (digits.length >= 8) {
+              const normalized = normalizePhoneNumber(digits);
+              if (normalized) {
+                console.log(`✅ Extracted confirmed number from agent read-back: ${normalized}`);
+                return normalized;
+              }
+            }
           }
         }
-        result += '1000';
-        i++;
-        continue;
       }
-      
-      const parsed = parseNaturalNumberGroup(word);
-      if (parsed) {
-        result += parsed;
-        i++;
-        continue;
-      }
-      
-      i++;
     }
-    
-    return result;
   }
-  
-  // ===== Parse mixed pattern (single digits + natural numbers) =====
-  function parseMixed(words, context) {
-    let result = '';
-    
-    for (const word of words) {
-      if (isTimeRelated(word, context)) continue;
-      
-      if (singleDigitMap[word]) {
-        result += singleDigitMap[word];
-      } else if (compoundMap[word]) {
-        result += compoundMap[word];
-      } else if (hundredMap[word]) {
-        result += hundredMap[word];
-      } else if (teenMap[word]) {
-        result += teenMap[word];
-      } else if (tensMap[word]) {
-        result += tensMap[word];
-      }
-    }
-    
-    return result;
-  }
-  
-  // ===== Main extraction logic =====
-  const extractDigits = (text, contextText = '') => {
-    if (!text) return '';
-    
-    debugLog('Extracting digits', { original: text.substring(0, 150) });
-    
-    const isPhoneContext = isInPhoneContext(contextText) || isInPhoneContext(text);
-    if (!isPhoneContext) {
-      const rawDigits = text.replace(/\D/g, '');
-      if (rawDigits.length >= 8) return rawDigits;
-      return '';
-    }
-    
-    // Clean and tokenize
-    let cleanText = text.toLowerCase()
-      .replace(/[.,\-/()]/g, ' ')
-      .replace(/\s+/g, ' ')
-      .trim();
-    
-    const words = cleanText.split(/\s+/);
-    const pattern = detectSpeakingPattern(words);
-    
-    debugLog('Detected pattern', { pattern, wordCount: words.length });
-    
-    let digits = '';
-    
-    switch (pattern) {
-      case 'single_digits_grouped':
-      case 'single_digits_sequential':
-        digits = parseSingleDigits(words, cleanText);
-        break;
-      case 'natural_numbers':
-        digits = parseNaturalNumbers(words, cleanText);
-        break;
-      case 'mixed':
-        digits = parseMixed(words, cleanText);
-        break;
-      default:
-        // Fallback: try all methods
-        digits = parseSingleDigits(words, cleanText);
-        if (digits.length < 8) {
-          digits = parseNaturalNumbers(words, cleanText);
-        }
-        if (digits.length < 8) {
-          digits = parseMixed(words, cleanText);
-        }
-    }
-    
-    debugLog('Extracted digits', { digits, length: digits.length, pattern });
-    return digits;
-  };
-  
-  // ===== Validate and normalize phone number =====
-  const normalizePhoneNumber = (digits) => {
-    if (!digits) return null;
-    
-    const cleanDigits = digits.replace(/\D/g, '');
-    
-    if (cleanDigits.length < 10) {
-      console.log(`❌ Too few digits: ${cleanDigits.length}`);
-      return null;
-    }
-    
-    if (cleanDigits.length > 12) {
-      console.log(`❌ Too many digits: ${cleanDigits.length}`);
-      return null;
-    }
-    
-    // Take the LAST 10 digits (handles any prefix)
-    const lastTen = cleanDigits.slice(-10);
-    
-    // Italian mobile numbers start with 3
-    if (!lastTen.startsWith('3')) {
-      console.log(`⚠️ Warning: Number doesn't start with 3: ${lastTen}`);
-      // Still accept but log warning
-    }
-    
-    const normalized = `+39${lastTen}`;
-    console.log(`✅ Normalized: ${normalized} (from ${cleanDigits} digits)`);
-    return normalized;
-  };
-  
-  // Confirmation phrases
-  const confirmationPhrases = [
-    'sì', 'si', 'yes', 'yep', 'yeah', 'correct', 'ok', 'okay', 'va bene',
-    'corretto', 'esatto', 'perfetto', 'giusto', 'certamente', 'sicuro'
-  ];
-  
-  debugLog('Processing transcript', { messageCount: transcript.length });
-  
-  // ===== STRATEGY 1: Agent confirmation with user "yes" =====
-  for (let i = transcript.length - 1; i >= 1; i--) {
-    const currentMsg = transcript[i];
-    const content = (currentMsg.content || '').toLowerCase().trim();
-    
-    const isConfirmation = confirmationPhrases.some(phrase => 
-      content === phrase || content.includes(phrase)
-    );
-    
-    if (currentMsg.role === 'user' && isConfirmation) {
-      const agentMsg = transcript[i - 1];
-      if (agentMsg && agentMsg.role === 'agent') {
-        const rawDigits = extractDigits(agentMsg.content, agentMsg.content);
-        const finalNumber = normalizePhoneNumber(rawDigits);
-        if (finalNumber) {
-          console.log(`✅ Confirmed number (agent read-back): ${finalNumber}`);
-          return finalNumber;
+
+  // ---------- 6. If no confirmation found, look for user's explicit number after a correction ----------
+  // Detect pattern: user says "No" then provides correct number
+  for (let i = 0; i < transcript.length - 2; i++) {
+    const msg = transcript[i];
+    if (msg.role === 'user' && /^(no|non)/i.test(msg.content)) {
+      // Look ahead for a user message with digits
+      for (let j = i + 1; j < Math.min(i + 4, transcript.length); j++) {
+        const nextMsg = transcript[j];
+        if (nextMsg.role === 'user') {
+          const digits = spokenToDigits(nextMsg.content);
+          if (digits.length >= 8) {
+            const normalized = normalizePhoneNumber(digits);
+            if (normalized) {
+              console.log(`✅ Extracted corrected number from user: ${normalized}`);
+              return normalized;
+            }
+          }
         }
       }
     }
   }
-  
-  // ===== STRATEGY 2: User provides number =====
+
+  // ---------- 7. Fallback: any user message with phone-like pattern ----------
   for (let i = 0; i < transcript.length; i++) {
     const msg = transcript[i];
     if (msg.role === 'user') {
-      const content = msg.content;
-      const hasPhoneKeywords = content.includes('numero') || content.includes('telefono');
-      
-      if (hasPhoneKeywords || content.match(/\d{5,}/)) {
-        const rawDigits = extractDigits(content, content);
-        const finalNumber = normalizePhoneNumber(rawDigits);
-        if (finalNumber) {
-          console.log(`✅ User provided number: ${finalNumber}`);
-          return finalNumber;
+      const digits = spokenToDigits(msg.content);
+      if (digits.length >= 8 && digits.length <= 12) {
+        const normalized = normalizePhoneNumber(digits);
+        if (normalized) {
+          console.log(`⚠️ Fallback extracted from user: ${normalized}`);
+          return normalized;
         }
       }
     }
   }
-  
-  // ===== STRATEGY 3: Agent reads back number =====
-  for (let i = 0; i < transcript.length; i++) {
-    const msg = transcript[i];
-    if (msg.role === 'agent') {
-      const content = msg.content;
-      const isReadingBack = content.includes('ripeto') || content.includes('confermo') || 
-                           (content.includes('numero') && content.match(/\d/));
-      
-      if (isReadingBack) {
-        const rawDigits = extractDigits(content, content);
-        const finalNumber = normalizePhoneNumber(rawDigits);
-        if (finalNumber) {
-          console.log(`✅ Agent read-back number: ${finalNumber}`);
-          return finalNumber;
-        }
-      }
-    }
-  }
-  
-  // ===== STRATEGY 4: Fallback raw digits =====
-  for (let i = transcript.length - 1; i >= 0; i--) {
-    const msg = transcript[i];
-    const rawDigits = msg.content.replace(/\D/g, '');
-    if (rawDigits.length >= 10 && rawDigits.length <= 12) {
-      const finalNumber = normalizePhoneNumber(rawDigits);
-      if (finalNumber) {
-        console.log(`⚠️ Fallback number: ${finalNumber}`);
-        return finalNumber;
-      }
-    }
-  }
-  
-  console.log('❌ No phone number found');
+
+  console.log('❌ No phone number found in transcript');
   return null;
 }
-    
- 
-// ===== EXTRACT WHATSAPP CONFIRMATION FROM TRANSCRIPT =====
+// ===== EXTRACT WHATSAPP CONFIRMATION FROM TRANSCRIPT - TAKES LAST ANSWER =====
 function extractWhatsappConfirmation(transcript) {
   if (!transcript || !Array.isArray(transcript)) {
     console.log('❌ No transcript provided for WhatsApp extraction');
@@ -867,15 +684,30 @@ function extractWhatsappConfirmation(transcript) {
   
   console.log('🔍 Extracting WhatsApp confirmation from transcript...');
   
-  // Look for the WhatsApp question and user's response
+  // Define affirmative and negative responses (same as before)
+  const affirmativeResponses = [
+    'sì', 'si', 'sisi', 'si si', 'certo', 'certamente', 
+    'sicuro', 'assolutamente', 'va bene', 'ok', 'okay',
+    'perfetto', 'grazie', 'sì grazie', 'si grazie',
+    'volentieri', 'con piacere',
+    'yes', 'yeah', 'yep', 'sure', 'of course', 'definitely',
+    'please', 'please do', 'go ahead',
+    'sí', 'claro', 'vale'
+  ];
+  
+  const negativeResponses = [
+    'no', 'non', 'no grazie', 'grazie no', 'non voglio',
+    'non serve', 'non necessario',
+    'no', 'nope', 'no thanks', 'not necessary', 'skip',
+    'no', 'no gracias'
+  ];
+  
+  // Look for the WhatsApp question
   for (let i = 0; i < transcript.length; i++) {
     const msg = transcript[i];
     const content = (msg.content || '').toLowerCase();
     
-    // Check if this is the agent asking about WhatsApp confirmation
-    // Support BOTH Italian and English phrases
     const isWhatsappQuestion = 
-      // Italian phrases
       content.includes('desidera ricevere il messaggio di conferma') ||
       content.includes('ricevere il messaggio di conferma su whatsapp') ||
       content.includes('conferma su whatsapp') ||
@@ -883,10 +715,9 @@ function extractWhatsappConfirmation(transcript) {
       content.includes('conferma tramite whatsapp') ||
       content.includes('messaggio di conferma della prenotazione su whatsapp') ||
       content.includes('conferma della prenotazione su whatsapp') ||
-      // English phrases
       content.includes('confirmation message on whatsapp') ||
       content.includes('receive the confirmation message') ||
-      content.includes('confirmation message') && content.includes('whatsapp') ||
+      (content.includes('confirmation message') && content.includes('whatsapp')) ||
       (content.includes('whatsapp') && content.includes('confirmation')) ||
       content.includes('send you the confirmation via whatsapp') ||
       content.includes('get the confirmation by whatsapp') ||
@@ -896,42 +727,16 @@ function extractWhatsappConfirmation(transcript) {
     if (msg.role === 'agent' && isWhatsappQuestion) {
       console.log(`📱 Found WhatsApp question at index ${i}: "${msg.content}"`);
       
-      // Look at the next few messages for user's response
-      for (let j = i + 1; j < Math.min(i + 5, transcript.length); j++) {
+      // Track the last answer (affirmative or negative)
+      let lastAnswer = null;
+      
+      // Look at the next several messages (up to 8 to catch corrections)
+      for (let j = i + 1; j < Math.min(i + 8, transcript.length); j++) {
         const userMsg = transcript[j];
         if (userMsg.role === 'user') {
           const userContent = (userMsg.content || '').toLowerCase();
           
-          // ===== AFFIRMATIVE RESPONSES =====
-          const affirmativeResponses = [
-            // Italian
-            'sì', 'si', 'sisi', 'si si', 'certo', 'certamente', 
-            'sicuro', 'assolutamente', 'va bene', 'ok', 'okay',
-            'perfetto', 'grazie', 'sì grazie', 'si grazie',
-            'volentieri', 'con piacere',
-            
-            // English
-            'yes', 'yeah', 'yep', 'sure', 'of course', 'definitely',
-            'please', 'please do', 'go ahead',
-            
-            // Spanish
-            'sí', 'claro', 'vale'
-          ];
-          
-          // ===== NEGATIVE RESPONSES =====
-          const negativeResponses = [
-            // Italian
-            'no', 'non', 'no grazie', 'grazie no', 'non voglio',
-            'non serve', 'non necessario',
-            
-            // English
-            'no', 'nope', 'no thanks', 'not necessary', 'skip',
-            
-            // Spanish
-            'no', 'no gracias'
-          ];
-          
-          // Check for affirmative response
+          // Check for affirmative
           let isAffirmative = false;
           for (const affirm of affirmativeResponses) {
             if (userContent === affirm || userContent.includes(affirm)) {
@@ -939,8 +744,12 @@ function extractWhatsappConfirmation(transcript) {
               break;
             }
           }
+          // Special case: user says just "Sí" or "Sì"
+          if (userContent === 'sí' || userContent === 'sì' || userContent === 'si') {
+            isAffirmative = true;
+          }
           
-          // Check for negative response
+          // Check for negative
           let isNegative = false;
           for (const neg of negativeResponses) {
             if (userContent === neg || userContent.includes(neg)) {
@@ -949,21 +758,20 @@ function extractWhatsappConfirmation(transcript) {
             }
           }
           
-          // Special case: user says just "Sí" or "Sì"
-          if (userContent === 'sí' || userContent === 'sì' || userContent === 'si') {
-            isAffirmative = true;
-          }
-          
           if (isAffirmative) {
-            console.log(`✅ User confirmed WhatsApp: "${userMsg.content}"`);
-            return true;
+            lastAnswer = true;
+            console.log(`   Recorded affirmative: "${userMsg.content}"`);
+          } else if (isNegative) {
+            lastAnswer = false;
+            console.log(`   Recorded negative: "${userMsg.content}"`);
           }
-          
-          if (isNegative) {
-            console.log(`❌ User declined WhatsApp: "${userMsg.content}"`);
-            return false;
-          }
+          // If the message is neither (e.g., user continues with unrelated talk), ignore it.
         }
+      }
+      
+      if (lastAnswer !== null) {
+        console.log(`✅ WhatsApp confirmation final answer: ${lastAnswer}`);
+        return lastAnswer;
       }
     }
   }
@@ -972,7 +780,6 @@ function extractWhatsappConfirmation(transcript) {
   return false;
 }
 
-// ===== EXTRACT NEWSLETTER/EVENTS PROGRAM CONFIRMATION =====
 function extractNewsletterConfirmation(transcript) {
   if (!transcript || !Array.isArray(transcript)) {
     console.log('❌ No transcript provided for newsletter extraction');
@@ -981,11 +788,22 @@ function extractNewsletterConfirmation(transcript) {
   
   console.log('🔍 Extracting events program confirmation from transcript...');
   
+  const affirmativeResponses = [
+    'yes', 'yeah', 'yep', 'ok', 'okay', 'sure', 'of course',
+    'sì', 'si', 'certo', 'va bene', 'perfetto',
+    'claro', 'vale', 'oui', 'ja', 'uh huh', 'mmhmm',
+    'y', 's', 'please', 'why not', 'absolutely', 'definitely'
+  ];
+  const negativeResponses = [
+    'no', 'nah', 'nope', 'no thanks', 'not necessary',
+    'no grazie', 'grazie no', 'non', 'skip', 'pass',
+    'n', 'not interested', 'maybe later'
+  ];
+  
   for (let i = 0; i < transcript.length; i++) {
     const msg = transcript[i];
     const content = (msg.content || '').toLowerCase();
     
-    // Check if this is the agent asking about events program
     const isNewsletterQuestion = 
       content.includes('programma eventi') ||
       content.includes('ricevere anche il nostro programma eventi') ||
@@ -1000,25 +818,12 @@ function extractNewsletterConfirmation(transcript) {
     if (msg.role === 'agent' && isNewsletterQuestion) {
       console.log(`📅 Found newsletter question at index ${i}: "${msg.content}"`);
       
-      for (let j = i + 1; j < Math.min(i + 5, transcript.length); j++) {
+      let lastAnswer = null;
+      // Look ahead up to 8 messages to catch corrections
+      for (let j = i + 1; j < Math.min(i + 8, transcript.length); j++) {
         const userMsg = transcript[j];
         if (userMsg.role === 'user') {
           const userContent = (userMsg.content || '').toLowerCase();
-          
-          // ===== AFFIRMATIVE RESPONSES =====
-          const affirmativeResponses = [
-            'yes', 'yeah', 'yep', 'ok', 'okay', 'sure', 'of course',
-            'sì', 'si', 'certo', 'va bene', 'perfetto',
-            'claro', 'vale', 'oui', 'ja', 'uh huh', 'mmhmm',
-            'y', 's', 'please', 'why not', 'absolutely', 'definitely'
-          ];
-          
-          // ===== NEGATIVE RESPONSES =====
-          const negativeResponses = [
-            'no', 'nah', 'nope', 'no thanks', 'not necessary',
-            'no grazie', 'grazie no', 'non', 'skip', 'pass',
-            'n', 'not interested', 'maybe later'
-          ];
           
           let isAffirmative = false;
           for (const affirm of affirmativeResponses) {
@@ -1027,7 +832,6 @@ function extractNewsletterConfirmation(transcript) {
               break;
             }
           }
-          
           let isNegative = false;
           for (const neg of negativeResponses) {
             if (userContent === neg || userContent.includes(neg)) {
@@ -1037,15 +841,18 @@ function extractNewsletterConfirmation(transcript) {
           }
           
           if (isAffirmative) {
-            console.log(`✅ User confirmed newsletter: "${userMsg.content}"`);
-            return true;
-          }
-          
-          if (isNegative) {
-            console.log(`❌ User declined newsletter: "${userMsg.content}"`);
-            return false;
+            lastAnswer = true;
+            console.log(`   Recorded affirmative: "${userMsg.content}"`);
+          } else if (isNegative) {
+            lastAnswer = false;
+            console.log(`   Recorded negative: "${userMsg.content}"`);
           }
         }
+      }
+      
+      if (lastAnswer !== null) {
+        console.log(`✅ Newsletter confirmation final answer: ${lastAnswer}`);
+        return lastAnswer;
       }
     }
   }
@@ -1053,7 +860,7 @@ function extractNewsletterConfirmation(transcript) {
   console.log('⚠️ No newsletter confirmation found in transcript, defaulting to false');
   return false;
 }
-// ===== FUNCTION TO SEND WEBHOOK TO MAKE.COM - STRICT VALIDATION =====
+
 // ===== FUNCTION TO SEND WEBHOOK TO MAKE.COM - STRICT VALIDATION =====
 async function sendToMakeWebhook(reservationData, reservationId) {
   console.log('\n' + '='.repeat(60));
@@ -3665,7 +3472,6 @@ app.post('/api/reservations', async (req, res) => {
     const newsletterFromTranscript = extractNewsletterConfirmation(call?.transcript_object);
     console.log(`📱 WhatsApp confirmation: ${whatsappFromTranscript}`);
     console.log(`📧 Newsletter confirmation: ${newsletterFromTranscript}`);
-
     // ============================================
     // ===== FIELD COMPARISON USING CONFIDENCE SCORES =====
     // ============================================
@@ -3705,12 +3511,38 @@ app.post('/api/reservations', async (req, res) => {
     
     const bestTime = getBestFieldValue(postCallData?.time || null, transcriptTime, 'time');
     
-    const phoneContext = {
-      field: 'phone',
-      userConfirmed: true,
-      agentReadBack: true
-    };
-    const bestPhone = getBestFieldValue(postCallData?.phone || null, transcriptPhone, 'phone', phoneContext);
+    // ----- PHONE NUMBER OVERRIDE: trust transcript over post-call -----
+    let finalPhone = null;
+    
+    // First, try to use transcript-extracted phone (most reliable)
+    if (transcriptPhone && transcriptPhone.length >= 12 && transcriptPhone.startsWith('+39')) {
+      const digits = transcriptPhone.replace(/\D/g, '');
+      // Valid Italian mobile: +39 followed by 10 digits starting with 3
+      if (digits.length === 12 && digits.startsWith('39')) {
+        finalPhone = transcriptPhone;
+        console.log(`✅ Using transcript-extracted phone: ${finalPhone}`);
+      } else if (digits.length === 11 && digits.startsWith('3')) {
+        // e.g., +393351340532 -> 12 digits, already fine
+        finalPhone = transcriptPhone;
+      } else {
+        console.log(`⚠️ Transcript phone has invalid format: ${transcriptPhone}`);
+      }
+    }
+    
+    // If transcript failed, fallback to post-call (but skip obvious placeholders)
+    if (!finalPhone && postCallData?.phone) {
+      const postDigits = postCallData.phone.replace(/\D/g, '');
+      // Reject placeholders like 3935100000 or numbers with wrong length
+      if (postDigits === '3935100000' || postDigits.length < 10) {
+        console.log(`⚠️ Ignoring placeholder post-call phone: ${postCallData.phone}`);
+      } else {
+        finalPhone = postCallData.phone;
+        console.log(`📱 Using post-call phone: ${finalPhone}`);
+      }
+    }
+    
+    // Now use finalPhone as the best phone (overriding getBestFieldValue)
+    const bestPhone = finalPhone || (postCallData?.phone || transcriptPhone);
     
     // Build final reservation data with best values
     const reservationData = {
@@ -3726,7 +3558,8 @@ app.post('/api/reservations', async (req, res) => {
       newsletter: newsletterFromTranscript !== null ? newsletterFromTranscript : (postCallData?.newsletter === 'yes' || false),
       whatsapp_confirmation: whatsappFromTranscript !== null ? whatsappFromTranscript : (postCallData?.whatsapp_confirmation === 'yes' || false)
     };
-    
+
+
     // ============================================
     // ===== SHOW-ONLY DETECTION (MOVED HERE - AFTER reservationData EXISTS) =====
     // ============================================
