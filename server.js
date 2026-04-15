@@ -163,6 +163,42 @@ function getItalianTimeGreeting() {
   }
 }
 
+
+function get_time_greeting(format = 'italian') {
+  const romeDate = getRomeDate();
+  const currentHour = romeDate.getHours();
+  let greeting = '';
+  
+  if (format === 'italian') {
+    if (currentHour >= 5 && currentHour < 13) greeting = "Buongiorno";
+    else if (currentHour >= 13 && currentHour < 17) greeting = "Buon pomeriggio";
+    else greeting = "Buonasera";
+  } else if (format === 'english') {
+    if (currentHour >= 5 && currentHour < 12) greeting = "Good morning";
+    else if (currentHour >= 12 && currentHour < 17) greeting = "Good afternoon";
+    else greeting = "Good evening";
+  } else if (format === 'formal') {
+    if (currentHour >= 5 && currentHour < 13) greeting = "Salve, buongiorno";
+    else if (currentHour >= 13 && currentHour < 17) greeting = "Salve, buon pomeriggio";
+    else greeting = "Salve, buonasera";
+  } else if (format === 'casual') {
+    if (currentHour >= 5 && currentHour < 13) greeting = "Ciao, buongiorno";
+    else if (currentHour >= 13 && currentHour < 17) greeting = "Ciao, buon pomeriggio";
+    else greeting = "Ciao, buonasera";
+  }
+  
+  return {
+    greeting: greeting,
+    hour: currentHour,
+    minute: romeDate.getMinutes(),
+    timezone: ROME_TIMEZONE,
+    localTime: formatInTimeZone(new Date(), ROME_TIMEZONE, 'HH:mm:ss'),
+    date: getRomeDateToday(),
+    format: format,
+    fullGreeting: `${greeting}! Benvenuti al Jazzamore. Come posso aiutarvi?`
+  };
+}
+
 // Generate unique reservation ID
 function generateReservationId() {
   const timestamp = Date.now().toString(36);
