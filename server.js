@@ -559,40 +559,40 @@ function extractPhoneFromTranscript(transcript) {
 
   // ---------- 3. Helper: Convert a spoken sequence (words) to a digit string ----------
   function spokenToDigits(text) {
-    if (!text) return '';
-    const lower = text.toLowerCase();
-    // Replace known number words with their digit equivalents
-    let result = '';
-    let i = 0;
-    const words = lower.split(/\s+/);
-    while (i < words.length) {
-      let word = words[i];
-      // Check for compound words that might be concatenated (e.g., "trecentotrentacinque")
-      let found = false;
-      for (let len = Math.min(5, words.length - i); len >= 1; len--) {
-        const candidate = words.slice(i, i + len).join('');
-        if (fullMap[candidate]) {
-          result += fullMap[candidate];
-          i += len;
-          found = true;
-          break;
-        }
-      }
-      if (!found) {
-        // Single word lookup
-        if (fullMap[word]) {
-          result += fullMap[word];
-        } else {
-          // Might be a digit already
-          const digitMatch = word.match(/\d+/);
-          if (digitMatch) result += digitMatch[0];
-        }
-        i++;
+  if (!text) return '';
+  // Remove punctuation and normalize spaces
+  const cleaned = text.toLowerCase()
+    .replace(/[.,\-/()]/g, ' ')   // replace punctuation with space
+    .replace(/\s+/g, ' ')         // collapse multiple spaces
+    .trim();
+  const words = cleaned.split(/\s+/);
+  let result = '';
+  let i = 0;
+  while (i < words.length) {
+    let word = words[i];
+    let found = false;
+    // try compound words
+    for (let len = Math.min(5, words.length - i); len >= 1; len--) {
+      const candidate = words.slice(i, i + len).join('');
+      if (fullMap[candidate]) {
+        result += fullMap[candidate];
+        i += len;
+        found = true;
+        break;
       }
     }
-    return result;
+    if (!found) {
+      if (fullMap[word]) {
+        result += fullMap[word];
+      } else {
+        const digitMatch = word.match(/\d+/);
+        if (digitMatch) result += digitMatch[0];
+      }
+      i++;
+    }
   }
-
+  return result;
+}
   // ---------- 4. Normalize to +39XXXXXXXXXX ----------
   function normalizePhoneNumber(digitsStr) {
     if (!digitsStr) return null;
