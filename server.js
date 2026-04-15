@@ -1165,50 +1165,63 @@ function calculateFieldConfidence(value, source, context = {}) {
  * Compare two field values and return the best one based on confidence scores
  */
 function getBestFieldValue(postcallValue, transcriptValue, fieldName, transcriptContext = {}) {
-  // SPECIAL RULE 1: For first and last names, ALWAYS trust post-call analysis
-  if (fieldName === 'firstName' || fieldName === 'lastName') {
-    if (postcallValue && postcallValue !== 'null' && postcallValue !== 'undefined' && postcallValue !== '') {
-      console.log(`📊 Name field "${fieldName}": Prioritizing POST-CALL value "${postcallValue}" (more reliable than transcript extraction)`);
-      return postcallValue;
-    }
-    // Only use transcript if post-call has nothing
-    if (transcriptValue && transcriptValue !== 'null' && transcriptValue !== '') {
-      console.log(`📊 Name field "${fieldName}": No post-call value, using transcript "${transcriptValue}"`);
-      return transcriptValue;
-    }
-    console.log(`   ❌ No valid name value for ${fieldName}`);
+  // Helper to clean values
+  const clean = (v) => (v && v !== 'null' && v !== 'undefined' && v !== '' ? v : null);
+  const pVal = clean(postcallValue);
+  const tVal = clean(transcriptValue);
+  
+  // If only one source has a value, return that one
+  if (pVal !== null && tVal === null) {
+    console.log(`📊 ${fieldName}: Only post-call value exists → using "${pVal}"`);
+    return pVal;
+  }
+  if (tVal !== null && pVal === null) {
+    console.log(`📊 ${fieldName}: Only transcript value exists → using "${tVal}"`);
+    return tVal;
+  }
+  if (pVal === null && tVal === null) {
+    console.log(`   ❌ No valid value for ${fieldName}`);
     return null;
   }
   
-  // SPECIAL RULE 2: For WhatsApp confirmation, ALWAYS trust post-call analysis
-  if (fieldName === 'whatsapp_confirmation') {
-    if (postcallValue !== undefined && postcallValue !== null && postcallValue !== '') {
-      console.log(`📱 WhatsApp confirmation: Prioritizing POST-CALL value "${postcallValue}" (more reliable than transcript extraction)`);
-      return postcallValue;
+  // Fields that should use 70/30 weighting
+  const nameFields = ['firstName', 'lastName'];
+  const confirmationFields = ['whatsapp_confirmation', 'newsletter'];
+  
+  if (nameFields.includes(fieldName) || confirmationFields.includes(fieldName)) {
+    // Base scores: post‑call 70%, transcript 30%
+    let postcallScore = 70;
+    let transcriptScore = 30;
+    
+    // ---- Context bonuses for names ----
+    if (nameFields.includes(fieldName)) {
+      // Proper capitalisation (e.g., "Giovanni" not "giovanni")
+      if (typeof pVal === 'string' && /^[A-Z][a-z]+$/.test(pVal)) postcallScore += 10;
+      if (typeof tVal === 'string' && /^[A-Z][a-z]+$/.test(tVal)) transcriptScore += 10;
+      // User explicitly confirmed the name (e.g., after agent read‑back)
+      if (transcriptContext.userConfirmed) transcriptScore += 20;
     }
-    // Only use transcript if post-call has nothing
-    if (transcriptValue !== undefined && transcriptValue !== null && transcriptValue !== '') {
-      console.log(`📱 WhatsApp confirmation: No post-call value, using transcript "${transcriptValue}"`);
-      return transcriptValue;
+    
+    // ---- Context bonuses for WhatsApp / newsletter ----
+    if (confirmationFields.includes(fieldName)) {
+      // The transcript answer is the final one after any corrections
+      if (transcriptContext.isFinalAnswer) transcriptScore += 15;
+      // Post‑call value is a clear boolean
+      if (pVal === true || pVal === false) postcallScore += 10;
     }
-    return false; // Default to false
+    
+    console.log(`📊 ${fieldName} comparison: Post-call="${pVal}" (score ${postcallScore}), Transcript="${tVal}" (score ${transcriptScore})`);
+    
+    if (postcallScore >= transcriptScore) {
+      console.log(`   ✅ Using POST-CALL value for ${fieldName}`);
+      return pVal;
+    } else {
+      console.log(`   ✅ Using TRANSCRIPT value for ${fieldName}`);
+      return tVal;
+    }
   }
   
-  // SPECIAL RULE 3: For newsletter opt-in, ALWAYS trust post-call analysis
-  if (fieldName === 'newsletter') {
-    if (postcallValue !== undefined && postcallValue !== null && postcallValue !== '') {
-      console.log(`📧 Newsletter: Prioritizing POST-CALL value "${postcallValue}" (more reliable than transcript extraction)`);
-      return postcallValue;
-    }
-    // Only use transcript if post-call has nothing
-    if (transcriptValue !== undefined && transcriptValue !== null && transcriptValue !== '') {
-      console.log(`📧 Newsletter: No post-call value, using transcript "${transcriptValue}"`);
-      return transcriptValue;
-    }
-    return false; // Default to false
-  }
-  
-  // For all other fields (guests, date, time, phone), use confidence scoring
+  // ---- For all other fields (guests, date, time, phone) – use original confidence scoring ----
   const postcallScore = calculateFieldConfidence(postcallValue, 'postcall', { field: fieldName, ...transcriptContext });
   const transcriptScore = calculateFieldConfidence(transcriptValue, 'transcript_confirmed', { field: fieldName, ...transcriptContext });
   
@@ -1225,18 +1238,16 @@ function getBestFieldValue(postcallValue, transcriptValue, fieldName, transcript
     console.log(`   ✅ Using POST-CALL value for ${fieldName}`);
     return postcallValue;
   }
-  
   if (transcriptScore > postcallScore) {
     console.log(`   ✅ Using TRANSCRIPT value for ${fieldName}`);
     return transcriptValue;
   }
   
-  // Scores are equal - prefer post-call for reliability
+  // Scores equal – prefer post‑call for reliability
   if (postcallScore > 0) {
     console.log(`   ⚖️ Scores equal - using POST-CALL for ${fieldName}`);
     return postcallValue;
   }
-  
   console.log(`   ⚖️ Scores equal - using TRANSCRIPT for ${fieldName}`);
   return transcriptValue;
 }
