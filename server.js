@@ -3602,8 +3602,19 @@ app.post('/api/reservations', async (req, res) => {
       date: bestDate || formatInTimeZone(new Date(Date.now() + 24 * 60 * 60 * 1000), ROME_TIMEZONE, 'dd-MM-yyyy'),
       time: bestTime || '20:00',
       specialRequests: postCallData?.special_requests || postCallData?.specialRequests || 'No special requests',
-      newsletter: newsletterFromTranscript !== null ? newsletterFromTranscript : (postCallData?.newsletter === 'yes' || false),
-      whatsapp_confirmation: whatsappFromTranscript !== null ? whatsappFromTranscript : (postCallData?.whatsapp_confirmation === 'yes' || false)
+     whatsapp_confirmation: (postCallData?.whatsapp_confirmation === 'yes' || postCallData?.whatsapp_confirmation === true) 
+  ? true 
+  : (whatsappFromTranscript === true),
+
+newsletter: (postCallData?.newsletter === 'yes' || postCallData?.newsletter === true) 
+  ? true 
+  : (newsletterFromTranscript === true),
+  ? true 
+  : (whatsappFromTranscript === true),
+
+newsletter: (postCallData?.newsletter === 'yes' || postCallData?.newsletter === true) 
+  ? true 
+  : (newsletterFromTranscript === true),!== null ? whatsappFromTranscript : (postCallData?.whatsapp_confirmation === 'yes' || false)
     };
 
 
