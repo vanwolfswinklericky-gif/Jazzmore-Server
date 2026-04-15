@@ -4259,6 +4259,17 @@ function resolveDate(dateString) {
     return todayStr;
   }
 
+   // ===== HANDLE "[day] sera" (e.g., "giovedì sera", "lunedì sera") =====
+  // Remove "sera" and resolve the day part only
+  const seraMatch = cleanedDate.match(/^(lunedì|lunedi|martedì|martedi|mercoledì|mercoledi|giovedì|giovedi|venerdì|venerdi|sabato|domenica)\s+sera$/i);
+  if (seraMatch) {
+    const dayPart = seraMatch[1].toLowerCase();
+    console.log(`🔍 Detected "${dayPart} sera" → resolving as "${dayPart}"`);
+    const result = resolveDate(dayPart); // recursive call to get date for the day alone
+    console.log(`✅ "${cleanedDate}" resolved to ${result}`);
+    return result;
+  }
+
   // ===== WEEK-LEVEL PATTERNS (standalone) - FIXED =====
   
   // "next week" (English) - returns Monday of next week
