@@ -509,30 +509,31 @@ const dayNamesItalian = ['Domenica', 'Lunedì', 'Martedì', 'Mercoledì', 'Giove
 function extractPhoneFromTranscript(transcript) {
   if (!transcript || !Array.isArray(transcript)) return null;
 
-  // ---------- 1. Complete Italian number word mapping ----------
+  // ---------- 1. Complete number word mapping (Italian + English) ----------
   const numberMap = {
-    // single digits
+    // Italian single digits
     'zero': '0', 'uno': '1', 'due': '2', 'tre': '3', 'quattro': '4',
     'cinque': '5', 'sei': '6', 'sette': '7', 'otto': '8', 'nove': '9',
-    // teens
+    // English single digits
+    'one': '1', 'two': '2', 'three': '3', 'four': '4', 'five': '5',
+    'six': '6', 'seven': '7', 'eight': '8', 'nine': '9', 'oh': '0',
+    // Italian teens
     'dieci': '10', 'undici': '11', 'dodici': '12', 'tredici': '13',
     'quattordici': '14', 'quindici': '15', 'sedici': '16', 'diciassette': '17',
     'diciotto': '18', 'diciannove': '19',
-    // tens
+    // Italian tens
     'venti': '20', 'trenta': '30', 'quaranta': '40', 'cinquanta': '50',
     'sessanta': '60', 'settanta': '70', 'ottanta': '80', 'novanta': '90',
-    // hundreds
+    // Italian hundreds
     'cento': '100', 'duecento': '200', 'trecento': '300', 'quattrocento': '400',
     'cinquecento': '500', 'seicento': '600', 'settecento': '700', 'ottocento': '800', 'novecento': '900',
-    // thousands (simple)
+    // Italian thousands (simple)
     'mille': '1000', 'duemila': '2000', 'tremila': '3000', 'quattromila': '4000',
     'cinquemila': '5000', 'seimila': '6000', 'settemila': '7000', 'ottomila': '8000', 'novemila': '9000',
-    'diecimila': '10000',
-    // extra
-    'oh': '0'      // English "oh" for zero
+    'diecimila': '10000'
   };
 
-  // Compound numbers 21-99 (ventuno, ventidue, …)
+  // Compound numbers 21-99 (Italian only)
   const compoundMap = {
     'ventuno': '21', 'ventidue': '22', 'ventitre': '23', 'ventiquattro': '24', 'venticinque': '25',
     'ventisei': '26', 'ventisette': '27', 'ventotto': '28', 'ventinove': '29',
@@ -557,12 +558,71 @@ function extractPhoneFromTranscript(transcript) {
   // Helper: convert a single number word or compound to digits
   function wordToDigits(word) {
     if (fullMap[word]) return fullMap[word];
-    // Handle "doppio" (double) – e.g., "doppio zero" -> "00"
-    if (word === 'doppio' || word === 'doppia') return '2'; // placeholder, actual doubling handled in parsing
+    if (word === 'doppio' || word === 'doppia') return '2';
     return null;
   }
 
-  // ---------- 2. Improved spokenToDigits (handles "e", separate cento/mille, doppio) ----------
+  // ---------- 2. Arithmetic parser for concatenated Italian numbers ----------
+  function parseItalianNumber(text) {
+    // Greedily split into known words
+    const words = [];
+    let remaining = text;
+    const sortedWords = Object.keys(fullMap).sort((a,b) => b.length - a.length);
+    while (remaining.length > 0) {
+      let matched = false;
+      for (const w of sortedWords) {
+        if (remaining.startsWith(w)) {
+          words.push(w);
+          remaining = remaining.slice(w.length);
+          matched = true;
+          break;
+        }
+      }
+      if (!matched) break;
+    }
+    if (words.length === 0) return null;
+    // Arithmetic combination
+    let total = 0;
+    let current = 0;
+    for (const w of words) {
+      const val = parseInt(fullMap[w], 10);
+      if (val >= 1000) {
+        total += val * (current || 1);
+        current = 0;
+      } else if (val >= 100) {
+        current = current * val;
+      } else {
+        current += val;
+      }
+    }
+    total += current;
+    return total.toString();
+  }
+
+  // ---------- 3. Greedy splitter for concatenated English/Italian digit words ----------
+  function splitConcatenatedDigits(text) {
+    const digitWords = Object.keys(fullMap).sort((a,b) => b.length - a.length);
+    let result = '';
+    let i = 0;
+    while (i < text.length) {
+      let matched = false;
+      for (const w of digitWords) {
+        if (text.startsWith(w, i)) {
+          result += fullMap[w];
+          i += w.length;
+          matched = true;
+          break;
+        }
+      }
+      if (!matched) {
+        // skip unknown character
+        i++;
+      }
+    }
+    return result;
+  }
+
+  // ---------- 4. Main spokenToDigits (handles spaced and concatenated input) ----------
   function spokenToDigits(text) {
     if (!text) return '';
     // Remove punctuation and normalize spaces
@@ -571,7 +631,14 @@ function extractPhoneFromTranscript(transcript) {
       .replace(/\s+/g, ' ')
       .trim();
     
-    // Special handling for "doppio" – duplicate the next digit
+    // If there are no spaces, try arithmetic Italian parser first, then greedy splitter
+    if (!cleaned.includes(' ')) {
+      const italianNum = parseItalianNumber(cleaned);
+      if (italianNum && italianNum.length >= 8) return italianNum;
+      return splitConcatenatedDigits(cleaned);
+    }
+    
+    // Spaced input: process word by word
     let doppioActive = false;
     const words = cleaned.split(/\s+/);
     let result = '';
@@ -579,28 +646,25 @@ function extractPhoneFromTranscript(transcript) {
     while (i < words.length) {
       let word = words[i];
       
-      // Handle "doppio" / "doppia"
       if (word === 'doppio' || word === 'doppia') {
         doppioActive = true;
         i++;
         continue;
       }
       
-      // Handle "e" conjunction – look back for a tens word and ahead for a unit
+      // Handle "e" conjunction
       if (word === 'e' && i > 0 && i + 1 < words.length) {
         const prevWord = words[i-1];
         const nextWord = words[i+1];
         const prevVal = wordToDigits(prevWord);
         const nextVal = wordToDigits(nextWord);
         if (prevVal && nextVal && prevVal.length === 2 && nextVal.length === 1) {
-          // Combine tens and unit (e.g., "venti e tre" -> 23)
           const tens = parseInt(prevVal);
           const unit = parseInt(nextVal);
           const combined = tens + unit;
-          // Remove the previously added tens part
           result = result.slice(0, -prevVal.length);
           result += combined.toString();
-          i += 2; // skip "e" and the unit word
+          i += 2;
           continue;
         }
       }
@@ -610,8 +674,7 @@ function extractPhoneFromTranscript(transcript) {
         const nextWord = words[i+1];
         const nextVal = wordToDigits(nextWord);
         if (nextVal && nextVal.length <= 2) {
-          const hundredVal = 100;
-          const combined = hundredVal + parseInt(nextVal);
+          const combined = 100 + parseInt(nextVal);
           result += combined.toString();
           i += 2;
           continue;
@@ -623,15 +686,14 @@ function extractPhoneFromTranscript(transcript) {
         const nextWord = words[i+1];
         const nextVal = wordToDigits(nextWord);
         if (nextVal) {
-          const thousandVal = 1000;
-          const combined = thousandVal + parseInt(nextVal);
+          const combined = 1000 + parseInt(nextVal);
           result += combined.toString();
           i += 2;
           continue;
         }
       }
       
-      // Try compound words (concatenated)
+      // Try compound words (concatenated within spaced input)
       let found = false;
       for (let len = Math.min(5, words.length - i); len >= 1; len--) {
         const candidate = words.slice(i, i + len).join('');
@@ -666,7 +728,7 @@ function extractPhoneFromTranscript(transcript) {
     return result;
   }
 
-  // ---------- 3. Normalize to +39XXXXXXXXXX ----------
+  // ---------- 5. Normalize to +39XXXXXXXXXX ----------
   function normalizePhoneNumber(digitsStr) {
     if (!digitsStr) return null;
     const digits = digitsStr.replace(/\D/g, '');
@@ -678,7 +740,7 @@ function extractPhoneFromTranscript(transcript) {
     return `+39${lastTen}`;
   }
 
-  // ---------- 4. NEW INITIAL STRATEGY: Scan ALL messages (user and agent) for valid number ----------
+  // ---------- 6. Scan ALL messages for valid number ----------
   for (let i = 0; i < transcript.length; i++) {
     const msg = transcript[i];
     const content = msg.content || '';
@@ -694,7 +756,7 @@ function extractPhoneFromTranscript(transcript) {
     }
   }
 
-  // ---------- 5. Find the LAST confirmed number (agent read-back + user confirmation) ----------
+  // ---------- 7. Fallback: agent read-back + user confirmation ----------
   for (let i = transcript.length - 1; i >= 1; i--) {
     const msg = transcript[i];
     if (msg.role === 'user') {
@@ -718,7 +780,7 @@ function extractPhoneFromTranscript(transcript) {
     }
   }
 
-  // ---------- 6. Look for user correction (user says "No" then provides correct number) ----------
+  // ---------- 8. Look for user correction after "No" ----------
   for (let i = 0; i < transcript.length - 2; i++) {
     const msg = transcript[i];
     if (msg.role === 'user' && /^(no|non)/i.test(msg.content)) {
