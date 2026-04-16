@@ -4460,7 +4460,6 @@ if (match) {
     'thursday': 'thursday', 'friday': 'friday', 'saturday': 'saturday', 'sunday': 'sunday'
   };
 
-  let match;
 
   // ===== ENGLISH PATTERNS FOR NEXT WEEK =====
   
