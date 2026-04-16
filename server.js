@@ -4265,6 +4265,8 @@ function resolveDate(dateString) {
 
   console.log(`🔍 resolveDate input: "${cleanedDate}"`);
 
+  let match; // ✅ MUST BE HERE - BEFORE ANY CODE THAT USES 'match'
+
   // ===== SIMPLE CASES =====
   if (cleanedDate === 'today' || cleanedDate === 'oggi') return todayStr;
   if (cleanedDate === 'tomorrow' || cleanedDate === 'domani') {
@@ -4296,15 +4298,6 @@ if (match) {
 }
     // ===== ADDITIONAL ITALIAN DATE PATTERNS =====
 
-  // Pattern: "sabato di questa settimana" (day of this week)
-  match = cleanedDate.match(/^(lunedì|lunedi|martedì|martedi|mercoledì|mercoledi|giovedì|giovedi|venerdì|venerdi|sabato|domenica)\s+di\s+questa\s+settimana$/i);
-  if (match) {
-    const italianDay = match[1].toLowerCase();
-    const englishDay = dayMap[italianDay];
-    const result = findNextSpecificDay(englishDay, 'this');
-    console.log(`✅ "${italianDay} di questa settimana" → ${result}`);
-    return result;
-  }
 
   // Pattern: "sabato della questa settimana" (with "della")
   match = cleanedDate.match(/^(lunedì|lunedi|martedì|martedi|mercoledì|mercoledi|giovedì|giovedi|venerdì|venerdi|sabato|domenica)\s+della\s+questa\s+settimana$/i);
