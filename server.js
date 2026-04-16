@@ -4285,6 +4285,146 @@ function resolveDate(dateString) {
     return result;
   }
 
+  // ===== "sabato di questa settimana" (explicit this week) =====
+match = cleanedDate.match(/^(lunedì|lunedi|martedì|martedi|mercoledì|mercoledi|giovedì|giovedi|venerdì|venerdi|sabato|domenica)\s+di\s+questa\s+settimana$/i);
+if (match) {
+  const italianDay = match[1].toLowerCase();
+  const englishDay = dayMap[italianDay];
+  const result = findNextSpecificDay(englishDay, 'this');
+  console.log(`✅ "${italianDay} di questa settimana" → ${result}`);
+  return result;
+}
+    // ===== ADDITIONAL ITALIAN DATE PATTERNS =====
+
+  // Pattern: "sabato di questa settimana" (day of this week)
+  match = cleanedDate.match(/^(lunedì|lunedi|martedì|martedi|mercoledì|mercoledi|giovedì|giovedi|venerdì|venerdi|sabato|domenica)\s+di\s+questa\s+settimana$/i);
+  if (match) {
+    const italianDay = match[1].toLowerCase();
+    const englishDay = dayMap[italianDay];
+    const result = findNextSpecificDay(englishDay, 'this');
+    console.log(`✅ "${italianDay} di questa settimana" → ${result}`);
+    return result;
+  }
+
+  // Pattern: "sabato della questa settimana" (with "della")
+  match = cleanedDate.match(/^(lunedì|lunedi|martedì|martedi|mercoledì|mercoledi|giovedì|giovedi|venerdì|venerdi|sabato|domenica)\s+della\s+questa\s+settimana$/i);
+  if (match) {
+    const italianDay = match[1].toLowerCase();
+    const englishDay = dayMap[italianDay];
+    const result = findNextSpecificDay(englishDay, 'this');
+    console.log(`✅ "${italianDay} della questa settimana" → ${result}`);
+    return result;
+  }
+
+  // Pattern: "sabato che arriva" (day that arrives)
+  match = cleanedDate.match(/^(lunedì|lunedi|martedì|martedi|mercoledì|mercoledi|giovedì|giovedi|venerdì|venerdi|sabato|domenica)\s+che\s+arriva$/i);
+  if (match) {
+    const italianDay = match[1].toLowerCase();
+    const englishDay = dayMap[italianDay];
+    const result = findNextSpecificDay(englishDay, 'next');
+    console.log(`✅ "${italianDay} che arriva" → ${result}`);
+    return result;
+  }
+
+  // Pattern: "sabato in arrivo" (upcoming day)
+  match = cleanedDate.match(/^(lunedì|lunedi|martedì|martedi|mercoledì|mercoledi|giovedì|giovedi|venerdì|venerdi|sabato|domenica)\s+in\s+arrivo$/i);
+  if (match) {
+    const italianDay = match[1].toLowerCase();
+    const englishDay = dayMap[italianDay];
+    const result = findNextSpecificDay(englishDay, 'next');
+    console.log(`✅ "${italianDay} in arrivo" → ${result}`);
+    return result;
+  }
+
+  // Pattern: "sabato di questo mese" (day of this month)
+  match = cleanedDate.match(/^(lunedì|lunedi|martedì|martedi|mercoledì|mercoledi|giovedì|giovedi|venerdì|venerdi|sabato|domenica)\s+di\s+questo\s+mese$/i);
+  if (match) {
+    const italianDay = match[1].toLowerCase();
+    const englishDay = dayMap[italianDay];
+    const result = findNextSpecificDay(englishDay, 'this');
+    console.log(`✅ "${italianDay} di questo mese" → ${result}`);
+    return result;
+  }
+
+  // Pattern: "sabato del mese prossimo" (day of next month)
+  match = cleanedDate.match(/^(lunedì|lunedi|martedì|martedi|mercoledì|mercoledi|giovedì|giovedi|venerdì|venerdi|sabato|domenica)\s+del\s+mese\s+prossimo$/i);
+  if (match) {
+    const italianDay = match[1].toLowerCase();
+    const englishDay = dayMap[italianDay];
+    // For next month, add 30 days approximately
+    const nextMonthDate = addDays(today, 30);
+    const result = formatInTimeZone(nextMonthDate, ROME_TIMEZONE, 'dd-MM-yyyy');
+    console.log(`✅ "${italianDay} del mese prossimo" → ${result}`);
+    return result;
+  }
+
+  // Pattern: "sabato del prossimo mese" (day of next month - swapped order)
+  match = cleanedDate.match(/^(lunedì|lunedi|martedì|martedi|mercoledì|mercoledi|giovedì|giovedi|venerdì|venerdi|sabato|domenica)\s+del\s+prossimo\s+mese$/i);
+  if (match) {
+    const italianDay = match[1].toLowerCase();
+    const englishDay = dayMap[italianDay];
+    const nextMonthDate = addDays(today, 30);
+    const result = formatInTimeZone(nextMonthDate, ROME_TIMEZONE, 'dd-MM-yyyy');
+    console.log(`✅ "${italianDay} del prossimo mese" → ${result}`);
+    return result;
+  }
+
+  // Pattern: "tra una settimana" (in one week)
+  if (cleanedDate === 'tra una settimana' || cleanedDate === 'fra una settimana') {
+    const nextWeekDate = addDays(today, 7);
+    const result = formatInTimeZone(nextWeekDate, ROME_TIMEZONE, 'dd-MM-yyyy');
+    console.log(`✅ "tra/fra una settimana" → ${result}`);
+    return result;
+  }
+
+  // Pattern: "oggi pomeriggio" (this afternoon)
+  if (cleanedDate === 'oggi pomeriggio' || cleanedDate === 'oggi pomeriggio') {
+    console.log(`✅ "oggi pomeriggio" → ${todayStr}`);
+    return todayStr;
+  }
+
+  // Pattern: "oggi sera" (this evening)
+  if (cleanedDate === 'oggi sera') {
+    console.log(`✅ "oggi sera" → ${todayStr}`);
+    return todayStr;
+  }
+
+  // Pattern: "domani pomeriggio" (tomorrow afternoon)
+  if (cleanedDate === 'domani pomeriggio') {
+    const tomorrowDate = addDays(today, 1);
+    const result = formatInTimeZone(tomorrowDate, ROME_TIMEZONE, 'dd-MM-yyyy');
+    console.log(`✅ "domani pomeriggio" → ${result}`);
+    return result;
+  }
+
+  // Pattern: "domani sera" (tomorrow evening)
+  if (cleanedDate === 'domani sera') {
+    const tomorrowDate = addDays(today, 1);
+    const result = formatInTimeZone(tomorrowDate, ROME_TIMEZONE, 'dd-MM-yyyy');
+    console.log(`✅ "domani sera" → ${result}`);
+    return result;
+  }
+
+  // Pattern: "fine settimana" (weekend - Saturday)
+  if (cleanedDate === 'fine settimana') {
+    const result = findNextSpecificDay('saturday', 'this');
+    console.log(`✅ "fine settimana" → ${result}`);
+    return result;
+  }
+
+  // Pattern: "questo fine settimana" (this weekend)
+  if (cleanedDate === 'questo fine settimana') {
+    const result = findNextSpecificDay('saturday', 'this');
+    console.log(`✅ "questo fine settimana" → ${result}`);
+    return result;
+  }
+
+  // Pattern: "prossimo fine settimana" (next weekend)
+  if (cleanedDate === 'prossimo fine settimana') {
+    const result = findNextSpecificDay('saturday', 'next');
+    console.log(`✅ "prossimo fine settimana" → ${result}`);
+    return result;
+  }
   // ===== WEEK-LEVEL PATTERNS (standalone) - FIXED =====
   
   // "next week" (English) - returns Monday of next week
