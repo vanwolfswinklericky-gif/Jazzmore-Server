@@ -503,8 +503,9 @@ const dayNamesItalian = ['Domenica', 'Lunedì', 'Martedì', 'Mercoledì', 'Giove
   }
 });
 
-// ===== PHONE EXTRACTION FROM TRANSCRIPT =====
-// ===== PHONE EXTRACTION FROM TRANSCRIPT - ROBUST VERSION =====
+
+
+// ===== PHONE EXTRACTION FROM TRANSCRIPT - UPGRADED VERSION =====
 function extractPhoneFromTranscript(transcript) {
   if (!transcript || !Array.isArray(transcript)) return null;
 
@@ -526,7 +527,9 @@ function extractPhoneFromTranscript(transcript) {
     // thousands (simple)
     'mille': '1000', 'duemila': '2000', 'tremila': '3000', 'quattromila': '4000',
     'cinquemila': '5000', 'seimila': '6000', 'settemila': '7000', 'ottomila': '8000', 'novemila': '9000',
-    'diecimila': '10000'
+    'diecimila': '10000',
+    // extra
+    'oh': '0'      // English "oh" for zero
   };
 
   // Compound numbers 21-99 (ventuno, ventidue, …)
@@ -549,115 +552,159 @@ function extractPhoneFromTranscript(transcript) {
     'novantasei': '96', 'novantasette': '97', 'novantotto': '98', 'novantanove': '99'
   };
 
-  // Merge all mappings for lookup
   const fullMap = { ...numberMap, ...compoundMap };
 
-  // ---------- 2. Helper: Convert a phrase (e.g., "trecentotrentacinque") to digits ----------
-  function phraseToDigits(phrase) {
-    if (!phrase) return '';
-    // First try exact match
-    if (fullMap[phrase]) return fullMap[phrase];
-    
-    // Handle "mille X" where X is a hundred (e.g., "mille trecentoquarantacinque")
-    if (phrase.startsWith('mille')) {
-      const rest = phrase.slice(5);
-      const restDigits = phraseToDigits(rest);
-      if (restDigits) {
-        const thousand = 1000;
-        const restNum = parseInt(restDigits, 10);
-        return (thousand + restNum).toString();
-      }
-      return '1000';
-    }
-    
-    // Handle "Xcento" (already covered by fullMap for standard forms, but for completeness)
-    if (phrase.includes('cento')) {
-      // Split into parts (e.g., "trecentotrentacinque" -> "tre" + "cento" + "trentacinque")
-      const parts = phrase.split(/cento/);
-      if (parts.length === 2) {
-        const hundreds = parts[0] ? (numberMap[parts[0]] || '0') : '1'; // "tre" -> 3, empty -> 1
-        const rest = parts[1];
-        const restDigits = phraseToDigits(rest);
-        const hundredsNum = parseInt(hundreds, 10) * 100;
-        const restNum = restDigits ? parseInt(restDigits, 10) : 0;
-        return (hundredsNum + restNum).toString();
-      }
-    }
-    
-    // Fallback: extract single digits from the phrase
-    let digits = '';
-    for (let i = 0; i < phrase.length; i++) {
-      const char = phrase[i];
-      if (char >= '0' && char <= '9') digits += char;
-    }
-    return digits;
+  // Helper: convert a single number word or compound to digits
+  function wordToDigits(word) {
+    if (fullMap[word]) return fullMap[word];
+    // Handle "doppio" (double) – e.g., "doppio zero" -> "00"
+    if (word === 'doppio' || word === 'doppia') return '2'; // placeholder, actual doubling handled in parsing
+    return null;
   }
 
-  // ---------- 3. Helper: Convert a spoken sequence (words) to a digit string ----------
+  // ---------- 2. Improved spokenToDigits (handles "e", separate cento/mille, doppio) ----------
   function spokenToDigits(text) {
-  if (!text) return '';
-  // Remove punctuation and normalize spaces
-  const cleaned = text.toLowerCase()
-    .replace(/[.,\-/()]/g, ' ')   // replace punctuation with space
-    .replace(/\s+/g, ' ')         // collapse multiple spaces
-    .trim();
-  const words = cleaned.split(/\s+/);
-  let result = '';
-  let i = 0;
-  while (i < words.length) {
-    let word = words[i];
-    let found = false;
-    // try compound words
-    for (let len = Math.min(5, words.length - i); len >= 1; len--) {
-      const candidate = words.slice(i, i + len).join('');
-      if (fullMap[candidate]) {
-        result += fullMap[candidate];
-        i += len;
-        found = true;
-        break;
+    if (!text) return '';
+    // Remove punctuation and normalize spaces
+    let cleaned = text.toLowerCase()
+      .replace(/[.,\-/()]/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+    
+    // Special handling for "doppio" – duplicate the next digit
+    let doppioActive = false;
+    const words = cleaned.split(/\s+/);
+    let result = '';
+    let i = 0;
+    while (i < words.length) {
+      let word = words[i];
+      
+      // Handle "doppio" / "doppia"
+      if (word === 'doppio' || word === 'doppia') {
+        doppioActive = true;
+        i++;
+        continue;
+      }
+      
+      // Handle "e" conjunction – look back for a tens word and ahead for a unit
+      if (word === 'e' && i > 0 && i + 1 < words.length) {
+        const prevWord = words[i-1];
+        const nextWord = words[i+1];
+        const prevVal = wordToDigits(prevWord);
+        const nextVal = wordToDigits(nextWord);
+        if (prevVal && nextVal && prevVal.length === 2 && nextVal.length === 1) {
+          // Combine tens and unit (e.g., "venti e tre" -> 23)
+          const tens = parseInt(prevVal);
+          const unit = parseInt(nextVal);
+          const combined = tens + unit;
+          // Remove the previously added tens part
+          result = result.slice(0, -prevVal.length);
+          result += combined.toString();
+          i += 2; // skip "e" and the unit word
+          continue;
+        }
+      }
+      
+      // Handle "cento" followed by another number (separate words)
+      if (word === 'cento' && i + 1 < words.length) {
+        const nextWord = words[i+1];
+        const nextVal = wordToDigits(nextWord);
+        if (nextVal && nextVal.length <= 2) {
+          const hundredVal = 100;
+          const combined = hundredVal + parseInt(nextVal);
+          result += combined.toString();
+          i += 2;
+          continue;
+        }
+      }
+      
+      // Handle "mille" followed by another number (separate words)
+      if (word === 'mille' && i + 1 < words.length) {
+        const nextWord = words[i+1];
+        const nextVal = wordToDigits(nextWord);
+        if (nextVal) {
+          const thousandVal = 1000;
+          const combined = thousandVal + parseInt(nextVal);
+          result += combined.toString();
+          i += 2;
+          continue;
+        }
+      }
+      
+      // Try compound words (concatenated)
+      let found = false;
+      for (let len = Math.min(5, words.length - i); len >= 1; len--) {
+        const candidate = words.slice(i, i + len).join('');
+        if (fullMap[candidate]) {
+          let val = fullMap[candidate];
+          if (doppioActive) {
+            val = val.repeat(2);
+            doppioActive = false;
+          }
+          result += val;
+          i += len;
+          found = true;
+          break;
+        }
+      }
+      if (!found) {
+        const singleVal = wordToDigits(word);
+        if (singleVal) {
+          let val = singleVal;
+          if (doppioActive) {
+            val = val.repeat(2);
+            doppioActive = false;
+          }
+          result += val;
+        } else {
+          const digitMatch = word.match(/\d+/);
+          if (digitMatch) result += digitMatch[0];
+        }
+        i++;
       }
     }
-    if (!found) {
-      if (fullMap[word]) {
-        result += fullMap[word];
-      } else {
-        const digitMatch = word.match(/\d+/);
-        if (digitMatch) result += digitMatch[0];
-      }
-      i++;
-    }
+    return result;
   }
-  return result;
-}
-  // ---------- 4. Normalize to +39XXXXXXXXXX ----------
+
+  // ---------- 3. Normalize to +39XXXXXXXXXX ----------
   function normalizePhoneNumber(digitsStr) {
     if (!digitsStr) return null;
     const digits = digitsStr.replace(/\D/g, '');
     if (digits.length < 10 || digits.length > 12) return null;
-    // Take the last 10 digits
     const lastTen = digits.slice(-10);
     if (!lastTen.startsWith('3')) {
       console.log(`⚠️ Phone number doesn't start with 3: ${lastTen}`);
-      // Still accept but warn
     }
     return `+39${lastTen}`;
   }
 
-  // ---------- 5. Find the LAST confirmed phone number in the conversation ----------
-  // Scan from the end to find agent read-back + user confirmation
+  // ---------- 4. NEW INITIAL STRATEGY: Scan ALL messages (user and agent) for valid number ----------
+  for (let i = 0; i < transcript.length; i++) {
+    const msg = transcript[i];
+    const content = msg.content || '';
+    if (!content) continue;
+    
+    const digits = spokenToDigits(content);
+    if (digits.length >= 8 && digits.length <= 12) {
+      const normalized = normalizePhoneNumber(digits);
+      if (normalized) {
+        console.log(`✅ Extracted from ${msg.role} message: "${content.substring(0, 80)}" → ${normalized}`);
+        return normalized;
+      }
+    }
+  }
+
+  // ---------- 5. Find the LAST confirmed number (agent read-back + user confirmation) ----------
   for (let i = transcript.length - 1; i >= 1; i--) {
     const msg = transcript[i];
     if (msg.role === 'user') {
       const userText = msg.content.toLowerCase();
       const isConfirmation = /^(s[ìi]|yes|corretto|esatto|perfetto|giusto|sì corretto|si corretto)/.test(userText);
       if (isConfirmation) {
-        // Look back for agent's read-back
         for (let j = i - 1; j >= Math.max(0, i - 3); j--) {
           const agentMsg = transcript[j];
           if (agentMsg.role === 'agent') {
-            const agentText = agentMsg.content;
-            // Agent likely read the number
-            const digits = spokenToDigits(agentText);
+            const digits = spokenToDigits(agentMsg.content);
             if (digits.length >= 8) {
               const normalized = normalizePhoneNumber(digits);
               if (normalized) {
@@ -671,12 +718,10 @@ function extractPhoneFromTranscript(transcript) {
     }
   }
 
-  // ---------- 6. If no confirmation found, look for user's explicit number after a correction ----------
-  // Detect pattern: user says "No" then provides correct number
+  // ---------- 6. Look for user correction (user says "No" then provides correct number) ----------
   for (let i = 0; i < transcript.length - 2; i++) {
     const msg = transcript[i];
     if (msg.role === 'user' && /^(no|non)/i.test(msg.content)) {
-      // Look ahead for a user message with digits
       for (let j = i + 1; j < Math.min(i + 4, transcript.length); j++) {
         const nextMsg = transcript[j];
         if (nextMsg.role === 'user') {
@@ -688,21 +733,6 @@ function extractPhoneFromTranscript(transcript) {
               return normalized;
             }
           }
-        }
-      }
-    }
-  }
-
-  // ---------- 7. Fallback: any user message with phone-like pattern ----------
-  for (let i = 0; i < transcript.length; i++) {
-    const msg = transcript[i];
-    if (msg.role === 'user') {
-      const digits = spokenToDigits(msg.content);
-      if (digits.length >= 8 && digits.length <= 12) {
-        const normalized = normalizePhoneNumber(digits);
-        if (normalized) {
-          console.log(`⚠️ Fallback extracted from user: ${normalized}`);
-          return normalized;
         }
       }
     }
