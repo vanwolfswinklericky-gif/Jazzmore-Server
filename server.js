@@ -2177,6 +2177,33 @@ function validateReservationData(reservationData) {
   return { isValid: errors.length === 0, errors, warnings };
 }
 
+function extractItalianSpecialRequests(transcript) {
+  for (let i = 0; i < transcript.length; i++) {
+    const msg = transcript[i];
+    if (msg.role === 'agent' && 
+        (msg.content.includes('ho segnato') || 
+         msg.content.includes('ho annotato') ||
+         msg.content.includes('perfetto, ho segnato'))) {
+      const match = msg.content.match(/ho segnato\s+(.+?)(?:\.|$)/i);
+      if (match && match[1]) {
+        let request = match[1].trim().replace(/[.!?]+$/, '');
+        if (request.length > 0 && request.length < 200) {
+          console.log(`✅ Extracted Italian special request: "${request}"`);
+          return request;
+        }
+      }
+    }
+  }
+  return null;
+}
+
+// Then after building reservationData:
+const italianSpecial = extractItalianSpecialRequests(call?.transcript_object);
+if (italianSpecial) {
+  console.log(`🔄 Overriding English special request "${reservationData.specialRequests}" → Italian "${italianSpecial}"`);
+  reservationData.specialRequests = italianSpecial;
+}
+
 // ===== ENHANCED RESERVATION INTENT DETECTION =====
 function detectReservationIntent(conversationText, transcript = []) {
   console.log('🔍 Detecting reservation intent...');
