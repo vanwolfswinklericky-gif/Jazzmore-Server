@@ -2197,12 +2197,6 @@ function extractItalianSpecialRequests(transcript) {
   return null;
 }
 
-// Then after building reservationData:
-const italianSpecial = extractItalianSpecialRequests(call?.transcript_object);
-if (italianSpecial) {
-  console.log(`🔄 Overriding English special request "${reservationData.specialRequests}" → Italian "${italianSpecial}"`);
-  reservationData.specialRequests = italianSpecial;
-}
 
 // ===== ENHANCED RESERVATION INTENT DETECTION =====
 function detectReservationIntent(conversationText, transcript = []) {
@@ -3730,6 +3724,13 @@ newsletter: (postCallData?.newsletter === 'yes' || postCallData?.newsletter === 
     };
 
 
+// Then after building reservationData:
+const italianSpecial = extractItalianSpecialRequests(call?.transcript_object);
+if (italianSpecial) {
+  console.log(`🔄 Overriding English special request "${reservationData.specialRequests}" → Italian "${italianSpecial}"`);
+  reservationData.specialRequests = italianSpecial;
+}
+    
     // ============================================
     // ===== SHOW-ONLY DETECTION (MOVED HERE - AFTER reservationData EXISTS) =====
     // ============================================
